@@ -8,7 +8,7 @@
 
 | ID | 优先级 | 状态 | 依赖 | 任务路径 |
 |---|---|---|---|---|
-| AIERP-001 | P0 | **RELEASED** | 无 | [本地基线部署](queue/AIERP-001.md) |
+| AIERP-001 | P0 | **READY_FOR_REVIEW** | 无 | [本地基线部署](queue/AIERP-001.md) |
 | AIERP-002 | P0 | BLOCKED | AIERP-001 | [Excel 生成与导入确认](queue/AIERP-002.md) |
 | AIERP-003 | P0 | BLOCKED | AIERP-001 | [真实 ERP 业务 API](queue/AIERP-003.md) |
 | AIERP-004 | P1 | BLOCKED | AIERP-002/003 | [Agent 工具与对话](queue/AIERP-004.md) |

@@ -1,0 +1,131 @@
+{
+  "startedAt": "2026-10-19T17:28:47.170Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "steps": [
+    {
+      "step": "login",
+      "ok": true,
+      "user": "jsh"
+    },
+    {
+      "step": "stock_before",
+      "before": {
+        "RM-A001": {
+          "found": true,
+          "currentStock": 80,
+          "raw": {
+            "id": 901,
+            "mBarCode": "RM-A001",
+            "currentStock": 80
+          }
+        },
+        "RM-B002": {
+          "found": true,
+          "currentStock": 0,
+          "raw": {
+            "id": 902,
+            "mBarCode": "RM-B002",
+            "currentStock": 0
+          }
+        },
+        "RM-C003": {
+          "found": true,
+          "currentStock": 0,
+          "raw": {
+            "id": 903,
+            "mBarCode": "RM-C003",
+            "currentStock": 0
+          }
+        },
+        "FG-101": {
+          "found": true,
+          "currentStock": 0,
+          "raw": {
+            "id": 911,
+            "mBarCode": "FG-101",
+            "currentStock": 0
+          }
+        }
+      }
+    },
+    {
+      "step": "purchase_in",
+      "number": "POC-PI-20261019172847",
+      "id": 278,
+      "qty": 80,
+      "stockAfterCreateUnapproved": 80,
+      "stockAfterAudit": 160,
+      "deltaOnAudit": 80
+    },
+    {
+      "step": "assemble",
+      "number": "POC-MIX-20261019172847",
+      "id": 281,
+      "stockBefore": {
+        "RM-A001": 160,
+        "FG-101": 0
+      },
+      "stockAfterCreateUnapproved": {
+        "RM-A001": 160,
+        "FG-101": 0
+      },
+      "stockAfterAudit": {
+        "RM-A001": 100,
+        "FG-101": 100
+      }
+    },
+    {
+      "step": "other_out",
+      "number": "POC-SV-20261019172847",
+      "id": 282,
+      "qty": 20,
+      "stockBefore": 100,
+      "stockAfterCreateUnapproved": 100,
+      "stockAfterAudit": 80,
+      "deltaOnAudit": -20
+    },
+    {
+      "step": "stock_after",
+      "after": {
+        "RM-A001": {
+          "found": true,
+          "currentStock": 100,
+          "raw": {
+            "id": 901,
+            "mBarCode": "RM-A001",
+            "currentStock": 100
+          }
+        },
+        "RM-B002": {
+          "found": true,
+          "currentStock": 10,
+          "raw": {
+            "id": 902,
+            "mBarCode": "RM-B002",
+            "currentStock": 10
+          }
+        },
+        "RM-C003": {
+          "found": true,
+          "currentStock": 20,
+          "raw": {
+            "id": 903,
+            "mBarCode": "RM-C003",
+            "currentStock": 20
+          }
+        },
+        "FG-101": {
+          "found": true,
+          "currentStock": 80,
+          "raw": {
+            "id": 911,
+            "mBarCode": "FG-101",
+            "currentStock": 80
+          }
+        }
+      }
+    }
+  ],
+  "finishedAt": "2026-10-19T17:28:48.742Z",
+  "ok": true
+}

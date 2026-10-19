@@ -1,0 +1,86 @@
+# AI-ERP isolated infra — do NOT reuse other projects' MySQL/Redis.
+# Host ports bind loopback only. LAN/public exposure needs a later, explicit decision.
+#   MySQL  -> 127.0.0.1:13306
+#   Redis  -> 127.0.0.1:16379
+#   Boot   -> 127.0.0.1:9999
+
+services:
+  aierp-mysql:
+    image: mysql:8.0.36
+    container_name: aierp-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${AIERP_MYSQL_ROOT_PASSWORD:-aierp_root_change_me}
+      MYSQL_DATABASE: jsh_erp
+      MYSQL_USER: ${AIERP_MYSQL_USER:-aierp}
+      MYSQL_PASSWORD: ${AIERP_MYSQL_PASSWORD:-aierp_change_me}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:13306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --lower_case_table_names=1
+    volumes:
+      - aierp_mysql_data:/var/lib/mysql
+      - ../jshERP-boot/docs/jsh_erp.sql:/docker-entrypoint-initdb.d/01-jsh_erp.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  aierp-redis:
+    image: redis:6.2.14-alpine
+    container_name: aierp-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${AIERP_REDIS_PASSWORD:-aierp_redis_change_me}
+    ports:
+      - "127.0.0.1:16379:6379"
+    command: ["redis-server", "--requirepass", "${AIERP_REDIS_PASSWORD:-aierp_redis_change_me}", "--appendonly", "yes"]
+    volumes:
+      - aierp_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  aierp-boot:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.boot
+    container_name: aierp-boot
+    restart: unless-stopped
+    depends_on:
+      aierp-mysql:
+        condition: service_healthy
+      aierp-redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      AIERP_MYSQL_HOST: aierp-mysql
+      AIERP_MYSQL_PORT: "3306"
+      AIERP_MYSQL_DATABASE: jsh_erp
+      AIERP_MYSQL_USER: root
+      AIERP_MYSQL_PASSWORD: ${AIERP_MYSQL_ROOT_PASSWORD:-aierp_root_change_me}
+      AIERP_REDIS_HOST: aierp-redis
+      AIERP_REDIS_PORT: "6379"
+      AIERP_REDIS_PASSWORD: ${AIERP_REDIS_PASSWORD:-aierp_redis_change_me}
+      AIERP_BOOT_PORT: "9999"
+      AIERP_TOMCAT_BASEDIR: /opt/tmp/tomcat
+      AIERP_UPLOAD_PATH: /opt/jshERP/upload
+      AIERP_EXPORT_PATH: /opt/jshERP/export
+    ports:
+      - "127.0.0.1:9999:9999"
+    volumes:
+      - aierp_upload_data:/opt/jshERP/upload
+      - aierp_export_data:/opt/jshERP/export
+
+volumes:
+  aierp_mysql_data:
+  aierp_redis_data:
+  aierp_upload_data:
+  aierp_export_data:
