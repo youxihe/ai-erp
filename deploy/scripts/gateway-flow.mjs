@@ -252,6 +252,7 @@ async function runChecks() {
   await lowPrivilegeChecks(stamp)
   await crossTenantBillCheck(token, stamp)
   await concurrentOutboundCheck(token, stamp)
+  await lockProbeCheck(token, stamp)
 
   const summary = await api('POST', '/aierp/v1/report/summary', { token, body: {} })
   assert('summary-real', summary.json.code === 200 && summary.json.data.nature === 'REAL_ERP' && summary.json.data.loginName === 'jsh' && summary.json.data.confirmedCount >= 3, summary.json.data)
@@ -370,6 +371,41 @@ async function concurrentOutboundCheck(token, stamp) {
   const posted = mysql(`SELECT COUNT(*) FROM jsh_depot_head WHERE remark LIKE 'AIERP-003 race race-%${stamp}' AND status='1' AND tenant_id=63 AND IFNULL(delete_flag,'0')<>'1';`)
   const numbers = [left.json.data?.billNumber, right.json.data?.billNumber].filter(Boolean)
   assert('concurrent-one-wins', codes[0] === 200 && codes[1] === 400 && near(after, before - each) && posted[0] === '1' && new Set(numbers).size === numbers.length, { codes, before, after, each, posted, left: left.json, right: right.json })
+}
+
+async function lockProbeCheck(token, stamp) {
+  const key = `lock-probe-${stamp}`
+  const draft = await api('POST', '/aierp/v1/mix/draft', {
+    token,
+    body: {
+      idempotencyKey: key,
+      remark: 'AIERP-003 lock-probe',
+      finished: { barCode: 'FG-101', depotName: '成品仓', qty: '1', unit: 'L' },
+      lines: [
+        { barCode: 'RM-A001', depotName: '原料仓', qty: '0.1', unit: 'L' },
+        { barCode: 'RM-C003', depotName: '原料仓', qty: '0.1', unit: 'L' },
+      ],
+    },
+  })
+  assert('lock-probe-draft', draft.json.code === 200, draft.json)
+  const started = Date.now()
+  const probed = await api('POST', '/aierp/v1/draft/confirm', { token, body: { idempotencyKey: key } })
+  const followKey = `lock-follow-${stamp}`
+  const followDraft = await api('POST', '/aierp/v1/service/draft', {
+    token,
+    body: {
+      idempotencyKey: followKey,
+      organName: '苏州精密电子',
+      remark: 'AIERP-003 lock follow',
+      lines: [{ barCode: 'RM-A001', depotName: '原料仓', qty: '0.1', unit: 'L' }],
+    },
+  })
+  const before = await stock(token, 'RM-A001', '原料仓')
+  const followed = await api('POST', '/aierp/v1/draft/confirm', { token, body: { idempotencyKey: followKey } })
+  const after = await stock(token, 'RM-A001', '原料仓')
+  const elapsed = Date.now() - started
+  const probeBills = mysql("SELECT COUNT(*) FROM jsh_depot_head WHERE remark='AIERP-003 lock-probe' AND IFNULL(delete_flag,'0')<>'1';")
+  assert('lock-probe-rolls-back', probed.json.code === 409 && String(probed.json.data?.message || '').includes('第一把行锁') && probeBills[0] === '0' && followDraft.json.code === 200 && followed.json.code === 200 && near(after, before - 0.1) && elapsed < 15000, { probed: probed.json, followed: followed.json, before, after, elapsed, probeBills })
 }
 
 main().catch((err) => {

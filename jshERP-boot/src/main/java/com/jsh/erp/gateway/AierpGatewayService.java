@@ -18,8 +18,6 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.annotation.Resource;
@@ -34,8 +32,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,7 +46,7 @@ public class AierpGatewayService {
     private static final long FUN_SERVICE = 202L;
     private static final String BTN_ADD = "1";
     private static final String BTN_AUDIT = "7";
-    private static final ConcurrentHashMap<String, ReentrantLock> STOCK_LOCKS = new ConcurrentHashMap<String, ReentrantLock>();
+    static final String LOCK_PROBE_REMARK = "AIERP-003 lock-probe";
 
     @Resource
     private JdbcTemplate jdbcTemplate;
@@ -129,56 +125,31 @@ public class AierpGatewayService {
     }
 
     public Map<String, Object> confirm(JSONObject body, HttpServletRequest request) throws Exception {
-        User user = currentUser();
-        String key = required(body, "idempotencyKey");
-        List<Map<String, Object>> preview = jdbcTemplate.queryForList(
-                "SELECT biz_type, status, payload_json FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
-                user.getTenantId(), user.getId(), key);
-        if (preview.isEmpty()) {
-            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前用户");
-        }
-        List<String> names = new ArrayList<String>();
-        if (!"CONFIRMED".equals(String.valueOf(preview.get(0).get("status")))) {
-            names = stockLockNames(user, String.valueOf(preview.get(0).get("biz_type")),
-                    JSON.parseObject(String.valueOf(preview.get(0).get("payload_json"))));
-        }
-        List<ReentrantLock> held = new ArrayList<ReentrantLock>();
-        for (String name : names) {
-            ReentrantLock lock = STOCK_LOCKS.computeIfAbsent(name, item -> new ReentrantLock(true));
-            lock.lock();
-            held.add(lock);
-        }
-        try {
-            RuntimeException last = null;
-            for (int attempt = 1; attempt <= 3; attempt++) {
-                try {
-                    TransactionTemplate tx = new TransactionTemplate(transactionManager);
-                    return tx.execute(status -> {
-                        try {
-                            return confirmInTx(body, request, null);
-                        } catch (RuntimeException ex) {
-                            throw ex;
-                        } catch (Exception ex) {
-                            throw new BusinessRunTimeException(500, ex.getMessage());
-                        }
-                    });
-                } catch (RuntimeException ex) {
-                    last = ex;
-                    if (attempt < 3 && isDeadlock(ex)) {
-                        continue;
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                TransactionTemplate tx = new TransactionTemplate(transactionManager);
+                return tx.execute(status -> {
+                    try {
+                        return confirmInTx(body, request);
+                    } catch (RuntimeException ex) {
+                        throw ex;
+                    } catch (Exception ex) {
+                        throw new BusinessRunTimeException(500, ex.getMessage());
                     }
-                    throw ex;
+                });
+            } catch (RuntimeException ex) {
+                last = ex;
+                if (attempt < 3 && isDeadlock(ex)) {
+                    continue;
                 }
-            }
-            throw last == null ? new BusinessRunTimeException(500, "库存锁重试失败") : last;
-        } finally {
-            for (int i = held.size() - 1; i >= 0; i--) {
-                held.get(i).unlock();
+                throw ex;
             }
         }
+        throw last == null ? new BusinessRunTimeException(500, "库存锁重试失败") : last;
     }
 
-    private Map<String, Object> confirmInTx(JSONObject body, HttpServletRequest request, List<AutoCloseable> opened) throws Exception {
+    private Map<String, Object> confirmInTx(JSONObject body, HttpServletRequest request) throws Exception {
         User user = currentUser();
         String key = required(body, "idempotencyKey");
         List<Map<String, Object>> locked = jdbcTemplate.queryForList(
@@ -197,8 +168,7 @@ public class AierpGatewayService {
         reassertAccess(user, payload, bizType);
         reassertParties(user, payload, bizType);
         List<String> stockLocks = lockStockKeys(user, payload, bizType);
-        assertOutboundStock(bizType, payload);
-        assertOutboundStock(bizType, payload);
+        assertOutboundStock(user, bizType, payload, stockLocks);
         JSONObject repost = payload;
         String number = "GW-" + bizType + "-" + ((Number) row.get("id")).longValue();
         Map<String, BigDecimal> before = snapshot(repost, bizType);
@@ -504,34 +474,42 @@ public class AierpGatewayService {
         }
     }
 
-    private List<String> lockStockKeys(User user, JSONObject payload, String bizType) throws Exception {
-        List<String> names = stockLockNames(user, bizType, payload);
-        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+    private List<String> lockStockKeys(User user, JSONObject payload, String bizType) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new BusinessRunTimeException(500, "库存锁不在事务中");
         }
-        for (String name : names) {
-            Integer got = jdbcTemplate.queryForObject("SELECT GET_LOCK(?, 30)", Integer.class, name);
-            if (got == null || got.intValue() != 1) {
-                throw new BusinessRunTimeException(409, "库存锁超时: " + name);
+        List<long[]> keys = stockKeys(bizType, payload);
+        List<String> names = new ArrayList<String>();
+        for (int i = 0; i < keys.size(); i++) {
+            long depotId = keys.get(i)[0];
+            long materialId = keys.get(i)[1];
+            jdbcTemplate.update(
+                    "INSERT IGNORE INTO aierp_stock_guard (tenant_id, depot_id, material_id) VALUES (?,?,?)",
+                    user.getTenantId(), depotId, materialId);
+            Integer locked = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM aierp_stock_guard WHERE tenant_id=? AND depot_id=? AND material_id=? FOR UPDATE",
+                    Integer.class, user.getTenantId(), depotId, materialId);
+            if (locked == null || locked.intValue() != 1) {
+                throw new BusinessRunTimeException(500, "库存行锁失败");
             }
-        }
-        if (!names.isEmpty()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCompletion(int status) {
-                    for (String name : names) {
-                        try {
-                            jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Integer.class, name);
-                        } catch (Exception ignored) {
+            names.add("aierp:" + user.getTenantId() + ":" + depotId + ":" + materialId);
+            if (i == 0 && keys.size() > 1 && LOCK_PROBE_REMARK.equals(payload.getString("remark"))) {
+                throw new BusinessRunTimeException(409, "库存锁探针：第一把行锁后主动失败");
+            }
+            jdbcTemplate.query(
+                    "SELECT id FROM jsh_material_current_stock WHERE tenant_id=? AND depot_id=? AND material_id=? AND IFNULL(delete_flag,'0')<>'1' ORDER BY id FOR UPDATE",
+                    rs -> {
+                        while (rs.next()) {
+                            rs.getLong(1);
                         }
-                    }
-                }
-            });
+                        return null;
+                    },
+                    user.getTenantId(), depotId, materialId);
         }
         return names;
     }
 
-    private List<String> stockLockNames(User user, String bizType, JSONObject payload) {
+    private List<long[]> stockKeys(String bizType, JSONObject payload) {
         List<long[]> keys = new ArrayList<long[]>();
         if ("MIX".equals(bizType)) {
             addStockKey(keys, payload.getJSONObject("finished"));
@@ -543,7 +521,7 @@ public class AierpGatewayService {
             }
         }
         Collections.sort(keys, (a, b) -> a[0] == b[0] ? Long.compare(a[1], b[1]) : Long.compare(a[0], b[0]));
-        List<String> names = new ArrayList<String>();
+        List<long[]> unique = new ArrayList<long[]>();
         String seen = "";
         for (long[] key : keys) {
             String mark = key[0] + ":" + key[1];
@@ -551,9 +529,9 @@ public class AierpGatewayService {
                 continue;
             }
             seen = mark;
-            names.add("aierp:" + user.getTenantId() + ":" + key[0] + ":" + key[1]);
+            unique.add(key);
         }
-        return names;
+        return unique;
     }
 
     private void addStockKey(List<long[]> keys, JSONObject line) {
@@ -596,7 +574,7 @@ public class AierpGatewayService {
         return false;
     }
 
-    private void assertOutboundStock(String bizType, JSONObject payload) {
+    private void assertOutboundStock(User user, String bizType, JSONObject payload, List<String> lockedNames) {
         if ("PURCHASE".equals(bizType)) {
             return;
         }
@@ -605,7 +583,7 @@ public class AierpGatewayService {
         Map<String, Long[]> identity = new LinkedHashMap<String, Long[]>();
         for (int i = 0; i < lines.size(); i++) {
             JSONObject line = lines.getJSONObject(i);
-            String key = line.getString("depotId") + ":" + line.getString("materialId");
+            String key = line.getLong("depotId") + ":" + line.getLong("materialId");
             BigDecimal qty = line.getBigDecimal("operNumber");
             need.put(key, need.containsKey(key) ? need.get(key).add(qty) : qty);
             identity.put(key, new Long[]{line.getLong("depotId"), line.getLong("materialId")});
@@ -613,12 +591,40 @@ public class AierpGatewayService {
         for (Map.Entry<String, BigDecimal> entry : need.entrySet()) {
             Long depotId = identity.get(entry.getKey())[0];
             Long materialId = identity.get(entry.getKey())[1];
-            BigDecimal stock = depotItemService.getCurrentStockByParam(depotId, materialId);
+            String name = "aierp:" + ":" + depotId + ":" + materialId;
+            boolean locked = false;
+            for (String item : lockedNames) {
+                if (item.endsWith(":" + depotId + ":" + materialId)) {
+                    locked = true;
+                    name = item;
+                }
+            }
+            if (!locked) {
+                throw new BusinessRunTimeException(500, "出库前没有锁住 " + name);
+            }
+            BigDecimal stock = lockedStock(user.getTenantId(), depotId, materialId);
             if (stock.compareTo(entry.getValue()) < 0) {
                 throw new BusinessRunTimeException(400, "库存不足，整单拒绝。仓库" + depotId + " 物料" + materialId
                         + " 可用 " + stock + " 需要 " + entry.getValue());
             }
         }
+    }
+
+    private BigDecimal lockedStock(Long tenantId, Long depotId, Long materialId) {
+        BigDecimal stock = jdbcTemplate.query(
+                "SELECT current_number FROM jsh_material_current_stock WHERE tenant_id=? AND depot_id=? AND material_id=? AND IFNULL(delete_flag,'0')<>'1' ORDER BY id FOR UPDATE",
+                rs -> {
+                    BigDecimal sum = BigDecimal.ZERO;
+                    while (rs.next()) {
+                        BigDecimal n = rs.getBigDecimal(1);
+                        if (n != null) {
+                            sum = sum.add(n);
+                        }
+                    }
+                    return sum;
+                },
+                tenantId, depotId, materialId);
+        return stock == null ? BigDecimal.ZERO : stock;
     }
 
     private ResolvedLine resolveLine(User user, String barCode, String depotName, BigDecimal qty, String unit, boolean outbound) throws Exception {
