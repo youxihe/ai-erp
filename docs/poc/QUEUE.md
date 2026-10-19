@@ -1,42 +1,49 @@
-# AI-ERP POC · Delivery Queue
+# AI-ERP POC · Demo-first Delivery Queue
 
-> **唯一工作域：** `youxihe/ai-erp`。它与任何 HR / HCM / ZTO 项目完全隔离：不得读取/修改其他仓库、配置、服务、密钥、数据库或部署管线。
+> **唯一工作域**：`youxihe/ai-erp`；与 ZTO HR/HCM 等完全隔离：禁止读写其他仓库、环境、数据库、Redis、密钥和任务队列。
 
-**项目阶段：** POC → 本机真实 ERP 可运行 → Excel 双向交互 → AI Agent → 企微。  
-**当前开发顺序：** `AIERP-003`（next_order #1）→ `AIERP-002`（next_order #2）。两项已释放，但只允许一个正在开发的 PR；后继任务需要前序 PR 已合并才能认领。  
-**队列约束：** 单 Cursor Agent，单一实现 PR（WIP 1）；最多再开一个仅文档 PR。不能因等待人工提供资源而占用所有能力——可做好文档、校验脚本和本地可运行的部分后暂停。
+**目标（2026-10-20）**：尽快向客户演示“AI 发/收 Excel → 解析预览 → 人工确认 → jshERP 原生单据/审核 → 真实库存变化”；同时提供登录后的 PC/H5 看板和对话入口。演示效果优先；非阻断细节集中登记到 `docs/poc/TECH_DEBT.md`，不要反复打磨基础网关。
 
-| ID | 优先级 | 状态 | 依赖 | 任务路径 |
+## 当前队列
+
+| ID | 优先级 | 状态 | 可开始条件 | Owner/分支 |
 |---|---|---|---|---|
-| AIERP-001 | P0 | **DONE / MERGED #3** | 无 | [本地基线部署](queue/AIERP-001.md) |
-| AIERP-002 | P0 | **RELEASED #2** | AIERP-003 MERGED | [Excel 生成与导入确认](queue/AIERP-002.md) |
-| AIERP-003 | P0 | **RELEASED #1** | AIERP-001 DONE | [真实 ERP 业务 API](queue/AIERP-003.md) |
-| AIERP-004 | P1 | BLOCKED | AIERP-002/003 | [Agent 工具与对话](queue/AIERP-004.md) |
-| AIERP-005 | P1 | BLOCKED | AIERP-002/003 | [PC / H5 工作台](queue/AIERP-005.md) |
-| AIERP-006 | P2 | BACKLOG | AIERP-004/005 | [企业微信接入](queue/AIERP-006.md) |
-| AIERP-007 | P2 | BACKLOG | AIERP-004 | [OpenClaw 可插拔评估](queue/AIERP-007.md) |
+| AIERP-001 | P0 | **DONE / PR #3 MERGED** | — | 本地 jshERP 基线 |
+| AIERP-003 | P0 | **DONE / PR #5 MERGED** | — | ERP 真网关，merge `d0bcb9f` |
+| AIERP-002 | P0 | **RELEASED / next_order #1** | 立即 | `feat/aierp-002-excel-workflow` |
+| AIERP-005 | P0 | **RELEASED / next_order #2** | 002 分支已 push（无需等合并） | `feat/aierp-005-demo-workbench` |
+| AIERP-004 | P0 | **RELEASED / next_order #3** | 005 分支已 push（无需等合并） | `feat/aierp-004-agent-tools` |
+| AIERP-008 | P1 | **PLANNED / integration gate** | 002/004/005 合并后 | Demo 一键启动与全链路验收 |
+| AIERP-006 | P2 | BACKLOG | Demo 已完成且用户提供企微资源 | 企业微信 |
+| AIERP-007 | P2 | BACKLOG | 根据 Demo 反馈再评估 | OpenClaw |
 
-## 工作流（不依赖 GitHub Issues）
+## 夜间执行机制（一个 Cursor 智能体，最多 3 个独立实现 PR）
 
-由于本仓库当前 GitHub Issues 功能关闭，**Git 中的 Markdown 任务单 + PR** 是任务控制面。
+1. 一次只**主动编码一项**，按 `next_order`：002 → 005 → 004。每个任务都从最新 `origin/master` 建**独立分支**，不要从另一条未合并功能分支派生，不要 cherry-pick 未 Review 的功能提交。
+2. 每完成一项：本地测试、记录可复查证据 → push 分支 → 对应任务文档标 `READY_FOR_REVIEW` → 如 GitHub CLI 未认证，**不等待建 PR**；输出分支/HEAD/测试结果，自动进入下一项已 RELEASED 任务。
+3. 允许最多 **3 个已推送待 Review 的实现分支**，避免“PR 未合并”导致整晚停工；这不是授权 Cursor 自行 merge。可以并行开 worktree，但同一智能体一次聚焦一项，不与 HR 工作区交叉。
+4. 开始下一个独立任务前，先阅读 `docs/poc/DEMO_CONTRACT.md`，只修改本任务所有权下的文件，避免冲突：
+   - 002：Excel 后端/文件收发/下载回执、独立测试、文档（Java 业务层、新 Controller）
+   - 005：`jshERP-web` 的登录后演示工作台、真实数据、预览与按钮交互、前端截图（尽量不动 Java）
+   - 004：独立 Agent/工具服务和严格白名单意图适配（`gateway/agent` 等），LLM 可选（不动 005 页面、不重写 002 Excel）
+5. 控制面不因子分支 CLAIMED 就自行改 `master`：ChatGPT 负责审查、合并和下一次集成任务释放；Cursor 不自行 merge，也不自行接入企微/OpenClaw。
+6. **只有这些安全/业务边界阻断 PASS**：越权/跨租户、未经确认过账、重复确认多次扣库存、实际金额或库存方向错误、演示关键路径 500/404/无法上传或确认。普通布局、性能、样式、细微字段问题写技术债；优先做能演示的垂直切片。
+7. 遇阻塞不闲置：先完成不依赖外部资源的部分，写 `BLOCKED_EXTERNAL_RESOURCE` 和需要用户提供的最小清单；不要自造凭据、调用其他项目资源。不要为了重复证明网关而反复运行会实际改库存的完整基线。
+8. 如果存在本地 Cursor 任务巡检，可用 10 分钟巡检**仅限本仓库本队列**，确保同一时刻一个巡检实例；没有巡检能力时，按上述分支接力执行，不要创建无限后台进程。
 
-1. 每次自动巡检先 `git fetch origin`，检查 `origin/master` 中本文件状态、已有 OPEN PR 和任务目录；
-2. 按 `next_order` 从小到大认领 `RELEASED`、依赖已完成、没有正在实现 PR 的任务；在 `docs/poc/queue/AIERP-NNN.md` 对应任务写入 CLAIMED 与本地分支，然后开发；
-3. 分支：`feat/aierp-001-local-bootstrap` 等；PR 标题带 `[AIERP-001]`，base `master`；
-4. 开发完成本地测试、记录命令和输出，在 PR 中汇报 `READY_FOR_REVIEW`，通知用户/ChatGPT；
-5. **Cursor 不自行 Merge，也不擅自把下一个 BLOCKED 改成 RELEASED；** ChatGPT Review、验证合格再合并，并在下次控制面 PR 释放后继；
-6. 任何环境资源缺失只记录 `BLOCKED_EXTERNAL_RESOURCE` 及明确的请求清单，不代填 HRM/其他项目配置。
+## 必须展示的三段业务
 
-不新建 10 分钟定时任务，除非用户明确要求；若启用，单实例定时检查，仅监控本仓库/本队列。所有自建文件、日志、临时数据必须限制在 `ai-erp` 路径内。
+A. 采购：用户说“给我采购入库表” → 下载 XLSX；填写/上传 → 行级预览 → 人工确认 → 真采购入库审核、库存 +N、单据号、回执。
 
-## 验收底线
+B. 配制：用户说“按这个配制表做药水” → 下载预填 XLSX → 上传解析，原料子件归组 → 人工确认 → 真组装单、原料减少成品增加；配比仅为虚构演示数据。
 
-- 必须区分 **模拟数据、真实 LLM 意图、真实 ERP 过账**；不能混淆。
-- 未经人工确认，不提交任何影响库存的单据；涉及仓库权限、租户及重试幂等的边界必须有验证。
-- 优先复用 jshERP 原生单据和权限模型；不直接 UPDATE 库存表、不重新造ERP。
-- 无需先上线企微或 OpenClaw，先让 PC Demo + 真实 jshERP + Excel 路径稳定。
-- 用户要求的 MySQL/Redis 凭据由用户提供，不能从其他项目仓库抄配置；不要在公开 Git 仓库保存真实密钥。
+C. 服务耗料：用户上传服务记录 → 匹配真实客户和成品仓 → 预览 → 人工确认 → `出库/其它` 扣减清洗液，不虚构销售收入；可从库存/单据查看结果。
 
-**2026-10-20 Release 说明**：AIERP-001 PR #3 (head `1b08d1f`, merge `90896d5`) 审核通过并合并；AIERP-003 先做真实业务 Service 和网关，AIERP-002 随后做 Excel 批量确认。无需再次运行会不断生成正式单据的 baseline 测试来确认环境，除非明确需要新证据。
+## 验收护栏
 
-最后一次控制面调整：2026-10-20。
+- 页面实时业务数据只能来自真实 jshERP API，不能把 localStorage 模拟余额作为真库存。
+- 无论对话还是 Excel：草稿、预览和模拟/规则解析不能冒充已经过账；每次正式确认必须由有权限用户操作。
+- 单次演示确认对应一个不可重复入账的幂等业务键；服务端要隔离租户与仓库。
+- 企微和 OpenClaw 不在当前夜间开发范围，用户暂不需要配置。
+
+**最新控制面**：2026-10-20，AIERP-003 PR #5 合并 `d0bcb9f4c8b7db879066c19e7472f810e13fb79f`；Demo-first 协作改为“已推送待 Review 的独立分支允许继续下一棒”。

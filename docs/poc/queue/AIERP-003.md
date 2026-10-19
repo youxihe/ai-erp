@@ -1,6 +1,6 @@
 # AIERP-003 · jshERP 真实业务网关
 
-- **状态**：READY_FOR_REVIEW / next_order #1  **Owner**：Cursor-ERP  **分支**：`feat/aierp-003-erp-gateway`
+- **状态**：DONE / PR #5 MERGED（2026-10-20，merge `d0bcb9f`）  **Owner**：Cursor-ERP  **分支**：`feat/aierp-003-erp-gateway`
 - 不改原生进销存核心优先；新增符合身份/租户/仓库限制的受控业务 Service 或 API。
 - 模块能力：`stock.query`、`purchase.createDraft`、`mix.createDraft`、`service.createDraft`、`draft.confirm`、`report.summary`。
 - 源码参考：`PurchaseInModal.vue` 映射 `入库/采购`；`AssembleModal.vue` 映射 `其它/组装单` 且 `mType`；`OtherOutModal.vue` 映射 `出库/其它`。
@@ -23,3 +23,6 @@
 - 两张不同服务草稿并发出库 RM-B002 各 12L，库存 23.2：仅 `GW-SERVICE-75` 审核成功，另一张库存不足且没有第二张已审核单据，余额 11.2。
 - 只读用户 `aierp_stock` 可查库存、不能采购。采购无审核按钮用户 `aierp_buyer` 可草稿、确认返回 403，且不能用成品仓。
 - 租户 999 的同号诱饵单据保持未审核。验证码标志测试后仍为 1。
+
+## ChatGPT Review / Merge
+PR #5 最终源码审查通过，`gateway-20261019190936.json` 34/34 PASS；库存互斥行锁、角色按钮权限、租户范围和人工确认保护构成演示真实业务基线。非阻断事项见 `docs/poc/TECH_DEBT.md`。
