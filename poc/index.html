@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b2435">
+<title>AI 清洗经营助手 · PCB 行业 POC</title>
+<style>
+:root{--ink:#152c3e;--muted:#738496;--line:#e6edf0;--bg:#f5f8fa;--brand:#126d72;--brand2:#e8f5f1;--blue:#2d658a;--yellow:#a96513;--danger:#b34f44;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 "PingFang SC","Microsoft YaHei",Inter,system-ui,sans-serif}
+button,input{font:inherit}button{cursor:pointer;border:0}button:disabled{cursor:not-allowed;opacity:.48}
+.shell{display:grid;grid-template-columns:204px minmax(440px,1fr) 360px;min-height:100vh;max-width:1880px;margin:auto}
+aside{background:#112c39;color:#e8f4f4;padding:27px 16px;display:flex;flex-direction:column;gap:28px}
+.brand{display:flex;align-items:center;gap:12px;padding:3px 8px}.brand-logo{width:37px;height:37px;border-radius:12px;background:#3eb2a4;color:#08313a;font-size:20px;display:grid;place-items:center;font-weight:800}.brand-name{font-size:16px;font-weight:750;line-height:1.3}.brand-sub{font-size:10px;letter-spacing:2px;color:#9ac6c4;margin-top:3px}
+.nav-title{color:#7e9ca8;font-size:11px;padding:8px 11px;letter-spacing:1px}.nav{display:grid;gap:7px}.nav button{background:transparent;text-align:left;padding:11px 13px;color:#c9dcdf;border-radius:10px;display:flex;gap:11px;align-items:center}.nav button:hover,.nav button.active{background:#244b55;color:#fff}.nav i{font-style:normal;font-size:17px;width:23px;text-align:center}
+.side-foot{margin-top:auto;border-top:1px solid #31505b;padding:18px 8px 0;color:#a8c6c9;font-size:11px;line-height:1.8}.side-foot strong{color:#fff}
+main{min-width:0;padding:31px 35px 48px;overflow:auto}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:25px}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.8px;color:var(--brand);font-weight:750}.top h1{font-size:29px;line-height:1.25;letter-spacing:-.6px;margin:7px 0 8px}.subtitle{color:var(--muted);margin:0;font-size:13px}.tag{white-space:nowrap;border-radius:99px;background:#e3f3ed;color:#177065;font-size:11px;padding:7px 11px;font-weight:650}.tag.warn{color:#986222;background:#fff3dc}
+.card{background:var(--white);border:1px solid #edf0f3;border-radius:16px;box-shadow:0 3px 16px #24425709}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.stat{padding:18px}.stat .label{color:var(--muted);font-size:12px}.stat .number{font-size:27px;letter-spacing:-.5px;font-weight:760;margin-top:9px;white-space:nowrap}.stat .hint{font-size:11px;color:#8796a0;margin-top:6px}.stat .number.alert{color:var(--yellow)}
+.section{margin-top:24px}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.section-head h2{font-size:16px;margin:0}.muted{color:var(--muted)}.mini{font-size:12px}.overview-grid{display:grid;grid-template-columns:1.12fr .88fr;gap:15px}.section-body{padding:21px}
+.step-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.step{background:#f3f8f7;border:1px solid #e4eeee;border-radius:12px;padding:12px 9px;text-align:center;min-width:0}.step .ico{font-size:21px}.step strong{display:block;font-size:12px;margin-top:4px}.step p{font-size:10px;color:var(--muted);margin:3px 0 0}.hint-box{margin-top:12px;background:#f4f8fa;border-left:3px solid #41a59b;padding:10px 12px;font-size:12px;color:#667a88;border-radius:5px}
+.warn-list{display:grid;gap:14px}.warn-item{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:12px}.meter{height:7px;border-radius:10px;background:#edf2f4;overflow:hidden;grid-column:1/-1}.meter b{display:block;height:100%;background:#dda361;border-radius:10px}.warn-item strong{font-size:12px}.warn-item small{color:var(--yellow)}
+.table-wrap{overflow-x:auto}.data-table{width:100%;border-collapse:collapse;white-space:nowrap}.data-table th{text-align:left;color:#8594a0;font-size:11px;font-weight:650;background:#f8fafb}.data-table td,.data-table th{padding:13px 14px;border-bottom:1px solid #edf1f3}.data-table td{font-size:12px}.data-table tr:last-child td{border:0}.data-table td b{font-size:13px}.pill{padding:4px 8px;background:#e8f6ef;color:#2b8066;border-radius:6px;font-size:10px}.pill.low{color:#a96b20;background:#fff3e1}.pill.note{color:#53758c;background:#ecf4f8}.tab-view{display:none}.tab-view.active{display:block}
+.dash-bars{display:flex;align-items:flex-end;height:113px;gap:10px;margin-top:14px;border-bottom:1px solid #e6ebed;padding:0 4px}.bar-col{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:end;gap:4px}.bar{background:linear-gradient(180deg,#50bbae,#157f81);border-radius:5px 5px 0 0;width:28px;min-height:5px}.bar-col span{position:relative;top:20px;font-size:10px;color:var(--muted)}.trend-note{margin-top:25px;color:#89979f;font-size:11px}
+.btn{background:var(--brand);color:#fff;padding:10px 13px;border-radius:10px;font-weight:600}.btn.secondary{color:var(--brand);background:#e5f3f0}.btn.ghost{color:#69808a;background:#edf2f3}.btn:hover{filter:brightness(.97)}
+.recipe{display:grid;gap:12px}.recipe-row{display:flex;align-items:center;gap:10px}.recipe-row .material{width:120px;font-size:12px}.recipe-row .share{font-size:12px;width:42px;text-align:right;color:var(--muted)}.recipe-bar{background:#edf2f3;flex:1;height:10px;border-radius:10px;overflow:hidden}.recipe-bar b{height:100%;display:block;border-radius:10px;background:#67a69e}
+.chat-panel{border-left:1px solid #e2e8eb;background:#fff;display:flex;flex-direction:column;height:100vh;position:sticky;top:0;min-width:0}
+.chat-head{padding:24px 20px 16px;border-bottom:1px solid #edf1f3}.chat-head .heading{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:760}.bot-dot{height:29px;width:29px;border-radius:10px;background:#e2f5ef;color:#178777;display:grid;place-items:center}.chat-head p{font-size:11px;color:#8796a0;margin:7px 0 0}
+.mode-row{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#fafcfc;border-bottom:1px solid #eef1f1;font-size:11px;color:#778996}.mode-row button{font-size:11px;border-radius:6px;color:#236f71;padding:5px 8px;background:#e7f4f2}
+.messages{flex:1;overflow-y:auto;padding:22px 17px;display:flex;flex-direction:column;gap:15px;min-height:100px}.bubble{max-width:94%;padding:11px 13px;border-radius:14px;line-height:1.65;font-size:12px;overflow-wrap:anywhere;white-space:pre-wrap}.bubble.user{align-self:flex-end;background:#e4f5ef;color:#164940;border-bottom-right-radius:4px}.bubble.bot{align-self:flex-start;background:#f2f5f7;border-bottom-left-radius:4px}.bubble strong{font-size:13px}.bubble .row{margin:7px 0;padding:7px 0;border-bottom:1px dashed #cad8da;display:flex;gap:12px;justify-content:space-between}.bubble .row:last-child{border:0}.bubble .row span:last-child{font-weight:650}.bubble .chat-actions{display:flex;gap:7px;margin-top:12px}.bubble .chat-actions button{font-size:11px;padding:8px 13px;border-radius:7px;background:var(--brand);color:#fff}.bubble .chat-actions button.cancel{background:#dde7e9;color:#4e6370}.bubble .chat-actions button:disabled{opacity:.48}
+.quick{padding:0 17px 11px;display:flex;gap:7px;flex-wrap:wrap}.quick button{font-size:11px;background:#f2f6f7;color:#4f7280;border:1px solid #e3ebee;border-radius:30px;padding:7px 9px}
+.chat-form{display:flex;gap:8px;border-top:1px solid #e9eef0;padding:14px 16px 19px}.chat-form input{border:1px solid #dbe6e8;outline:none;border-radius:10px;padding:12px;min-width:0;flex:1;font-size:12px}.chat-form input:focus{border-color:#64a7a2}.chat-form button{padding:0 15px;border-radius:10px;background:#157c78;color:#fff;font-weight:700}
+.notice{padding:9px 13px;background:#f0f5f5;color:#66808a;font-size:11px;border-radius:9px;margin-bottom:14px}
+@media(max-width:1350px){.shell{grid-template-columns:170px minmax(360px,1fr) 330px}main{padding:26px 23px}.stats{grid-template-columns:repeat(2,1fr)}.overview-grid{grid-template-columns:1fr}}
+@media(max-width:950px){.shell{grid-template-columns:150px minmax(0,1fr)}.chat-panel{grid-column:2;height:610px;position:static;border:1px solid #e2e8eb;border-radius:18px;margin:0 20px 24px}.stats{grid-template-columns:repeat(4,minmax(0,1fr))}.stat .number{font-size:21px}}
+@media(max-width:700px){.shell{display:block}aside{padding:12px;gap:6px}.brand{padding:3px}.nav-title,.side-foot{display:none}.nav{display:flex;overflow:auto}.nav button{white-space:nowrap;padding:8px 10px;font-size:12px}.nav i{font-size:14px;width:auto}main{padding:20px 14px}.top h1{font-size:24px}.stats{grid-template-columns:repeat(2,1fr)}.overview-grid{grid-template-columns:1fr}.step-flow{grid-template-columns:repeat(2,1fr)}.stat .number{font-size:22px}.chat-panel{margin:0 12px 22px;height:620px}.top{align-items:center}.tag{white-space:normal;text-align:center}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside>
+  <div class="brand"><div class="brand-logo">AI</div><div><div class="brand-name">清洗经营助手</div><div class="brand-sub">PCB · ERP POC</div></div></div>
+  <div class="nav"><div class="nav-title">业务工作台</div>
+    <button class="active" data-view-link="dashboard"><i>▦</i>经营概览</button>
+    <button data-view-link="inventory"><i>▤</i>原料与药水</button>
+    <button data-view-link="mix"><i>⚗</i>药水配制</button>
+    <button data-view-link="history"><i>▧</i>业务流水</button>
+  </div>
+  <div class="side-foot"><strong>演示模式</strong><br>适合 PC / 企业微信 H5<br>数据保存在当前浏览器<br>不连接真实 ERP 库存</div>
+</aside>
+<main>
+  <div class="top">
+    <div><div class="eyebrow">AI-DRIVEN OPERATIONS</div><h1 id="pageTitle">经营概览</h1><p class="subtitle" id="pageSubtitle">让原料采购、药水配制与清洗服务形成一条业务链</p></div>
+    <span class="tag">● 演示数据</span>
+  </div>
+  <div class="notice">这是用于客户需求调研的交互原型。库存计算和确认流程可真实操作，但仅修改本浏览器的模拟数据，不会写入 jshERP。</div>
+  <section class="tab-view active" id="view-dashboard">
+    <div class="stats">
+      <div class="card stat"><div class="label">原料库存估值</div><div class="number" id="rawValue">—</div><div class="hint">按演示参考单价估算</div></div>
+      <div class="card stat"><div class="label">在库成品药水</div><div class="number" id="finishedStock">—</div><div class="hint">两种药水合计 / L</div></div>
+      <div class="card stat"><div class="label">服务耗料累计</div><div class="number" id="serviceUsage">—</div><div class="hint">当前演示流水 / L</div></div>
+      <div class="card stat"><div class="label">库存预警</div><div class="number alert" id="warningCount">—</div><div class="hint">低于演示安全库存线</div></div>
+    </div>
+    <div class="section overview-grid">
+      <div class="card section-body">
+        <div class="section-head"><h2>业务链路</h2><span class="mini muted">由 AI 对话触发</span></div>
+        <div class="step-flow">
+          <div class="step"><div class="ico">▣</div><strong>采购入库</strong><p>原料增加</p></div>
+          <div class="step"><div class="ico">⚗</div><strong>药水配制</strong><p>原料转成品</p></div>
+          <div class="step"><div class="ico">▱</div><strong>清洗服务</strong><p>药水耗用</p></div>
+          <div class="step"><div class="ico">▥</div><strong>经营分析</strong><p>库存 / 成本</p></div>
+        </div>
+        <div class="hint-box">尝试右侧对话：“采购入库表面活性剂80升” → “配制100升PCB清洗液” → “苏州精密电子清洗服务使用PCB清洗液20升”</div>
+      </div>
+      <div class="card section-body">
+        <div class="section-head"><h2>需要关注的库存</h2><span class="mini muted">实时按演示库存计算</span></div>
+        <div class="warn-list" id="warningList"></div>
+      </div>
+    </div>
+    <div class="section overview-grid">
+      <div class="card section-body">
+        <div class="section-head"><h2>最近业务活动</h2><button class="btn secondary mini" data-view-go="history">查看全部</button></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>业务</th><th>物料 / 客户</th><th>数量</th></tr></thead><tbody id="recentRows"></tbody></table></div>
+      </div>
+      <div class="card section-body">
+        <div class="section-head"><h2>近六个月耗料趋势</h2><span class="mini muted">展示样例</span></div>
+        <div class="dash-bars" id="trendBars"></div>
+        <div class="trend-note">趋势图为预置模拟值；实时交易仅影响库存、预警和操作流水。</div>
+      </div>
+    </div>
+  </section>
+  <section class="tab-view" id="view-inventory">
+    <div class="section-head"><h2>物料实时结余（本地演示数据）</h2><button class="btn ghost" id="resetButton">重置示例数据</button></div>
+    <div class="card table-wrap"><table class="data-table"><thead><tr><th>编号</th><th>名称</th><th>类型</th><th>库存</th><th>安全库存</th><th>参考单价</th><th>状态</th></tr></thead><tbody id="stockRows"></tbody></table></div>
+    <p class="mini muted">所有物料演示单位均为 L。正式项目应使用 jshERP 原有计量单位和包装换算，不默认把桶、公斤直接转换成升。</p>
+  </section>
+  <section class="tab-view" id="view-mix">
+    <div class="section-head"><h2>演示配方 · PCB 清洗液</h2><span class="tag warn">非生产级配方</span></div>
+    <div class="card section-body">
+      <p class="muted">仅为证明“原料减少、成品增加”的闭环而设定虚构配比，不代表真实清洗剂配方、工艺或安全指导。</p>
+      <div class="recipe" style="margin-top:20px">
+        <div class="recipe-row"><div class="material">表面活性剂</div><div class="recipe-bar"><b style="width:60%"></b></div><div class="share">60%</div></div>
+        <div class="recipe-row"><div class="material">络合剂</div><div class="recipe-bar"><b style="width:10%"></b></div><div class="share">10%</div></div>
+        <div class="recipe-row"><div class="material">纯水</div><div class="recipe-bar"><b style="width:30%"></b></div><div class="share">30%</div></div>
+      </div>
+      <div class="hint-box">例如配制 100 L，需表面活性剂 60 L、络合剂 10 L、纯水 30 L，形成 PCB 清洗液 100 L。此配方用于软件演示，不可用于实际化学配制。</div>
+      <p style="margin-top:20px"><button class="btn" data-prompt="配制100升PCB清洗液">向 AI 发起配制</button></p>
+    </div>
+  </section>
+  <section class="tab-view" id="view-history">
+    <div class="section-head"><h2>业务流水</h2><span class="mini muted">当前浏览器模拟流水</span></div>
+    <div class="card table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>单据</th><th>业务类型</th><th>业务摘要</th><th>数量</th></tr></thead><tbody id="historyRows"></tbody></table></div>
+  </section>
+</main>
+<section class="chat-panel" aria-label="AI 业务对话">
+  <header class="chat-head"><div class="heading"><span class="bot-dot">✳</span>AI 业务助手</div><p>库存查询 · 入库草稿 · 调配确认 · 服务耗料</p></header>
+  <div class="mode-row"><span id="modeStatus">规则模拟意图解析</span><button id="modeButton" type="button">检测真实模型</button></div>
+  <div class="messages" id="messages" aria-live="polite"></div>
+  <div class="quick">
+    <button data-prompt="哪些物料库存不足？">库存预警</button>
+    <button data-prompt="采购入库表面活性剂80升">采购入库</button>
+    <button data-prompt="配制100升PCB清洗液">药水配制</button>
+    <button data-prompt="苏州精密电子清洗服务使用PCB清洗液20升">服务耗料</button>
+    <button data-prompt="分析一下经营数据">经营分析</button>
+  </div>
+  <form class="chat-form" id="chatForm"><input id="chatInput" aria-label="输入业务指令" placeholder="输入业务指令，例如：查PCB清洗液库存" maxlength="500" autocomplete="off"><button id="sendButton" type="submit">发送</button></form>
+</section>
+</div>
+<script>
+(function(){
+  'use strict';
+  var STORE_KEY = 'pcb_ai_erp_poc_v1';
+  var DATA = [
+    {sku:'RM-A001',name:'表面活性剂',type:'原料',qty:240,min:100,cost:18,aliases:['表面活性剂','活性剂']},
+    {sku:'RM-B002',name:'络合剂',type:'原料',qty:75,min:50,cost:45,aliases:['络合剂']},
+    {sku:'RM-C003',name:'纯水',type:'原料',qty:1200,min:300,cost:1,aliases:['纯水','去离子水']},
+    {sku:'FG-101',name:'PCB 清洗液',type:'成品药水',qty:165,min:120,cost:26,aliases:['PCB清洗液','PCB 清洗液','PCB药水','清洗药水']},
+    {sku:'FG-102',name:'除胶清洗液',type:'成品药水',qty:55,min:80,cost:35,aliases:['除胶清洗液','除胶药水']}
+  ];
+  var RECIPE = {'RM-A001':0.60,'RM-B002':0.10,'RM-C003':0.30};
+  function seed(){return {stock:DATA.map(function(x){return Object.assign({},x);}),events:[],counter:1,serviceUsage:0};}
+  function load(){
+    try{
+      var s=JSON.parse(localStorage.getItem(STORE_KEY));
+      if(s && Array.isArray(s.stock) && s.stock.length===DATA.length && s.stock.every(function(x,i){return x.sku===DATA[i].sku && Number.isFinite(x.qty) && x.qty>=0;}) && Array.isArray(s.events)) return s;
+    }catch(e){}
+    return seed();
+  }
+  var state=load(), draft=null, llmEnabled=false, sending=false;
+  var $=function(id){return document.getElementById(id);};
+  function fmt(n){return Number(n).toLocaleString('zh-CN',{maximumFractionDigits:2});}
+  function money(n){return '¥'+fmt(n);}
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function item(sku){return state.stock.find(function(x){return x.sku===sku;});}
+  function save(){localStorage.setItem(STORE_KEY,JSON.stringify(state));}
+  function now(){return new Date().toLocaleString('zh-CN',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}
+  function isLow(x){return x.qty<x.min;}
+  function changeView(name){
+    document.querySelectorAll('.tab-view').forEach(function(e){e.classList.toggle('active',e.id==='view-'+name);});
+    document.querySelectorAll('[data-view-link]').forEach(function(e){e.classList.toggle('active',e.dataset.viewLink===name);});
+    var pages={dashboard:['经营概览','采购、配制与服务耗料的统一经营视角'],inventory:['原料与药水库存','实时库存、补货预警与物料状态'],mix:['药水配制','将采购原料转化为自配清洗药水'],history:['业务流水','每次确认都会保留对应的模拟业务单据']};
+    $('pageTitle').textContent=pages[name][0];$('pageSubtitle').textContent=pages[name][1];
+    if(window.innerWidth<=700) window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function render(){
+    var raw=state.stock.filter(function(x){return x.type==='原料';});
+    var fin=state.stock.filter(function(x){return x.type==='成品药水';});
+    $('rawValue').textContent=money(raw.reduce(function(a,x){return a+x.qty*x.cost;},0));
+    $('finishedStock').textContent=fmt(fin.reduce(function(a,x){return a+x.qty;},0))+' L';
+    $('serviceUsage').textContent=fmt(state.serviceUsage||0)+' L';
+    var lows=state.stock.filter(isLow);
+    $('warningCount').textContent=lows.length+' 项';
+    $('warningList').innerHTML=lows.length?lows.map(function(x){
+      return '<div class="warn-item"><strong>'+esc(x.name)+'</strong><small>'+fmt(x.qty)+' / '+fmt(x.min)+' L</small><div class="meter"><b style="width:'+Math.min(100,Math.round(x.qty/x.min*100))+'%"></b></div></div>';
+    }).join(''):'<p class="mini muted">目前没有低于安全库存的物料。</p>';
+    $('stockRows').innerHTML=state.stock.map(function(x){
+      return '<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.type)+'</td><td>'+fmt(x.qty)+' L</td><td>'+fmt(x.min)+' L</td><td>'+money(x.cost)+'/L</td><td><span class="pill '+(isLow(x)?'low':'')+'">'+(isLow(x)?'需要补货':'正常')+'</span></td></tr>';
+    }).join('');
+    var ev=state.events.slice(0,6);
+    $('recentRows').innerHTML=ev.length?ev.map(function(e){return '<tr><td>'+esc(e.type)+'</td><td>'+esc(e.subject)+'</td><td>'+esc(e.quantity)+' L</td></tr>';}).join(''):'<tr><td colspan="3" class="muted">尚未操作。可在右侧试试采购入库或配制药水。</td></tr>';
+    $('historyRows').innerHTML=state.events.length?state.events.map(function(e){return '<tr><td>'+esc(e.time)+'</td><td>'+esc(e.id)+'</td><td>'+esc(e.type)+'</td><td>'+esc(e.subject)+'</td><td>'+fmt(e.quantity)+' L</td></tr>';}).join(''):'<tr><td colspan="5" class="muted">暂无确认过的模拟业务单据。</td></tr>';
+  }
+  function renderBars(){
+    var bars=[68,84,72,95,82,110],labels=['5月','6月','7月','8月','9月','10月'];
+    $('trendBars').innerHTML=bars.map(function(n,i){return '<div class="bar-col"><div class="bar" style="height:'+Math.round(n/120*100)+'%"></div><span>'+labels[i]+'</span></div>';}).join('');
+  }
+  function bubble(role,text,html){
+    var div=document.createElement('div');div.className='bubble '+role;
+    if(html) div.innerHTML=html;else div.textContent=text;
+    $('messages').appendChild(div);$('messages').scrollTop=$('messages').scrollHeight;
+    return div;
+  }
+  function say(text){bubble('bot',text);}
+  function resolveSku(text){
+    var s=text.toUpperCase().replace(/\s+/g,'');
+    for(var i=0;i<state.stock.length;i++){
+      var x=state.stock[i];if(s.includes(x.sku)) return x.sku;
+      for(var j=0;j<x.aliases.length;j++) if(s.includes(x.aliases[j].toUpperCase().replace(/\s+/g,''))) return x.sku;
+    }
+    return '';
+  }
+  function qtyOf(text){
+    if(/(?:桶|公斤|千克|kg)\b/i.test(text) || /\d\s*(?:桶|公斤|千克)/i.test(text))return null;
+    var m=text.match(/(\d+(?:\.\d+)?)\s*(?:升|L|l)(?![a-z])/);
+    return m?Number(m[1]):null;
+  }
+  function localIntent(text){
+    var sku=resolveSku(text),quantity=qtyOf(text);
+    if(/清洗服务|服务耗料|服务用|服务领料|领用|消耗|用了/.test(text)){
+      var customer=(text.match(/([\u4e00-\u9fa5A-Za-z0-9]{2,24})(?:的)?清洗服务/)||[])[1]||'';
+      return {action:'service',sku:sku,quantity:quantity,customer:customer,source:'rules'};
+    }
+    if(/配制|调配|调制|组装|配药水/.test(text))return {action:'mix',sku:sku||'FG-101',quantity:quantity,source:'rules'};
+    if(/采购|进货|入库|到货/.test(text))return {action:'purchase',sku:sku,quantity:quantity,source:'rules'};
+    if(/报表|统计|经营|成本|分析|趋势/.test(text))return {action:'report',sku:sku,quantity:quantity,source:'rules'};
+    if(/库存|余量|多少|预警|缺货|安全/.test(text))return {action:'stock',sku:sku,quantity:quantity,source:'rules'};
+    return {action:'unknown',source:'rules'};
+  }
+  function errorFor(p){
+    if(!p || !['purchase','mix','service'].includes(p.action))return '暂不支持这类单据。';
+    if(!Number.isFinite(p.quantity)||p.quantity<=0||p.quantity>100000)return '请给出明确、合理的数量，单位为升（L）。桶和公斤需要先配置单位换算。';
+    if(p.action==='purchase' && (!item(p.sku)||item(p.sku).type!=='原料'))return '采购入库请明确原料：表面活性剂、络合剂或纯水。';
+    if(p.action==='mix' && p.sku!=='FG-101')return '目前仅配置了 PCB 清洗液的演示配方。';
+    if(p.action==='service' && (!item(p.sku)||item(p.sku).type!=='成品药水'))return '请明确本次服务消耗的药水名称（PCB 清洗液 / 除胶清洗液）。';
+    if(p.action==='service' && !p.customer)return '请说明服务客户，例如“苏州精密电子清洗服务使用PCB清洗液20升”。';
+    if(p.action==='mix'){
+      for(var k in RECIPE){if(item(k).qty+1e-8<p.quantity*RECIPE[k])return item(k).name+'库存不足，需要 '+fmt(p.quantity*RECIPE[k])+' L，当前只有 '+fmt(item(k).qty)+' L。';}
+    }
+    if(p.action==='service' && item(p.sku).qty+1e-8<p.quantity)return item(p.sku).name+'库存不足，当前只有 '+fmt(item(p.sku).qty)+' L。';
+    return '';
+  }
+  function rowsHtml(rows){return rows.map(function(r){return '<div class="row"><span>'+esc(r[0])+'</span><span>'+esc(r[1])+'</span></div>';}).join('');}
+  function prepare(p){
+    if(draft){say('还有一张单据待确认。请先完成或取消上一张草稿。');return;}
+    if(p.action==='purchase'&&!p.sku)say('请说明要采购的原料名称和升数，例如：采购入库表面活性剂80升。');
+    else if(p.action==='mix'&&!p.sku)p.sku='FG-101';
+    var problem=errorFor(p);if(problem){say(problem);return;}
+    var rows=[['业务类型',{purchase:'采购入库',mix:'药水配制',service:'清洗服务耗料'}[p.action]]];
+    if(p.action==='purchase')rows.push(['原料',item(p.sku).name],['入库数量',fmt(p.quantity)+' L'],['供应商',p.supplier||'演示供应商（待确认）']);
+    if(p.action==='mix'){
+      rows.push(['配制成品','PCB 清洗液 '+fmt(p.quantity)+' L']);
+      Object.keys(RECIPE).forEach(function(k){rows.push(['耗用 '+item(k).name,fmt(p.quantity*RECIPE[k])+' L']);});
+    }
+    if(p.action==='service')rows.push(['客户',p.customer],['耗用药水',item(p.sku).name],['使用数量',fmt(p.quantity)+' L'],['耗材估算',money(item(p.sku).cost*p.quantity)]);
+    draft=p;
+    var html='<strong>已生成模拟单据草稿</strong>'+rowsHtml(rows)+'<div class="chat-actions"><button type="button" data-draft-action="confirm">确认模拟过账</button><button class="cancel" type="button" data-draft-action="cancel">取消</button></div><div class="mini muted" style="margin-top:7px">演示操作，仅变更本浏览器数据。</div>';
+    bubble('bot','',html);
+  }
+  function round(n){return Math.round(n*10000)/10000;}
+  function postDraft(){
+    if(!draft)return;
+    var p=draft,problem=errorFor(p);
+    if(problem){draft=null;say('未能过账：'+problem);return;}
+    if(p.action==='purchase')item(p.sku).qty=round(item(p.sku).qty+p.quantity);
+    if(p.action==='mix'){
+      Object.keys(RECIPE).forEach(function(k){item(k).qty=round(item(k).qty-p.quantity*RECIPE[k]);});
+      item('FG-101').qty=round(item('FG-101').qty+p.quantity);
+    }
+    if(p.action==='service'){
+      item(p.sku).qty=round(item(p.sku).qty-p.quantity);
+      state.serviceUsage=round((state.serviceUsage||0)+p.quantity);
+    }
+    var prefix={purchase:'CGRK',mix:'ZZD',service:'QTCK'}[p.action];
+    var label={purchase:'采购入库',mix:'药水配制',service:'服务耗料'}[p.action];
+    var subject=p.action==='service'?(p.customer+' · '+item(p.sku).name):(p.action==='mix'?'PCB 清洗液':item(p.sku).name);
+    var id=prefix+'-DEMO-'+String(state.counter++).padStart(3,'0');
+    state.events.unshift({id:id,time:now(),type:label,subject:subject,quantity:p.quantity});
+    draft=null;save();render();
+    $('messages').querySelectorAll('[data-draft-action]').forEach(function(x){x.disabled=true;});
+    say('✓ 已模拟过账：'+id+'\n'+label+' '+fmt(p.quantity)+' L。库存、预警和流水已同步刷新。\n注意：未写入真实 jshERP 数据库。');
+  }
+  function handleIntent(p,text){
+    if(!p || !p.action){say('未能识别操作。请试试库存查询、采购入库、药水配制或服务耗料。');return;}
+    if(p.action==='stock'){
+      if(/预警|缺货|不足/.test(text)){var xs=state.stock.filter(isLow);say(xs.length?'当前低于安全库存：\n'+xs.map(function(x){return x.name+'：'+fmt(x.qty)+' L（安全线 '+fmt(x.min)+' L）';}).join('\n'):'当前没有低于安全库存的物料。');return;}
+      if(p.sku && item(p.sku)){var x=item(p.sku);say(x.name+'（'+x.sku+'）当前库存 '+fmt(x.qty)+' L，安全库存 '+fmt(x.min)+' L，状态：'+(isLow(x)?'需要补货':'正常')+'。');return;}
+      say('当前物料结余：\n'+state.stock.map(function(x){return x.name+' '+fmt(x.qty)+' L'+(isLow(x)?' ⚠':'');}).join('\n'));return;
+    }
+    if(p.action==='report'){
+      var c=state.events.filter(function(e){return e.type==='服务耗料';}).length;
+      var cost=state.events.filter(function(e){return e.type==='服务耗料';}).reduce(function(a,e){var x=state.stock.find(function(m){return e.subject.includes(m.name);});return a+e.quantity*(x?x.cost:0);},0);
+      say('经营摘要（仅当前模拟流水）\n· 原料在库估值：'+$('rawValue').textContent+'\n· 成品药水：'+$('finishedStock').textContent+'\n· 本轮模拟服务：'+c+' 单\n· 服务耗用药水：'+fmt(state.serviceUsage)+' L\n· 服务耗材估算：'+money(cost)+'\n· 库存预警：'+state.stock.filter(isLow).length+' 项\n注意：缺少服务收入、人工费用，不提供完整毛利结论。');return;
+    }
+    if(['purchase','mix','service'].includes(p.action)){prepare(p);return;}
+    say(p.reason||'可以试试：“采购入库表面活性剂80升”、“配制100升PCB清洗液”、“苏州精密电子清洗服务使用PCB清洗液20升”、“库存预警”。');
+  }
+  async function send(text){
+    text=String(text||'').trim();if(!text||sending)return;
+    bubble('user',text);
+    sending=true;$('sendButton').disabled=true;
+    var result;
+    try{
+      if(llmEnabled){
+        var resp=await fetch('/api/intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text})});
+        if(!resp.ok)throw new Error('模型不可用');
+        result=await resp.json();
+        if(!result || result.source!=='llm')throw new Error('模型解析结果无效');
+      }else result=localIntent(text);
+      handleIntent(result,text);
+    }catch(e){say('模型服务不可用，已切换到本地规则模拟。');llmEnabled=false;updateMode();handleIntent(localIntent(text),text);}
+    finally{sending=false;$('sendButton').disabled=false;$('chatInput').focus();}
+  }
+  function updateMode(){$('modeStatus').textContent=llmEnabled?'真实模型 · 仅解析意图':'本地规则模拟 · 非真实 AI';$('modeButton').textContent=llmEnabled?'切换到规则模拟':'检测真实模型';}
+  async function toggleMode(){
+    if(llmEnabled){llmEnabled=false;updateMode();say('已切换到本地规则模拟。');return;}
+    try{
+      var r=await fetch('/api/status');
+      var info=await r.json();
+      if(!info.llmConfigured)throw new Error('未配置 AI_API_KEY');
+      llmEnabled=true;updateMode();say('已连接模型 '+info.model+'，模型仅识别意图，业务操作仍需人工确认。');
+    }catch(e){say('当前没有可用的真实模型服务（'+e.message+'）。请根据 README 配置 server.mjs。规则演示依然可用。');}
+  }
+  document.addEventListener('click',function(e){
+    var nav=e.target.closest('[data-view-link]');if(nav)changeView(nav.dataset.viewLink);
+    var go=e.target.closest('[data-view-go]');if(go)changeView(go.dataset.viewGo);
+    var shortcut=e.target.closest('[data-prompt]');if(shortcut)send(shortcut.dataset.prompt);
+    var cmd=e.target.closest('[data-draft-action]');
+    if(cmd && !cmd.disabled){
+      if(cmd.dataset.draftAction==='confirm')postDraft();
+      if(cmd.dataset.draftAction==='cancel'){draft=null;$('messages').querySelectorAll('[data-draft-action]').forEach(function(x){x.disabled=true;});say('已取消草稿，库存未变化。');}
+    }
+  });
+  $('resetButton').addEventListener('click',function(){
+    if(!confirm('重置所有模拟库存和操作流水？'))return;
+    state=seed();draft=null;save();render();
+    $('messages').innerHTML='';say('演示数据已重置。你可以重新走采购 → 配制 → 服务耗料的完整闭环。');
+    changeView('dashboard');
+  });
+  $('modeButton').addEventListener('click',toggleMode);
+  $('chatForm').addEventListener('submit',function(e){e.preventDefault();var v=$('chatInput').value;$('chatInput').value='';send(v);});
+  renderBars();render();updateMode();
+  say('你好！我是 PCB 清洗企业经营助手。\n我可以模拟完成原料采购、药水配制、清洗服务耗料和库存查询。\n先点击下方快捷问题体验，所有库存变更都需要你确认。');
+})();
+</script>
+</body>
+</html>
