@@ -49,4 +49,13 @@ docker exec aierp-mysql mysql -uroot "-p$rootPwd" --default-character-set=utf8mb
 $code = $LASTEXITCODE
 $ErrorActionPreference = $prev
 if ($code -ne 0) { exit $code }
+$excelSql = Join-Path $Deploy "sql\04-aierp-excel.sql"
+Write-Host "Applying excel preview schema ..."
+$ErrorActionPreference = 'Continue'
+docker cp $excelSql "aierp-mysql:/tmp/04-aierp-excel.sql"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+docker exec aierp-mysql mysql -uroot "-p$rootPwd" --default-character-set=utf8mb4 jsh_erp -e "source /tmp/04-aierp-excel.sql"
+$code = $LASTEXITCODE
+$ErrorActionPreference = $prev
+if ($code -ne 0) { exit $code }
 Write-Host "Done. Captcha flag was not changed. Re-run is safe: existing demo rows are skipped."

@@ -1,6 +1,8 @@
 # AIERP-002 · 真实 Excel 双向工作流
 
-- **状态**：RELEASED / next_order #1，AIERP-003 已合并
+- **状态**：READY_FOR_REVIEW
+- **证据**：`docs/poc/evidence/excel-20261019194325.json`（模板、预览不改库存、采购 +2L、错单位/未知物料拒绝、批次幂等、配制、服务、公式拒绝）
+- **测试**：`node deploy/scripts/excel-flow.mjs` 通过。未创建 PR（gh 未登录）。
 - **Owner**：Cursor-ERP；**分支**：`feat/aierp-002-excel-workflow`
 - **规格**：`docs/poc/EXCEL_SPEC.md`；共享 API/页面契约：`docs/poc/DEMO_CONTRACT.md`
 
