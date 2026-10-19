@@ -13,5 +13,5 @@ if (-not (Test-Path ".env")) {
 }
 
 docker compose --env-file .env -f docker-compose.yml up -d aierp-mysql aierp-redis
-docker compose -f docker-compose.yml ps
+docker compose --env-file .env -f docker-compose.yml ps
 Write-Host "MySQL: 127.0.0.1:13306  Redis: 127.0.0.1:16379"

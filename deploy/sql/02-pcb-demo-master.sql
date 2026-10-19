@@ -1,24 +1,37 @@
--- AI-ERP PCB demo master data (tenant_id=63 / login jsh)
--- Idempotent by business codes. Does NOT write stock balances.
+-- AI-ERP PCB demo master data.
+-- ONLY for a fresh upstream jshERP demo database: user id=63, login_name=jsh, tenant_id=63.
+-- seed-demo.ps1 refuses to run when that identity is missing.
+-- Idempotent inserts. Does NOT write stock balances and does NOT disable captcha.
 -- Stock must come from native depotHead bills (purchase / assemble / other-out).
+-- Depot renames apply only when the row is still the upstream sample name or already the demo name.
 
 SET NAMES utf8mb4;
 
--- Local POC: force approval so audit visibly changes stock.
+DROP PROCEDURE IF EXISTS aierp_assert_demo_tenant;
+DELIMITER $$
+CREATE PROCEDURE aierp_assert_demo_tenant()
+BEGIN
+  IF (SELECT COUNT(*) FROM jsh_user
+      WHERE id = 63 AND login_name = 'jsh' AND tenant_id = 63
+        AND IFNULL(delete_flag, '0') <> '1') <> 1 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'AIERP seed refused: expected upstream demo user id=63 login=jsh tenant=63';
+  END IF;
+END$$
+DELIMITER ;
+CALL aierp_assert_demo_tenant();
+DROP PROCEDURE IF EXISTS aierp_assert_demo_tenant;
+
+-- Local POC: force approval so audit visibly changes stock. Scoped to tenant 63 only.
 UPDATE jsh_system_config
 SET force_approval_flag = '1'
 WHERE tenant_id = 63 AND IFNULL(delete_flag, '0') != '1';
 
--- Captcha off for automated API checks (re-enable in UI if needed).
-UPDATE jsh_platform_config
-SET platform_value = '0'
-WHERE platform_key = 'checkcode_flag';
-
--- Depots (reuse native ids 14/15 if present; rename for PCB scene)
+-- Rename only the known upstream sample depots (or re-apply the same demo names).
 UPDATE jsh_depot SET name = '原料仓', remark = 'PCB原料仓', enabled = b'1', is_default = b'1'
-WHERE id = 14 AND tenant_id = 63;
+WHERE id = 14 AND tenant_id = 63 AND name IN ('仓库1', '原料仓');
 UPDATE jsh_depot SET name = '成品仓', remark = 'PCB成品/药水仓', enabled = b'1', is_default = b'0'
-WHERE id = 15 AND tenant_id = 63;
+WHERE id = 15 AND tenant_id = 63 AND name IN ('仓库2', '成品仓');
 
 -- Suppliers / customers
 INSERT INTO jsh_supplier (
@@ -150,8 +163,3 @@ INSERT INTO jsh_material_extend (
 )
 SELECT 912, 912, 'FG-102', 'L', NULL, 32.000000, 55.000000, 40.000000, NULL, '1', NOW(), 'jsh', 'jsh', NULL, 63, '0'
 WHERE NOT EXISTS (SELECT 1 FROM jsh_material_extend WHERE id = 912 OR bar_code = 'FG-102');
-
--- Ensure user jsh can use the two demo depots
-UPDATE jsh_user_business
-SET value = '[14][15]'
-WHERE type = 'UserDepot' AND key_id = '63' AND tenant_id = 63;

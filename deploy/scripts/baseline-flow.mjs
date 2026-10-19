@@ -4,6 +4,7 @@
  * Uses HTTP APIs only — never updates jsh_material_current_stock directly.
  */
 import crypto from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,8 +24,40 @@ const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
 const outDir = path.join(ROOT, 'docs', 'poc', 'evidence')
 fs.mkdirSync(outDir, { recursive: true })
 const reportPath = path.join(outDir, `baseline-${stamp}.json`)
+const MYSQL_ROOT_PASSWORD = process.env.AIERP_MYSQL_ROOT_PASSWORD || 'aierp_root_change_me'
 
 const md5 = (s) => crypto.createHash('md5').update(s).digest('hex')
+const report = { startedAt: new Date().toISOString(), base: BASE, steps: [], assertions: [], ok: false }
+
+function assertClose(name, actual, expected) {
+  const pass = Number(actual) === Number(expected)
+  report.assertions.push({ name, expected, actual, pass })
+  if (!pass) {
+    throw new Error(`ASSERT ${name}: expected ${expected}, actual ${actual}`)
+  }
+}
+
+function mysqlValue(sql) {
+  const r = spawnSync(
+    'docker',
+    ['exec', 'aierp-mysql', 'mysql', '-uroot', `-p${MYSQL_ROOT_PASSWORD}`, '-N', '--default-character-set=utf8mb4', 'jsh_erp', '-e', sql],
+    { encoding: 'utf8' },
+  )
+  const text = `${r.stdout || ''}\n${r.stderr || ''}`
+  if (r.status !== 0) throw new Error(`mysql failed: ${text}`)
+  const line = text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s && !s.includes('Using a password')).pop()
+  return line ?? ''
+}
+
+function captchaBypassAllowed() {
+  if (process.env.AIERP_CAPTCHA_TEST_BYPASS === '0') return false
+  try {
+    const host = new URL(BASE).hostname
+    return host === '127.0.0.1' || host === 'localhost'
+  } catch {
+    return false
+  }
+}
 
 async function api(method, urlPath, { token, body, query } = {}) {
   const u = new URL(BASE + urlPath)
@@ -123,7 +156,39 @@ function nowStr() {
 }
 
 async function main() {
-  const report = { startedAt: new Date().toISOString(), base: BASE, steps: [] }
+  const bypass = captchaBypassAllowed()
+  const captchaBefore = mysqlValue("SELECT platform_value FROM jsh_platform_config WHERE platform_key='checkcode_flag'")
+  report.captcha = {
+    mode: bypass ? 'loopback-temporary-bypass' : 'unchanged',
+    before: captchaBefore,
+    note: 'Seed SQL does not change checkcode_flag. Baseline may set it to 0 only on 127.0.0.1 and always restores the previous value.',
+  }
+  if (bypass) {
+    mysqlValue("UPDATE jsh_platform_config SET platform_value='0' WHERE platform_key='checkcode_flag'")
+  }
+  try {
+    await runFlow()
+  } finally {
+    if (bypass) {
+      const safe = captchaBefore === '1' ? '1' : '0'
+      mysqlValue(`UPDATE jsh_platform_config SET platform_value='${safe}' WHERE platform_key='checkcode_flag'`)
+    }
+    const captchaAfter = mysqlValue("SELECT platform_value FROM jsh_platform_config WHERE platform_key='checkcode_flag'")
+    report.captcha.after = captchaAfter
+    report.captcha.restored = captchaAfter === captchaBefore
+  }
+  if (!report.captcha.restored) {
+    throw new Error(`captcha flag not restored: before=${captchaBefore} after=${report.captcha.after}`)
+  }
+  report.finishedAt = new Date().toISOString()
+  report.ok = report.assertions.every((a) => a.pass)
+  if (!report.ok) throw new Error('one or more stock assertions failed')
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8')
+  console.log(JSON.stringify(report, null, 2))
+  console.log(`\nWrote evidence: ${reportPath}`)
+}
+
+async function runFlow() {
   const token = await login()
   report.steps.push({ step: 'login', ok: true, user: LOGIN_NAME })
 
@@ -171,16 +236,20 @@ async function main() {
       taxLastMoney: piQty * piPrice,
     },
   ]
+  const beforePi = (await stockOf(token, 'RM-A001', DEPOT_RAW)).currentStock
   await addBill(token, piInfo, piRows)
   const afterCreatePi = await stockOf(token, 'RM-A001', DEPOT_RAW)
   const piId = await findBillId(token, piNo)
   await audit(token, piId)
   const afterAuditPi = await stockOf(token, 'RM-A001', DEPOT_RAW)
+  assertClose('purchase.unapproved.unchanged', afterCreatePi.currentStock, beforePi)
+  assertClose('purchase.audit.delta.+80', afterAuditPi.currentStock - afterCreatePi.currentStock, 80)
   report.steps.push({
     step: 'purchase_in',
     number: piNo,
     id: piId,
     qty: piQty,
+    stockBefore: beforePi,
     stockAfterCreateUnapproved: afterCreatePi.currentStock,
     stockAfterAudit: afterAuditPi.currentStock,
     deltaOnAudit: afterAuditPi.currentStock - afterCreatePi.currentStock,
@@ -277,19 +346,32 @@ async function main() {
   ]
   const stockBeforeMix = {
     'RM-A001': (await stockOf(token, 'RM-A001', DEPOT_RAW)).currentStock,
+    'RM-B002': (await stockOf(token, 'RM-B002', DEPOT_RAW)).currentStock,
+    'RM-C003': (await stockOf(token, 'RM-C003', DEPOT_RAW)).currentStock,
     'FG-101': (await stockOf(token, 'FG-101', DEPOT_FG)).currentStock,
   }
   await addBill(token, mixInfo, mixRows)
   const mixId = await findBillId(token, mixNo)
   const stockCreateMix = {
     'RM-A001': (await stockOf(token, 'RM-A001', DEPOT_RAW)).currentStock,
+    'RM-B002': (await stockOf(token, 'RM-B002', DEPOT_RAW)).currentStock,
+    'RM-C003': (await stockOf(token, 'RM-C003', DEPOT_RAW)).currentStock,
     'FG-101': (await stockOf(token, 'FG-101', DEPOT_FG)).currentStock,
   }
   await audit(token, mixId)
   const stockAuditMix = {
     'RM-A001': (await stockOf(token, 'RM-A001', DEPOT_RAW)).currentStock,
+    'RM-B002': (await stockOf(token, 'RM-B002', DEPOT_RAW)).currentStock,
+    'RM-C003': (await stockOf(token, 'RM-C003', DEPOT_RAW)).currentStock,
     'FG-101': (await stockOf(token, 'FG-101', DEPOT_FG)).currentStock,
   }
+  for (const code of Object.keys(stockBeforeMix)) {
+    assertClose(`assemble.unapproved.unchanged.${code}`, stockCreateMix[code], stockBeforeMix[code])
+  }
+  assertClose('assemble.audit.A.-60', stockAuditMix['RM-A001'] - stockCreateMix['RM-A001'], -60)
+  assertClose('assemble.audit.B.-10', stockAuditMix['RM-B002'] - stockCreateMix['RM-B002'], -10)
+  assertClose('assemble.audit.C.-30', stockAuditMix['RM-C003'] - stockCreateMix['RM-C003'], -30)
+  assertClose('assemble.audit.FG.+100', stockAuditMix['FG-101'] - stockCreateMix['FG-101'], 100)
   report.steps.push({
     step: 'assemble',
     number: mixNo,
@@ -328,6 +410,8 @@ async function main() {
   const svId = await findBillId(token, svNo)
   await audit(token, svId)
   const stockAuditSv = (await stockOf(token, 'FG-101', DEPOT_FG)).currentStock
+  assertClose('otherOut.unapproved.unchanged', stockCreateSv, stockBeforeSv)
+  assertClose('otherOut.audit.delta.-20', stockAuditSv - stockCreateSv, -20)
   report.steps.push({
     step: 'other_out',
     number: svNo,
@@ -345,15 +429,14 @@ async function main() {
     after[code] = await stockOf(token, code, depotId)
   }
   report.steps.push({ step: 'stock_after', after })
-  report.finishedAt = new Date().toISOString()
-  report.ok = true
-
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8')
-  console.log(JSON.stringify(report, null, 2))
-  console.log(`\nWrote evidence: ${reportPath}`)
 }
 
 main().catch((err) => {
+  report.ok = false
+  report.error = String(err && err.stack ? err.stack : err)
+  report.finishedAt = new Date().toISOString()
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8')
   console.error(err)
+  console.error(`Wrote failure evidence: ${reportPath}`)
   process.exit(1)
 })

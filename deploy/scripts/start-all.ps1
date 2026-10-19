@@ -11,7 +11,7 @@ if (-not (Test-Path ".env")) {
 
 Write-Host "==> Starting MySQL / Redis / Boot"
 docker compose --env-file .env -f docker-compose.yml up -d --build
-docker compose -f docker-compose.yml ps
+docker compose --env-file .env -f docker-compose.yml ps
 
 Write-Host "==> Applying PCB demo master data (idempotent)"
 & "$PSScriptRoot\seed-demo.ps1"

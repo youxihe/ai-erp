@@ -1,7 +1,8 @@
 # AIERP-001 · 本地 jshERP 基线部署说明
 
 > 独立命名空间：本仓库专用 Docker 容器 `aierp-mysql` / `aierp-redis` / `aierp-boot`。  
-> 端口刻意避开常见占用：MySQL `13306`，Redis `16379`（本机已有其他项目的 `6379` 时互不影响）。
+> 端口只绑定 `127.0.0.1`：MySQL `13306`，Redis `16379`，后端 `9999`。不向局域网或公网开放。  
+> 若以后需要局域网访问，必须单独做认证与授权，不能带着默认演示密码暴露。
 
 ## 1. 环境检查结果（本机实测）
 
@@ -44,13 +45,15 @@ powershell -File deploy\scripts\stop-all.ps1
 |---|---|
 | 前端 | http://localhost:3000/ |
 | 后端 API / Swagger | http://127.0.0.1:9999/jshERP-boot/doc.html |
-| 租户账号 | `jsh` / `123456` |
-| 超管账号 | `admin` / `123456` |
+| 租户账号 | `jsh` / `123456`（仅本机演示；接入非 loopback 前请在系统里改密） |
+| 超管账号 | `admin` / `123456`（同上，不要带到公网） |
 | MySQL | `127.0.0.1:13306` / db `jsh_erp` / root 见 `deploy/.env` |
 | Redis | `127.0.0.1:16379` / 密码见 `deploy/.env` |
 
 原生初始化 SQL：`jshERP-boot/docs/jsh_erp.sql`（由 MySQL 容器首次启动自动导入）。  
-PCB 演示主数据：`deploy/sql/02-pcb-demo-master.sql`（**只写主数据**，不直接改库存余额）。
+PCB 演示主数据：`deploy/sql/02-pcb-demo-master.sql`（**只写主数据**，不直接改库存余额，也不改验证码开关）。
+
+种子前提：只适用于 `jshERP-boot/docs/jsh_erp.sql` 导入后的上游演示库，且 `jsh_user.id=63 / login_name=jsh / tenant_id=63`。`seed-demo.ps1` 与 SQL 过程都会先检查该身份，对不上则拒绝执行。仓库改名只在名称仍为上游样例 `仓库1`/`仓库2` 或已经是演示名时发生；已有条码的物料第二次执行会跳过。
 
 本地配置覆盖：`jshERP-boot/src/main/resources/application-local.yml`（`spring.profiles.active=local`）。
 
@@ -66,7 +69,8 @@ PCB 演示主数据：`deploy/sql/02-pcb-demo-master.sql`（**只写主数据**�
 
 ## 4. 实测结果（真实 API，非 poc/index.html）
 
-证据文件：`docs/poc/evidence/baseline-20261019172847.json`
+首轮证据：`docs/poc/evidence/baseline-20261019172847.json`。  
+Review 修复后复测：`docs/poc/evidence/baseline-20261019174403.json`（12 条断言全部 pass，退出码 0；验证码开关测前测后均为 `1`）。
 
 | 步骤 | 单据号 | 审核前库存 | 审核后库存 | 结论 |
 |---|---|---:|---:|---|
@@ -77,7 +81,13 @@ PCB 演示主数据：`deploy/sql/02-pcb-demo-master.sql`（**只写主数据**�
 最终余额（同次跑批）：RM-A001=100，RM-B002=10，RM-C003=20，FG-101=80。
 
 登录 API（MD5 密码）已验证：`POST /user/login` → `msgTip=user can login`。  
-前端 `npm run serve` 已在 http://localhost:3000/ 拉起（sass-loader 警告可忽略，页面可访问）。
+前端只确认 `npm run serve` 后 http://localhost:3000/ 返回页面（HTTP 200）。没有逐页人工点验采购/组装/出库界面；单据与库存验收以 API 基线脚本为准。
+
+`baseline-flow.mjs` 在断言失败时退出码非 0，并写入失败证据。连接 `127.0.0.1` 时会临时把 `checkcode_flag` 设为 `0` 以便无界面登录，结束后恢复原值；设置 `AIERP_CAPTCHA_TEST_BYPASS=0` 可关闭该测试模式。种子脚本不会改这个开关。若本机曾被旧种子关掉验证码，可执行：
+
+```sql
+UPDATE jsh_platform_config SET platform_value='1' WHERE platform_key='checkcode_flag';
+```
 
 ## 5. 清理 / 重建
 
@@ -95,4 +105,5 @@ node ..\deploy\scripts\baseline-flow.mjs
 - 上游 `pom.xml` 将 `maven-compiler-plugin` 设为 `skip=true`；Docker 构建通过 `-Dmaven.compiler.skip=false` 强制编译。
 - 演示配制比例为**虚构数据**，不可用于真实工艺。
 - `deploy/.env` 仅本地使用，已加入 `.gitignore`；仓库只保留 `.env.example`。
+- 容器端口只监听 loopback。默认账号 `jsh`/`admin` 密码 `123456` 仅用于本机演示。
 - 未自行 Merge；后续 Excel/AI 任务仍为 BLOCKED，待 ChatGPT Review 后释放。

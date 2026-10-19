@@ -1,0 +1,219 @@
+{
+  "startedAt": "2026-10-19T17:44:03.451Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "steps": [
+    {
+      "step": "login",
+      "ok": true,
+      "user": "jsh"
+    },
+    {
+      "step": "stock_before",
+      "before": {
+        "RM-A001": {
+          "found": true,
+          "currentStock": 100,
+          "raw": {
+            "id": 901,
+            "mBarCode": "RM-A001",
+            "currentStock": 100
+          }
+        },
+        "RM-B002": {
+          "found": true,
+          "currentStock": 10,
+          "raw": {
+            "id": 902,
+            "mBarCode": "RM-B002",
+            "currentStock": 10
+          }
+        },
+        "RM-C003": {
+          "found": true,
+          "currentStock": 20,
+          "raw": {
+            "id": 903,
+            "mBarCode": "RM-C003",
+            "currentStock": 20
+          }
+        },
+        "FG-101": {
+          "found": true,
+          "currentStock": 80,
+          "raw": {
+            "id": 911,
+            "mBarCode": "FG-101",
+            "currentStock": 80
+          }
+        }
+      }
+    },
+    {
+      "step": "purchase_in",
+      "number": "POC-PI-20261019174403",
+      "id": 283,
+      "qty": 80,
+      "stockBefore": 100,
+      "stockAfterCreateUnapproved": 100,
+      "stockAfterAudit": 180,
+      "deltaOnAudit": 80
+    },
+    {
+      "step": "assemble",
+      "number": "POC-MIX-20261019174403",
+      "id": 286,
+      "stockBefore": {
+        "RM-A001": 180,
+        "RM-B002": 30,
+        "RM-C003": 70,
+        "FG-101": 80
+      },
+      "stockAfterCreateUnapproved": {
+        "RM-A001": 180,
+        "RM-B002": 30,
+        "RM-C003": 70,
+        "FG-101": 80
+      },
+      "stockAfterAudit": {
+        "RM-A001": 120,
+        "RM-B002": 20,
+        "RM-C003": 40,
+        "FG-101": 180
+      }
+    },
+    {
+      "step": "other_out",
+      "number": "POC-SV-20261019174403",
+      "id": 287,
+      "qty": 20,
+      "stockBefore": 180,
+      "stockAfterCreateUnapproved": 180,
+      "stockAfterAudit": 160,
+      "deltaOnAudit": -20
+    },
+    {
+      "step": "stock_after",
+      "after": {
+        "RM-A001": {
+          "found": true,
+          "currentStock": 120,
+          "raw": {
+            "id": 901,
+            "mBarCode": "RM-A001",
+            "currentStock": 120
+          }
+        },
+        "RM-B002": {
+          "found": true,
+          "currentStock": 20,
+          "raw": {
+            "id": 902,
+            "mBarCode": "RM-B002",
+            "currentStock": 20
+          }
+        },
+        "RM-C003": {
+          "found": true,
+          "currentStock": 40,
+          "raw": {
+            "id": 903,
+            "mBarCode": "RM-C003",
+            "currentStock": 40
+          }
+        },
+        "FG-101": {
+          "found": true,
+          "currentStock": 160,
+          "raw": {
+            "id": 911,
+            "mBarCode": "FG-101",
+            "currentStock": 160
+          }
+        }
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "name": "purchase.unapproved.unchanged",
+      "expected": 100,
+      "actual": 100,
+      "pass": true
+    },
+    {
+      "name": "purchase.audit.delta.+80",
+      "expected": 80,
+      "actual": 80,
+      "pass": true
+    },
+    {
+      "name": "assemble.unapproved.unchanged.RM-A001",
+      "expected": 180,
+      "actual": 180,
+      "pass": true
+    },
+    {
+      "name": "assemble.unapproved.unchanged.RM-B002",
+      "expected": 30,
+      "actual": 30,
+      "pass": true
+    },
+    {
+      "name": "assemble.unapproved.unchanged.RM-C003",
+      "expected": 70,
+      "actual": 70,
+      "pass": true
+    },
+    {
+      "name": "assemble.unapproved.unchanged.FG-101",
+      "expected": 80,
+      "actual": 80,
+      "pass": true
+    },
+    {
+      "name": "assemble.audit.A.-60",
+      "expected": -60,
+      "actual": -60,
+      "pass": true
+    },
+    {
+      "name": "assemble.audit.B.-10",
+      "expected": -10,
+      "actual": -10,
+      "pass": true
+    },
+    {
+      "name": "assemble.audit.C.-30",
+      "expected": -30,
+      "actual": -30,
+      "pass": true
+    },
+    {
+      "name": "assemble.audit.FG.+100",
+      "expected": 100,
+      "actual": 100,
+      "pass": true
+    },
+    {
+      "name": "otherOut.unapproved.unchanged",
+      "expected": 180,
+      "actual": 180,
+      "pass": true
+    },
+    {
+      "name": "otherOut.audit.delta.-20",
+      "expected": -20,
+      "actual": -20,
+      "pass": true
+    }
+  ],
+  "ok": true,
+  "captcha": {
+    "mode": "loopback-temporary-bypass",
+    "before": "1",
+    "note": "Seed SQL does not change checkcode_flag. Baseline may set it to 0 only on 127.0.0.1 and always restores the previous value.",
+    "after": "1",
+    "restored": true
+  },
+  "finishedAt": "2026-10-19T17:44:06.135Z"
+}
