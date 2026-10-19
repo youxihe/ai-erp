@@ -14,21 +14,28 @@ import com.jsh.erp.service.DepotService;
 import com.jsh.erp.service.MaterialExtendService;
 import com.jsh.erp.service.MaterialService;
 import com.jsh.erp.service.UserService;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
-import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,6 +44,13 @@ public class AierpGatewayService {
 
     private static final Pattern DEPOT_ID = Pattern.compile("\\[(\\d+)\\]");
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final long FUN_STOCK = 246L;
+    private static final long FUN_PURCHASE = 33L;
+    private static final long FUN_MIX = 232L;
+    private static final long FUN_SERVICE = 202L;
+    private static final String BTN_ADD = "1";
+    private static final String BTN_AUDIT = "7";
+    private static final ConcurrentHashMap<String, ReentrantLock> STOCK_LOCKS = new ConcurrentHashMap<String, ReentrantLock>();
 
     @Resource
     private JdbcTemplate jdbcTemplate;
@@ -52,29 +66,12 @@ public class AierpGatewayService {
     private DepotItemService depotItemService;
     @Resource
     private DepotHeadService depotHeadService;
-
-    @PostConstruct
-    public void ensureDraftTable() {
-        jdbcTemplate.execute(
-                "CREATE TABLE IF NOT EXISTS aierp_gateway_draft (" +
-                        "id BIGINT NOT NULL AUTO_INCREMENT," +
-                        "idempotency_key VARCHAR(80) NOT NULL," +
-                        "tenant_id BIGINT NOT NULL," +
-                        "user_id BIGINT NOT NULL," +
-                        "biz_type VARCHAR(32) NOT NULL," +
-                        "status VARCHAR(32) NOT NULL," +
-                        "payload_json MEDIUMTEXT NOT NULL," +
-                        "bill_number VARCHAR(64) DEFAULT NULL," +
-                        "depot_head_id BIGINT DEFAULT NULL," +
-                        "create_time DATETIME NOT NULL," +
-                        "confirm_time DATETIME DEFAULT NULL," +
-                        "PRIMARY KEY (id)," +
-                        "UNIQUE KEY uk_aierp_draft_user_key (tenant_id, user_id, idempotency_key)" +
-                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
+    @Resource
+    private PlatformTransactionManager transactionManager;
 
     public Map<String, Object> stockQuery(JSONObject body, HttpServletRequest request) throws Exception {
         User user = currentUser();
+        assertFunction(user, FUN_STOCK, null, "库存查询");
         String barCode = required(body, "barCode");
         String depotName = required(body, "depotName");
         ResolvedLine line = resolveLine(user, barCode, depotName, BigDecimal.ONE, unitOf(barCode), false);
@@ -92,6 +89,7 @@ public class AierpGatewayService {
 
     public Map<String, Object> createDraft(String bizType, JSONObject body, HttpServletRequest request) throws Exception {
         User user = currentUser();
+        assertFunction(user, functionOf(bizType), BTN_ADD, bizType);
         String key = required(body, "idempotencyKey");
         JSONObject normalized = normalize(bizType, body, user);
         String payload = normalized.toJSONString();
@@ -105,9 +103,22 @@ public class AierpGatewayService {
             }
             return draftView(row, true);
         }
-        jdbcTemplate.update(
-                "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, payload_json, create_time) VALUES (?,?,?,?, 'DRAFT', ?, NOW())",
-                key, user.getTenantId(), user.getId(), bizType, payload);
+        try {
+            jdbcTemplate.update(
+                    "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, payload_json, create_time) VALUES (?,?,?,?, 'DRAFT', ?, NOW())",
+                    key, user.getTenantId(), user.getId(), bizType, payload);
+        } catch (DuplicateKeyException ex) {
+            List<Map<String, Object>> raced = jdbcTemplate.queryForList(
+                    "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                    user.getTenantId(), user.getId(), key);
+            if (raced.isEmpty()) {
+                throw ex;
+            }
+            if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
+                throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
+            }
+            return draftView(raced.get(0), true);
+        }
         List<Map<String, Object>> created = jdbcTemplate.queryForList(
                 "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
@@ -117,8 +128,57 @@ public class AierpGatewayService {
         return view;
     }
 
-    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public Map<String, Object> confirm(JSONObject body, HttpServletRequest request) throws Exception {
+        User user = currentUser();
+        String key = required(body, "idempotencyKey");
+        List<Map<String, Object>> preview = jdbcTemplate.queryForList(
+                "SELECT biz_type, status, payload_json FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                user.getTenantId(), user.getId(), key);
+        if (preview.isEmpty()) {
+            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前用户");
+        }
+        List<String> names = new ArrayList<String>();
+        if (!"CONFIRMED".equals(String.valueOf(preview.get(0).get("status")))) {
+            names = stockLockNames(user, String.valueOf(preview.get(0).get("biz_type")),
+                    JSON.parseObject(String.valueOf(preview.get(0).get("payload_json"))));
+        }
+        List<ReentrantLock> held = new ArrayList<ReentrantLock>();
+        for (String name : names) {
+            ReentrantLock lock = STOCK_LOCKS.computeIfAbsent(name, item -> new ReentrantLock(true));
+            lock.lock();
+            held.add(lock);
+        }
+        try {
+            RuntimeException last = null;
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    TransactionTemplate tx = new TransactionTemplate(transactionManager);
+                    return tx.execute(status -> {
+                        try {
+                            return confirmInTx(body, request, null);
+                        } catch (RuntimeException ex) {
+                            throw ex;
+                        } catch (Exception ex) {
+                            throw new BusinessRunTimeException(500, ex.getMessage());
+                        }
+                    });
+                } catch (RuntimeException ex) {
+                    last = ex;
+                    if (attempt < 3 && isDeadlock(ex)) {
+                        continue;
+                    }
+                    throw ex;
+                }
+            }
+            throw last == null ? new BusinessRunTimeException(500, "库存锁重试失败") : last;
+        } finally {
+            for (int i = held.size() - 1; i >= 0; i--) {
+                held.get(i).unlock();
+            }
+        }
+    }
+
+    private Map<String, Object> confirmInTx(JSONObject body, HttpServletRequest request, List<AutoCloseable> opened) throws Exception {
         User user = currentUser();
         String key = required(body, "idempotencyKey");
         List<Map<String, Object>> locked = jdbcTemplate.queryForList(
@@ -128,20 +188,21 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(404, "草稿不存在或不属于当前用户");
         }
         Map<String, Object> row = locked.get(0);
+        String bizType = String.valueOf(row.get("biz_type"));
+        assertFunction(user, functionOf(bizType), BTN_AUDIT, bizType);
         if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
             return confirmView(row, user, true);
         }
         JSONObject payload = JSON.parseObject(String.valueOf(row.get("payload_json")));
-        String bizType = String.valueOf(row.get("biz_type"));
         reassertAccess(user, payload, bizType);
+        reassertParties(user, payload, bizType);
+        List<String> stockLocks = lockStockKeys(user, payload, bizType);
+        assertOutboundStock(bizType, payload);
         assertOutboundStock(bizType, payload);
         JSONObject repost = payload;
-        String number = "GW-" + bizType + "-" + System.currentTimeMillis();
+        String number = "GW-" + bizType + "-" + ((Number) row.get("id")).longValue();
         Map<String, BigDecimal> before = snapshot(repost, bizType);
-        postNativeBill(bizType, number, repost, request);
-        Long headId = jdbcTemplate.queryForObject(
-                "SELECT id FROM jsh_depot_head WHERE number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
-                Long.class, number, user.getTenantId());
+        Long headId = postNativeBill(bizType, number, repost, request);
         jdbcTemplate.update(
                 "UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number=?, depot_head_id=?, confirm_time=NOW() WHERE id=?",
                 number, headId, ((Number) row.get("id")).longValue());
@@ -149,6 +210,7 @@ public class AierpGatewayService {
         row.put("bill_number", number);
         row.put("depot_head_id", headId);
         Map<String, Object> view = confirmView(row, user, false);
+        view.put("stockLocks", stockLocks);
         view.put("stockBefore", before);
         view.put("stockAfter", snapshot(repost, bizType));
         return view;
@@ -156,6 +218,7 @@ public class AierpGatewayService {
 
     public Map<String, Object> summary(HttpServletRequest request) throws Exception {
         User user = currentUser();
+        assertFunction(user, FUN_STOCK, null, "库存查询");
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("loginName", user.getLoginName());
         data.put("userId", user.getId());
@@ -195,7 +258,7 @@ public class AierpGatewayService {
         return data;
     }
 
-    private void postNativeBill(String bizType, String number, JSONObject payload, HttpServletRequest request) throws Exception {
+    private Long postNativeBill(String bizType, String number, JSONObject payload, HttpServletRequest request) throws Exception {
         JSONObject info = new JSONObject();
         info.put("operTime", LocalDateTime.now().format(TS));
         info.put("number", number);
@@ -209,7 +272,9 @@ public class AierpGatewayService {
             info.put("accountId", payload.getLong("accountId"));
             BigDecimal total = sumAmount(payload.getJSONArray("lines"));
             info.put("totalPrice", total.negate());
-            info.put("changeAmount", total.negate());
+            info.put("changeAmount", BigDecimal.ZERO);
+            info.put("payType", "记账");
+            info.put("debt", total);
             info.put("discount", 0);
             info.put("discountMoney", 0);
             info.put("discountLastMoney", total);
@@ -239,10 +304,15 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(400, "未知业务类型");
         }
         depotHeadService.addDepotHeadAndDetail(info.toJSONString(), rows.toJSONString(), request);
-        Long headId = jdbcTemplate.queryForObject(
-                "SELECT id FROM jsh_depot_head WHERE number=? AND IFNULL(delete_flag,'0')<>'1' ORDER BY id DESC LIMIT 1",
-                Long.class, number);
+        Long headId = requireOwnUnapprovedHead(userService.getCurrentUser(), number);
         depotHeadService.batchSetStatus("1", String.valueOf(headId));
+        List<Map<String, Object>> audited = jdbcTemplate.queryForList(
+                "SELECT id, tenant_id, status FROM jsh_depot_head WHERE id=? AND number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                headId, number, userService.getCurrentUser().getTenantId());
+        if (audited.size() != 1 || !"1".equals(String.valueOf(audited.get(0).get("status")))) {
+            throw new BusinessRunTimeException(500, "审核后单据不属于当前租户或状态异常: " + number);
+        }
+        return headId;
     }
 
     private JSONObject normalize(String bizType, JSONObject body, User user) throws Exception {
@@ -329,6 +399,201 @@ public class AierpGatewayService {
         if (material == null || material.getTenantId() == null || !material.getTenantId().equals(user.getTenantId())) {
             throw new BusinessRunTimeException(400, "物料不存在或不属于当前租户: " + line.getString("barCode"));
         }
+    }
+
+    private long functionOf(String bizType) {
+        if ("PURCHASE".equals(bizType)) {
+            return FUN_PURCHASE;
+        }
+        if ("MIX".equals(bizType)) {
+            return FUN_MIX;
+        }
+        if ("SERVICE".equals(bizType)) {
+            return FUN_SERVICE;
+        }
+        throw new BusinessRunTimeException(400, "未知业务类型");
+    }
+
+    private void assertFunction(User user, long funId, String button, String action) {
+        List<Long> roles = roleIds(user);
+        if (roles.isEmpty()) {
+            throw new BusinessRunTimeException(403, "当前用户没有业务角色，拒绝" + action);
+        }
+        boolean hasFun = false;
+        boolean hasBtn = false;
+        for (Long roleId : roles) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT `value`, btn_str FROM jsh_user_business WHERE type='RoleFunctions' AND key_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                    String.valueOf(roleId));
+            for (Map<String, Object> row : rows) {
+                String value = row.get("value") == null ? "" : String.valueOf(row.get("value"));
+                if (value.contains("[" + funId + "]")) {
+                    hasFun = true;
+                }
+                if (button != null && hasButton(row.get("btn_str"), funId, button)) {
+                    hasBtn = true;
+                }
+            }
+        }
+        if (!hasFun || (button != null && !hasBtn)) {
+            throw new BusinessRunTimeException(403, "当前角色无权" + action + "，功能 " + funId + (button == null ? "" : " 按钮 " + button));
+        }
+    }
+
+    private boolean hasButton(Object btnStr, long funId, String button) {
+        if (btnStr == null || String.valueOf(btnStr).trim().isEmpty()) {
+            return false;
+        }
+        JSONArray arr = JSON.parseArray(String.valueOf(btnStr));
+        if (arr == null) {
+            return false;
+        }
+        for (int i = 0; i < arr.size(); i++) {
+            JSONObject item = arr.getJSONObject(i);
+            if (item.getLong("funId") != null && item.getLong("funId") == funId) {
+                String buttons = item.getString("btnStr");
+                if (buttons == null) {
+                    return false;
+                }
+                for (String one : buttons.split(",")) {
+                    if (button.equals(one.trim())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private List<Long> roleIds(User user) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT `value` FROM jsh_user_business WHERE type='UserRole' AND key_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getString(1), String.valueOf(user.getId()));
+        List<Long> ids = new ArrayList<Long>();
+        for (String value : values) {
+            if (value == null) {
+                continue;
+            }
+            Matcher matcher = DEPOT_ID.matcher(value);
+            while (matcher.find()) {
+                ids.add(Long.valueOf(matcher.group(1)));
+            }
+        }
+        return ids;
+    }
+
+    private void reassertParties(User user, JSONObject payload, String bizType) {
+        if ("PURCHASE".equals(bizType) || "SERVICE".equals(bizType)) {
+            String organType = "PURCHASE".equals(bizType) ? "供应商" : "客户";
+            Long organId = payload.getLong("organId");
+            Integer n = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM jsh_supplier WHERE id=? AND tenant_id=? AND type=? AND enabled=b'1' AND IFNULL(delete_flag,'0')<>'1'",
+                    Integer.class, organId, user.getTenantId(), organType);
+            if (n == null || n != 1) {
+                throw new BusinessRunTimeException(400, "确认时" + organType + "不可用或不属于当前租户");
+            }
+        }
+        if ("PURCHASE".equals(bizType)) {
+            Long accountId = payload.getLong("accountId");
+            Integer n = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM jsh_account WHERE id=? AND tenant_id=? AND enabled=b'1' AND IFNULL(delete_flag,'0')<>'1'",
+                    Integer.class, accountId, user.getTenantId());
+            if (n == null || n != 1) {
+                throw new BusinessRunTimeException(400, "确认时结算账户不可用或不属于当前租户");
+            }
+        }
+    }
+
+    private List<String> lockStockKeys(User user, JSONObject payload, String bizType) throws Exception {
+        List<String> names = stockLockNames(user, bizType, payload);
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new BusinessRunTimeException(500, "库存锁不在事务中");
+        }
+        for (String name : names) {
+            Integer got = jdbcTemplate.queryForObject("SELECT GET_LOCK(?, 30)", Integer.class, name);
+            if (got == null || got.intValue() != 1) {
+                throw new BusinessRunTimeException(409, "库存锁超时: " + name);
+            }
+        }
+        if (!names.isEmpty()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    for (String name : names) {
+                        try {
+                            jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Integer.class, name);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+            });
+        }
+        return names;
+    }
+
+    private List<String> stockLockNames(User user, String bizType, JSONObject payload) {
+        List<long[]> keys = new ArrayList<long[]>();
+        if ("MIX".equals(bizType)) {
+            addStockKey(keys, payload.getJSONObject("finished"));
+        }
+        JSONArray lines = payload.getJSONArray("lines");
+        if (lines != null) {
+            for (int i = 0; i < lines.size(); i++) {
+                addStockKey(keys, lines.getJSONObject(i));
+            }
+        }
+        Collections.sort(keys, (a, b) -> a[0] == b[0] ? Long.compare(a[1], b[1]) : Long.compare(a[0], b[0]));
+        List<String> names = new ArrayList<String>();
+        String seen = "";
+        for (long[] key : keys) {
+            String mark = key[0] + ":" + key[1];
+            if (mark.equals(seen)) {
+                continue;
+            }
+            seen = mark;
+            names.add("aierp:" + user.getTenantId() + ":" + key[0] + ":" + key[1]);
+        }
+        return names;
+    }
+
+    private void addStockKey(List<long[]> keys, JSONObject line) {
+        if (line == null || line.getLong("depotId") == null || line.getLong("materialId") == null) {
+            throw new BusinessRunTimeException(400, "草稿行缺少仓库或物料，无法加锁");
+        }
+        keys.add(new long[]{line.getLong("depotId"), line.getLong("materialId")});
+    }
+
+    private Long requireOwnUnapprovedHead(User user, String number) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, tenant_id, status FROM jsh_depot_head WHERE number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                number, user.getTenantId());
+        if (rows.size() != 1) {
+            throw new BusinessRunTimeException(409, "当前租户下单据号不唯一或不存在: " + number);
+        }
+        Map<String, Object> row = rows.get(0);
+        long tenantId = ((Number) row.get("tenant_id")).longValue();
+        if (tenantId != user.getTenantId()) {
+            throw new BusinessRunTimeException(403, "拒绝审核其他租户单据: " + number);
+        }
+        if (!"0".equals(String.valueOf(row.get("status")))) {
+            throw new BusinessRunTimeException(409, "单据不是未审核状态: " + number);
+        }
+        return ((Number) row.get("id")).longValue();
+    }
+
+    private boolean isDeadlock(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur instanceof SQLException && ((SQLException) cur).getErrorCode() == 1213) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null && msg.toLowerCase().contains("deadlock")) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
     }
 
     private void assertOutboundStock(String bizType, JSONObject payload) {

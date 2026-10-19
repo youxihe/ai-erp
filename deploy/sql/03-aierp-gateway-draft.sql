@@ -15,3 +15,12 @@ CREATE TABLE IF NOT EXISTS aierp_gateway_draft (
   PRIMARY KEY (id),
   UNIQUE KEY uk_aierp_draft_user_key (tenant_id, user_id, idempotency_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Serializes gateway stock checks for the same tenant, depot and material.
+-- Native ERP screens that post bills outside this gateway are not covered.
+CREATE TABLE IF NOT EXISTS aierp_stock_guard (
+  tenant_id BIGINT NOT NULL,
+  depot_id BIGINT NOT NULL,
+  material_id BIGINT NOT NULL,
+  PRIMARY KEY (tenant_id, depot_id, material_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

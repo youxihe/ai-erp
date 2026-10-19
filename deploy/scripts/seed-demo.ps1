@@ -39,4 +39,14 @@ docker exec aierp-mysql mysql -uroot "-p$rootPwd" --default-character-set=utf8mb
 $code = $LASTEXITCODE
 $ErrorActionPreference = $prev
 if ($code -ne 0) { exit $code }
+
+$gatewaySql = Join-Path $Deploy "sql\03-aierp-gateway-draft.sql"
+Write-Host "Applying gateway draft schema ..."
+$ErrorActionPreference = 'Continue'
+docker cp $gatewaySql "aierp-mysql:/tmp/03-aierp-gateway-draft.sql"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+docker exec aierp-mysql mysql -uroot "-p$rootPwd" --default-character-set=utf8mb4 jsh_erp -e "source /tmp/03-aierp-gateway-draft.sql"
+$code = $LASTEXITCODE
+$ErrorActionPreference = $prev
+if ($code -ne 0) { exit $code }
 Write-Host "Done. Captcha flag was not changed. Re-run is safe: existing demo rows are skipped."
