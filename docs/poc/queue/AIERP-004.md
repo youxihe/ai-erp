@@ -1,6 +1,8 @@
 # AIERP-004 · AI Agent 工具与对话
 
-- **状态**：RELEASED / next_order #3（待 AIERP-005 分支 push 即可开始，不必等合并）
+- **状态**：READY_FOR_REVIEW
+- **证据**：`docs/poc/evidence/assistant-20261019195103.json`
+- **测试**：`node deploy/scripts/assistant-flow.mjs` 通过。模式为 RULE_DEMO。跳过确认的语句没有改变 RM-A001 库存。未知物料被拒绝。未创建 PR（gh 未登录）。
 - **Owner**：Cursor-ERP；**分支**：`feat/aierp-004-agent-tools`
 - **前提**：AIERP-003 已合并。与 002/005 通过 `DEMO_CONTRACT.md` 协作；不用拉取其未合并代码。
 
