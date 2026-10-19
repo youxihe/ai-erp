@@ -1,6 +1,6 @@
 # AIERP-003 · jshERP 真实业务网关
 
-- **状态**：RELEASED / next_order #1（AIERP-001 已合并）  **Owner**：Cursor-ERP
+- **状态**：READY_FOR_REVIEW / next_order #1  **Owner**：Cursor-ERP  **分支**：`feat/aierp-003-erp-gateway`
 - 不改原生进销存核心优先；新增符合身份/租户/仓库限制的受控业务 Service 或 API。
 - 模块能力：`stock.query`、`purchase.createDraft`、`mix.createDraft`、`service.createDraft`、`draft.confirm`、`report.summary`。
 - 源码参考：`PurchaseInModal.vue` 映射 `入库/采购`；`AssembleModal.vue` 映射 `其它/组装单` 且 `mType`；`OtherOutModal.vue` 映射 `出库/其它`。
@@ -15,3 +15,11 @@
 - 禁止重用 jsh 默认用户身份代表所有企微用户；网关必须按当前 jsh ERP 会话权限处理。
 - 测试至少包含：草稿不扣库存、确认后库存改变、库存不足拒绝、重复 confirm 幂等、跨仓库或权限不足的拒绝。测试失败不得默默模拟 PASS。
 - 单一实现 PR：`feat/aierp-003-erp-gateway`，PR 中标记 `READY_FOR_REVIEW`，由 ChatGPT 审核合并后才允许开始 AIERP-002。
+
+## 本地验收（2026-10-20）
+- `node deploy/scripts/gateway-flow.mjs` 全部通过。证据：`docs/poc/evidence/gateway-20261019190936.json`。
+- 库存互斥改为同一事务内的 `aierp_stock_guard` 行锁。并发出库仍是一笔成功一笔拒绝。锁探针在第一把行锁后失败，178ms 内后续确认可以重新锁住同一物料并过账。
+- 正式单据号按草稿主键生成。采购 `GW-PURCHASE-67` 未付款（change_amount=0，debt=40），RM-A001 原料仓 131.8→133.8。
+- 两张不同服务草稿并发出库 RM-B002 各 12L，库存 23.2：仅 `GW-SERVICE-75` 审核成功，另一张库存不足且没有第二张已审核单据，余额 11.2。
+- 只读用户 `aierp_stock` 可查库存、不能采购。采购无审核按钮用户 `aierp_buyer` 可草稿、确认返回 403，且不能用成品仓。
+- 租户 999 的同号诱饵单据保持未审核。验证码标志测试后仍为 1。

@@ -1,0 +1,1056 @@
+{
+  "startedAt": "2026-10-19T19:09:36.503Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "checks": [
+    {
+      "name": "no-token-rejected",
+      "pass": true,
+      "detail": {
+        "status": 500,
+        "text": "loginOut"
+      }
+    },
+    {
+      "name": "draft-created",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 77,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "organName": "华东化工",
+            "accountId": 17,
+            "idempotencyKey": "gw-pi-20261019190936",
+            "organId": 901,
+            "remark": "AIERP-003 purchase draft",
+            "lines": [
+              {
+                "unitPrice": 20,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 40,
+                "operNumber": 2,
+                "depotId": "14",
+                "name": "表面活性剂",
+                "taxLastMoney": 40,
+                "materialId": 901,
+                "taxMoney": 0,
+                "barCode": "RM-A001"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "draft-stock-unchanged",
+      "pass": true,
+      "detail": {
+        "beforeA": 133.2,
+        "afterDraft": 133.2
+      }
+    },
+    {
+      "name": "draft-no-native-bill",
+      "pass": true,
+      "detail": [
+        "0"
+      ]
+    },
+    {
+      "name": "draft-idempotent",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 77,
+          "status": "DRAFT",
+          "replayed": true,
+          "billNumber": null,
+          "payload": {
+            "organName": "华东化工",
+            "accountId": 17,
+            "idempotencyKey": "gw-pi-20261019190936",
+            "organId": 901,
+            "remark": "AIERP-003 purchase draft",
+            "lines": [
+              {
+                "unitPrice": 20,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 40,
+                "operNumber": 2,
+                "depotId": "14",
+                "name": "表面活性剂",
+                "taxLastMoney": 40,
+                "materialId": 901,
+                "taxMoney": 0,
+                "barCode": "RM-A001"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "confirm-posted",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "status": "CONFIRMED",
+          "replayed": false,
+          "billNumber": "GW-PURCHASE-77",
+          "depotHeadId": 343,
+          "loginName": "jsh",
+          "nativeBill": {
+            "number": "GW-PURCHASE-77",
+            "type": "入库",
+            "sub_type": "采购",
+            "status": "1",
+            "organ_id": 901
+          },
+          "stockLocks": [
+            "aierp:63:14:901"
+          ],
+          "stockBefore": {
+            "RM-A001@原料仓": 133.2
+          },
+          "stockAfter": {
+            "RM-A001@原料仓": 135.2
+          }
+        }
+      }
+    },
+    {
+      "name": "purchase-unpaid",
+      "pass": true,
+      "detail": {
+        "changeAmount": "0.000000",
+        "debt": "40.000000"
+      }
+    },
+    {
+      "name": "confirm-stock-plus-2",
+      "pass": true,
+      "detail": {
+        "beforeA": 133.2,
+        "afterConfirm": 135.2,
+        "stockBefore": {
+          "RM-A001@原料仓": 133.2
+        },
+        "stockAfter": {
+          "RM-A001@原料仓": 135.2
+        }
+      }
+    },
+    {
+      "name": "confirm-idempotent",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "status": "CONFIRMED",
+          "replayed": true,
+          "billNumber": "GW-PURCHASE-77",
+          "depotHeadId": 343,
+          "loginName": "jsh",
+          "nativeBill": {
+            "number": "GW-PURCHASE-77",
+            "type": "入库",
+            "sub_type": "采购",
+            "status": "1",
+            "organ_id": 901
+          }
+        }
+      }
+    },
+    {
+      "name": "illegal-unit-rejected",
+      "pass": true,
+      "detail": {
+        "code": 400,
+        "data": {
+          "message": "单位不匹配: RM-A001 需要 L 实际 桶"
+        }
+      }
+    },
+    {
+      "name": "depot-permission-rejected",
+      "pass": true,
+      "detail": {
+        "code": 403,
+        "data": {
+          "message": "当前用户无权使用仓库: 仓库3"
+        }
+      }
+    },
+    {
+      "name": "cross-tenant-rejected",
+      "pass": true,
+      "detail": {
+        "code": 400,
+        "data": {
+          "message": "物料不存在或不属于当前租户: XT-99001"
+        }
+      }
+    },
+    {
+      "name": "short-draft-saved",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 78,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "organName": "苏州精密电子",
+            "idempotencyKey": "short-20261019190936",
+            "organId": 911,
+            "remark": "AIERP-003 insufficient stock",
+            "lines": [
+              {
+                "unitPrice": 28,
+                "taxRate": 0,
+                "depotName": "成品仓",
+                "unit": "L",
+                "allPrice": 27999972,
+                "operNumber": 999999,
+                "depotId": "15",
+                "name": "PCB清洗液",
+                "taxLastMoney": 27999972,
+                "materialId": 911,
+                "taxMoney": 0,
+                "barCode": "FG-101"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "short-confirm-rejected",
+      "pass": true,
+      "detail": {
+        "shortConfirm": {
+          "code": 400,
+          "data": {
+            "message": "库存不足，整单拒绝。仓库15 物料911 可用 153.000000 需要 999999"
+          }
+        },
+        "fgBefore": 153,
+        "fgAfter": 153,
+        "shortBills": [
+          "0"
+        ]
+      }
+    },
+    {
+      "name": "mix-draft",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 79,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "idempotencyKey": "mix-20261019190936",
+            "remark": "AIERP-003 mix fictitious",
+            "finished": {
+              "unitPrice": 28,
+              "taxRate": 0,
+              "depotName": "成品仓",
+              "unit": "L",
+              "allPrice": 28,
+              "operNumber": 1,
+              "depotId": "15",
+              "name": "PCB清洗液",
+              "taxLastMoney": 28,
+              "materialId": 911,
+              "taxMoney": 0,
+              "barCode": "FG-101"
+            },
+            "lines": [
+              {
+                "unitPrice": 20,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 12,
+                "operNumber": 0.6,
+                "depotId": "14",
+                "name": "表面活性剂",
+                "taxLastMoney": 12,
+                "materialId": 901,
+                "taxMoney": 0,
+                "barCode": "RM-A001"
+              },
+              {
+                "unitPrice": 35,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 3.5,
+                "operNumber": 0.1,
+                "depotId": "14",
+                "name": "络合剂",
+                "taxLastMoney": 3.5,
+                "materialId": 902,
+                "taxMoney": 0,
+                "barCode": "RM-B002"
+              },
+              {
+                "unitPrice": 1,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 0.3,
+                "operNumber": 0.3,
+                "depotId": "14",
+                "name": "纯水",
+                "taxLastMoney": 0.3,
+                "materialId": 903,
+                "taxMoney": 0,
+                "barCode": "RM-C003"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "mix-posted",
+      "pass": true,
+      "detail": {
+        "mixConfirm": {
+          "code": 200,
+          "data": {
+            "status": "CONFIRMED",
+            "replayed": false,
+            "billNumber": "GW-MIX-79",
+            "depotHeadId": 344,
+            "loginName": "jsh",
+            "nativeBill": {
+              "number": "GW-MIX-79",
+              "type": "其它",
+              "sub_type": "组装单",
+              "status": "1",
+              "organ_id": null
+            },
+            "stockLocks": [
+              "aierp:63:14:901",
+              "aierp:63:14:902",
+              "aierp:63:14:903",
+              "aierp:63:15:911"
+            ],
+            "stockBefore": {
+              "FG-101@成品仓": 153,
+              "RM-A001@原料仓": 135.2,
+              "RM-B002@原料仓": 11.2,
+              "RM-C003@原料仓": 37.6
+            },
+            "stockAfter": {
+              "FG-101@成品仓": 154,
+              "RM-A001@原料仓": 134.6,
+              "RM-B002@原料仓": 11.1,
+              "RM-C003@原料仓": 37.3
+            }
+          }
+        },
+        "aBeforeMix": 135.2,
+        "aAfterMix": 134.6,
+        "fgBeforeMix": 153,
+        "fgAfterMix": 154
+      }
+    },
+    {
+      "name": "partial-draft",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 80,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "idempotencyKey": "partial-20261019190936",
+            "remark": "AIERP-003 partial mix must fail wholly",
+            "finished": {
+              "unitPrice": 28,
+              "taxRate": 0,
+              "depotName": "成品仓",
+              "unit": "L",
+              "allPrice": 28,
+              "operNumber": 1,
+              "depotId": "15",
+              "name": "PCB清洗液",
+              "taxLastMoney": 28,
+              "materialId": 911,
+              "taxMoney": 0,
+              "barCode": "FG-101"
+            },
+            "lines": [
+              {
+                "unitPrice": 20,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 2,
+                "operNumber": 0.1,
+                "depotId": "14",
+                "name": "表面活性剂",
+                "taxLastMoney": 2,
+                "materialId": 901,
+                "taxMoney": 0,
+                "barCode": "RM-A001"
+              },
+              {
+                "unitPrice": 35,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 34999965,
+                "operNumber": 999999,
+                "depotId": "14",
+                "name": "络合剂",
+                "taxLastMoney": 34999965,
+                "materialId": 902,
+                "taxMoney": 0,
+                "barCode": "RM-B002"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "partial-mix-rejected",
+      "pass": true,
+      "detail": {
+        "partialConfirm": {
+          "code": 400,
+          "data": {
+            "message": "库存不足，整单拒绝。仓库14 物料902 可用 11.100000 需要 999999"
+          }
+        },
+        "fgBeforePartial": 154,
+        "fgAfterPartial": 154,
+        "partialBills": [
+          "0"
+        ]
+      }
+    },
+    {
+      "name": "service-draft",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 81,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "organName": "苏州精密电子",
+            "idempotencyKey": "svc-20261019190936",
+            "organId": 911,
+            "remark": "AIERP-003 service consume",
+            "lines": [
+              {
+                "unitPrice": 28,
+                "taxRate": 0,
+                "depotName": "成品仓",
+                "unit": "L",
+                "allPrice": 28,
+                "operNumber": 1,
+                "depotId": "15",
+                "name": "PCB清洗液",
+                "taxLastMoney": 28,
+                "materialId": 911,
+                "taxMoney": 0,
+                "barCode": "FG-101"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "service-is-other-out",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "status": "CONFIRMED",
+          "replayed": false,
+          "billNumber": "GW-SERVICE-81",
+          "depotHeadId": 345,
+          "loginName": "jsh",
+          "nativeBill": {
+            "number": "GW-SERVICE-81",
+            "type": "出库",
+            "sub_type": "其它",
+            "status": "1",
+            "organ_id": 911
+          },
+          "stockLocks": [
+            "aierp:63:15:911"
+          ],
+          "stockBefore": {
+            "FG-101@成品仓": 154
+          },
+          "stockAfter": {
+            "FG-101@成品仓": 153
+          }
+        }
+      }
+    },
+    {
+      "name": "reader-can-query",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "barCode": "RM-A001",
+          "materialName": "表面活性剂",
+          "depotId": 14,
+          "depotName": "原料仓",
+          "unit": "L",
+          "currentStock": 134.6,
+          "tenantId": 63,
+          "loginName": "aierp_stock"
+        }
+      }
+    },
+    {
+      "name": "reader-cannot-purchase",
+      "pass": true,
+      "detail": {
+        "code": 403,
+        "data": {
+          "message": "当前角色无权PURCHASE，功能 33 按钮 1"
+        }
+      }
+    },
+    {
+      "name": "buyer-can-query-and-draft",
+      "pass": true,
+      "detail": {
+        "buyerStock": {
+          "code": 200,
+          "data": {
+            "barCode": "RM-A001",
+            "materialName": "表面活性剂",
+            "depotId": 14,
+            "depotName": "原料仓",
+            "unit": "L",
+            "currentStock": 134.6,
+            "tenantId": 63,
+            "loginName": "aierp_buyer"
+          }
+        },
+        "buyerDraft": {
+          "code": 200,
+          "data": {
+            "draftId": 82,
+            "status": "DRAFT",
+            "replayed": false,
+            "billNumber": null,
+            "payload": {
+              "organName": "华东化工",
+              "accountId": 17,
+              "idempotencyKey": "buyer-20261019190936",
+              "organId": 901,
+              "remark": "AIERP-003 buyer no audit",
+              "lines": [
+                {
+                  "unitPrice": 20,
+                  "taxRate": 0,
+                  "depotName": "原料仓",
+                  "unit": "L",
+                  "allPrice": 20,
+                  "operNumber": 1,
+                  "depotId": "14",
+                  "name": "表面活性剂",
+                  "taxLastMoney": 20,
+                  "materialId": 901,
+                  "taxMoney": 0,
+                  "barCode": "RM-A001"
+                }
+              ]
+            },
+            "stockUnchanged": true,
+            "posted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "buyer-cannot-other-depot",
+      "pass": true,
+      "detail": {
+        "code": 403,
+        "data": {
+          "message": "当前用户无权使用仓库: 成品仓"
+        }
+      }
+    },
+    {
+      "name": "buyer-cannot-audit",
+      "pass": true,
+      "detail": {
+        "buyerConfirm": {
+          "code": 403,
+          "data": {
+            "message": "当前角色无权PURCHASE，功能 33 按钮 7"
+          }
+        },
+        "buyerBills": [
+          "0"
+        ]
+      }
+    },
+    {
+      "name": "own-draft",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 83,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "organName": "苏州精密电子",
+            "idempotencyKey": "own-20261019190936",
+            "organId": 911,
+            "remark": "AIERP-003 own tenant bill",
+            "lines": [
+              {
+                "unitPrice": 28,
+                "taxRate": 0,
+                "depotName": "成品仓",
+                "unit": "L",
+                "allPrice": 28,
+                "operNumber": 1,
+                "depotId": "15",
+                "name": "PCB清洗液",
+                "taxLastMoney": 28,
+                "materialId": 911,
+                "taxMoney": 0,
+                "barCode": "FG-101"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "cross-tenant-bill-not-audited",
+      "pass": true,
+      "detail": {
+        "confirmed": {
+          "code": 200,
+          "data": {
+            "status": "CONFIRMED",
+            "replayed": false,
+            "billNumber": "GW-SERVICE-83",
+            "depotHeadId": 347,
+            "loginName": "jsh",
+            "nativeBill": {
+              "number": "GW-SERVICE-83",
+              "type": "出库",
+              "sub_type": "其它",
+              "status": "1",
+              "organ_id": 911
+            },
+            "stockLocks": [
+              "aierp:63:15:911"
+            ],
+            "stockBefore": {
+              "FG-101@成品仓": 153
+            },
+            "stockAfter": {
+              "FG-101@成品仓": 152
+            }
+          }
+        },
+        "decoy": [
+          "0|999"
+        ],
+        "own": [
+          "1|63"
+        ],
+        "before": 153,
+        "after": 152
+      }
+    },
+    {
+      "name": "concurrent-qty-fits-one",
+      "pass": true,
+      "detail": {
+        "before": 11.1,
+        "each": 6
+      }
+    },
+    {
+      "name": "concurrent-draft-race-a-20261019190936",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 84,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "organName": "苏州精密电子",
+            "idempotencyKey": "race-a-20261019190936",
+            "organId": 911,
+            "remark": "AIERP-003 race race-a-20261019190936",
+            "lines": [
+              {
+                "unitPrice": 35,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 210,
+                "operNumber": 6,
+                "depotId": "14",
+                "name": "络合剂",
+                "taxLastMoney": 210,
+                "materialId": 902,
+                "taxMoney": 0,
+                "barCode": "RM-B002"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "concurrent-draft-race-b-20261019190936",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 85,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "organName": "苏州精密电子",
+            "idempotencyKey": "race-b-20261019190936",
+            "organId": 911,
+            "remark": "AIERP-003 race race-b-20261019190936",
+            "lines": [
+              {
+                "unitPrice": 35,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 210,
+                "operNumber": 6,
+                "depotId": "14",
+                "name": "络合剂",
+                "taxLastMoney": 210,
+                "materialId": 902,
+                "taxMoney": 0,
+                "barCode": "RM-B002"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "concurrent-one-wins",
+      "pass": true,
+      "detail": {
+        "codes": [
+          200,
+          400
+        ],
+        "before": 11.1,
+        "after": 5.1,
+        "each": 6,
+        "posted": [
+          "1"
+        ],
+        "left": {
+          "code": 200,
+          "data": {
+            "status": "CONFIRMED",
+            "replayed": false,
+            "billNumber": "GW-SERVICE-84",
+            "depotHeadId": 348,
+            "loginName": "jsh",
+            "nativeBill": {
+              "number": "GW-SERVICE-84",
+              "type": "出库",
+              "sub_type": "其它",
+              "status": "1",
+              "organ_id": 911
+            },
+            "stockLocks": [
+              "aierp:63:14:902"
+            ],
+            "stockBefore": {
+              "RM-B002@原料仓": 11.1
+            },
+            "stockAfter": {
+              "RM-B002@原料仓": 5.1
+            }
+          }
+        },
+        "right": {
+          "code": 400,
+          "data": {
+            "message": "库存不足，整单拒绝。仓库14 物料902 可用 5.100000 需要 6"
+          }
+        }
+      }
+    },
+    {
+      "name": "lock-probe-draft",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "draftId": 86,
+          "status": "DRAFT",
+          "replayed": false,
+          "billNumber": null,
+          "payload": {
+            "idempotencyKey": "lock-probe-20261019190936",
+            "remark": "AIERP-003 lock-probe",
+            "finished": {
+              "unitPrice": 28,
+              "taxRate": 0,
+              "depotName": "成品仓",
+              "unit": "L",
+              "allPrice": 28,
+              "operNumber": 1,
+              "depotId": "15",
+              "name": "PCB清洗液",
+              "taxLastMoney": 28,
+              "materialId": 911,
+              "taxMoney": 0,
+              "barCode": "FG-101"
+            },
+            "lines": [
+              {
+                "unitPrice": 20,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 2,
+                "operNumber": 0.1,
+                "depotId": "14",
+                "name": "表面活性剂",
+                "taxLastMoney": 2,
+                "materialId": 901,
+                "taxMoney": 0,
+                "barCode": "RM-A001"
+              },
+              {
+                "unitPrice": 1,
+                "taxRate": 0,
+                "depotName": "原料仓",
+                "unit": "L",
+                "allPrice": 0.1,
+                "operNumber": 0.1,
+                "depotId": "14",
+                "name": "纯水",
+                "taxLastMoney": 0.1,
+                "materialId": 903,
+                "taxMoney": 0,
+                "barCode": "RM-C003"
+              }
+            ]
+          },
+          "stockUnchanged": true,
+          "posted": false
+        }
+      }
+    },
+    {
+      "name": "lock-probe-rolls-back",
+      "pass": true,
+      "detail": {
+        "probed": {
+          "code": 409,
+          "data": {
+            "message": "库存锁探针：第一把行锁后主动失败"
+          }
+        },
+        "followed": {
+          "code": 200,
+          "data": {
+            "status": "CONFIRMED",
+            "replayed": false,
+            "billNumber": "GW-SERVICE-87",
+            "depotHeadId": 349,
+            "loginName": "jsh",
+            "nativeBill": {
+              "number": "GW-SERVICE-87",
+              "type": "出库",
+              "sub_type": "其它",
+              "status": "1",
+              "organ_id": 911
+            },
+            "stockLocks": [
+              "aierp:63:14:901"
+            ],
+            "stockBefore": {
+              "RM-A001@原料仓": 134.6
+            },
+            "stockAfter": {
+              "RM-A001@原料仓": 134.5
+            }
+          }
+        },
+        "before": 134.6,
+        "after": 134.5,
+        "elapsed": 178,
+        "probeBills": [
+          "0"
+        ]
+      }
+    },
+    {
+      "name": "summary-real",
+      "pass": true,
+      "detail": {
+        "loginName": "jsh",
+        "userId": 63,
+        "tenantId": 63,
+        "draftCount": 25,
+        "confirmedCount": 54,
+        "recentBills": [
+          {
+            "biz_type": "SERVICE",
+            "bill_number": "GW-SERVICE-87",
+            "confirm_time": "2026-10-20T03:09:41"
+          },
+          {
+            "biz_type": "SERVICE",
+            "bill_number": "GW-SERVICE-84",
+            "confirm_time": "2026-10-20T03:09:41"
+          },
+          {
+            "biz_type": "SERVICE",
+            "bill_number": "GW-SERVICE-83",
+            "confirm_time": "2026-10-20T03:09:40"
+          },
+          {
+            "biz_type": "SERVICE",
+            "bill_number": "GW-SERVICE-81",
+            "confirm_time": "2026-10-20T03:09:39"
+          },
+          {
+            "biz_type": "MIX",
+            "bill_number": "GW-MIX-79",
+            "confirm_time": "2026-10-20T03:09:39"
+          },
+          {
+            "biz_type": "PURCHASE",
+            "bill_number": "GW-PURCHASE-77",
+            "confirm_time": "2026-10-20T03:09:37"
+          },
+          {
+            "biz_type": "SERVICE",
+            "bill_number": "GW-SERVICE-75",
+            "confirm_time": "2026-10-20T02:50:24"
+          },
+          {
+            "biz_type": "PURCHASE",
+            "bill_number": "GW-PURCHASE-74",
+            "confirm_time": "2026-10-20T02:50:23"
+          }
+        ],
+        "stocks": [
+          {
+            "barCode": "RM-A001",
+            "depotName": "原料仓",
+            "currentStock": 134.5
+          },
+          {
+            "barCode": "RM-B002",
+            "depotName": "原料仓",
+            "currentStock": 5.1
+          },
+          {
+            "barCode": "RM-C003",
+            "depotName": "原料仓",
+            "currentStock": 37.3
+          },
+          {
+            "barCode": "FG-101",
+            "depotName": "原料仓",
+            "currentStock": 0
+          },
+          {
+            "barCode": "FG-102",
+            "depotName": "原料仓",
+            "currentStock": 0
+          },
+          {
+            "barCode": "RM-A001",
+            "depotName": "成品仓",
+            "currentStock": 0
+          },
+          {
+            "barCode": "RM-B002",
+            "depotName": "成品仓",
+            "currentStock": 0
+          },
+          {
+            "barCode": "RM-C003",
+            "depotName": "成品仓",
+            "currentStock": 0
+          },
+          {
+            "barCode": "FG-101",
+            "depotName": "成品仓",
+            "currentStock": 152
+          },
+          {
+            "barCode": "FG-102",
+            "depotName": "成品仓",
+            "currentStock": 0
+          }
+        ],
+        "nature": "REAL_ERP"
+      }
+    }
+  ],
+  "ok": true,
+  "finishedAt": "2026-10-19T19:09:41.549Z"
+}
