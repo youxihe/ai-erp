@@ -1,6 +1,6 @@
 # AIERP-003 · jshERP 真实业务网关
 
-- **状态**：RELEASED / next_order #1（AIERP-001 已合并）  **Owner**：Cursor-ERP
+- **状态**：CLAIMED / next_order #1  **Owner**：Cursor-ERP  **分支**：`feat/aierp-003-erp-gateway`
 - 不改原生进销存核心优先；新增符合身份/租户/仓库限制的受控业务 Service 或 API。
 - 模块能力：`stock.query`、`purchase.createDraft`、`mix.createDraft`、`service.createDraft`、`draft.confirm`、`report.summary`。
 - 源码参考：`PurchaseInModal.vue` 映射 `入库/采购`；`AssembleModal.vue` 映射 `其它/组装单` 且 `mType`；`OtherOutModal.vue` 映射 `出库/其它`。
@@ -15,3 +15,8 @@
 - 禁止重用 jsh 默认用户身份代表所有企微用户；网关必须按当前 jsh ERP 会话权限处理。
 - 测试至少包含：草稿不扣库存、确认后库存改变、库存不足拒绝、重复 confirm 幂等、跨仓库或权限不足的拒绝。测试失败不得默默模拟 PASS。
 - 单一实现 PR：`feat/aierp-003-erp-gateway`，PR 中标记 `READY_FOR_REVIEW`，由 ChatGPT 审核合并后才允许开始 AIERP-002。
+
+## 本地验收（2026-10-20）
+- `node deploy/scripts/gateway-flow.mjs` 全部通过。证据：`docs/poc/evidence/gateway-20261019181310.json`。
+- 正式单据：采购 `GW-PURCHASE-1792433591310`（RM-A001 原料仓 120→122）、组装 `GW-MIX-1792433592368`（A 122→121.4，FG-101 160→161）、服务耗料 `GW-SERVICE-1792433593029`（出库/其它，客户 911，FG-101 161→160）。
+- 草稿不落正式单、重复确认幂等、单位/跨租户/仓库权限/库存不足/组装部分失败均拒绝且库存不变。验证码标志测试后仍为 1。

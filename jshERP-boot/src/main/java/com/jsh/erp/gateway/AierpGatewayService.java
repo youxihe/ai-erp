@@ -1,0 +1,564 @@
+package com.jsh.erp.gateway;
+
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import com.jsh.erp.datasource.entities.Depot;
+import com.jsh.erp.datasource.entities.Material;
+import com.jsh.erp.datasource.entities.MaterialExtend;
+import com.jsh.erp.datasource.entities.User;
+import com.jsh.erp.exception.BusinessRunTimeException;
+import com.jsh.erp.service.DepotHeadService;
+import com.jsh.erp.service.DepotItemService;
+import com.jsh.erp.service.DepotService;
+import com.jsh.erp.service.MaterialExtendService;
+import com.jsh.erp.service.MaterialService;
+import com.jsh.erp.service.UserService;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@Service
+public class AierpGatewayService {
+
+    private static final Pattern DEPOT_ID = Pattern.compile("\\[(\\d+)\\]");
+    private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    @Resource
+    private JdbcTemplate jdbcTemplate;
+    @Resource
+    private UserService userService;
+    @Resource
+    private DepotService depotService;
+    @Resource
+    private MaterialService materialService;
+    @Resource
+    private MaterialExtendService materialExtendService;
+    @Resource
+    private DepotItemService depotItemService;
+    @Resource
+    private DepotHeadService depotHeadService;
+
+    @PostConstruct
+    public void ensureDraftTable() {
+        jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS aierp_gateway_draft (" +
+                        "id BIGINT NOT NULL AUTO_INCREMENT," +
+                        "idempotency_key VARCHAR(80) NOT NULL," +
+                        "tenant_id BIGINT NOT NULL," +
+                        "user_id BIGINT NOT NULL," +
+                        "biz_type VARCHAR(32) NOT NULL," +
+                        "status VARCHAR(32) NOT NULL," +
+                        "payload_json MEDIUMTEXT NOT NULL," +
+                        "bill_number VARCHAR(64) DEFAULT NULL," +
+                        "depot_head_id BIGINT DEFAULT NULL," +
+                        "create_time DATETIME NOT NULL," +
+                        "confirm_time DATETIME DEFAULT NULL," +
+                        "PRIMARY KEY (id)," +
+                        "UNIQUE KEY uk_aierp_draft_user_key (tenant_id, user_id, idempotency_key)" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    public Map<String, Object> stockQuery(JSONObject body, HttpServletRequest request) throws Exception {
+        User user = currentUser();
+        String barCode = required(body, "barCode");
+        String depotName = required(body, "depotName");
+        ResolvedLine line = resolveLine(user, barCode, depotName, BigDecimal.ONE, unitOf(barCode), false);
+        Map<String, Object> data = new LinkedHashMap<String, Object>();
+        data.put("barCode", line.barCode);
+        data.put("materialName", line.materialName);
+        data.put("depotId", line.depotId);
+        data.put("depotName", line.depotName);
+        data.put("unit", line.unit);
+        data.put("currentStock", line.stock);
+        data.put("tenantId", user.getTenantId());
+        data.put("loginName", user.getLoginName());
+        return data;
+    }
+
+    public Map<String, Object> createDraft(String bizType, JSONObject body, HttpServletRequest request) throws Exception {
+        User user = currentUser();
+        String key = required(body, "idempotencyKey");
+        JSONObject normalized = normalize(bizType, body, user);
+        String payload = normalized.toJSONString();
+        List<Map<String, Object>> existing = jdbcTemplate.queryForList(
+                "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                user.getTenantId(), user.getId(), key);
+        if (!existing.isEmpty()) {
+            Map<String, Object> row = existing.get(0);
+            if (!payload.equals(String.valueOf(row.get("payload_json")))) {
+                throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
+            }
+            return draftView(row, true);
+        }
+        jdbcTemplate.update(
+                "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, payload_json, create_time) VALUES (?,?,?,?, 'DRAFT', ?, NOW())",
+                key, user.getTenantId(), user.getId(), bizType, payload);
+        List<Map<String, Object>> created = jdbcTemplate.queryForList(
+                "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                user.getTenantId(), user.getId(), key);
+        Map<String, Object> view = draftView(created.get(0), false);
+        view.put("stockUnchanged", true);
+        view.put("posted", false);
+        return view;
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public Map<String, Object> confirm(JSONObject body, HttpServletRequest request) throws Exception {
+        User user = currentUser();
+        String key = required(body, "idempotencyKey");
+        List<Map<String, Object>> locked = jdbcTemplate.queryForList(
+                "SELECT id, status, biz_type, payload_json, bill_number, depot_head_id FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=? FOR UPDATE",
+                user.getTenantId(), user.getId(), key);
+        if (locked.isEmpty()) {
+            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前用户");
+        }
+        Map<String, Object> row = locked.get(0);
+        if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
+            return confirmView(row, user, true);
+        }
+        JSONObject payload = JSON.parseObject(String.valueOf(row.get("payload_json")));
+        String bizType = String.valueOf(row.get("biz_type"));
+        reassertAccess(user, payload, bizType);
+        assertOutboundStock(bizType, payload);
+        JSONObject repost = payload;
+        String number = "GW-" + bizType + "-" + System.currentTimeMillis();
+        Map<String, BigDecimal> before = snapshot(repost, bizType);
+        postNativeBill(bizType, number, repost, request);
+        Long headId = jdbcTemplate.queryForObject(
+                "SELECT id FROM jsh_depot_head WHERE number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                Long.class, number, user.getTenantId());
+        jdbcTemplate.update(
+                "UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number=?, depot_head_id=?, confirm_time=NOW() WHERE id=?",
+                number, headId, ((Number) row.get("id")).longValue());
+        row.put("status", "CONFIRMED");
+        row.put("bill_number", number);
+        row.put("depot_head_id", headId);
+        Map<String, Object> view = confirmView(row, user, false);
+        view.put("stockBefore", before);
+        view.put("stockAfter", snapshot(repost, bizType));
+        return view;
+    }
+
+    public Map<String, Object> summary(HttpServletRequest request) throws Exception {
+        User user = currentUser();
+        Map<String, Object> data = new LinkedHashMap<String, Object>();
+        data.put("loginName", user.getLoginName());
+        data.put("userId", user.getId());
+        data.put("tenantId", user.getTenantId());
+        data.put("draftCount", countStatus(user, "DRAFT"));
+        data.put("confirmedCount", countStatus(user, "CONFIRMED"));
+        data.put("recentBills", jdbcTemplate.queryForList(
+                "SELECT biz_type, bill_number, confirm_time FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND status='CONFIRMED' ORDER BY id DESC LIMIT 8",
+                user.getTenantId(), user.getId()));
+        List<String> codes = jdbcTemplate.queryForList(
+                "SELECT bar_code FROM jsh_material_extend WHERE tenant_id=? AND IFNULL(delete_flag,'0')<>'1' AND bar_code IN ('RM-A001','RM-B002','RM-C003','FG-101','FG-102')",
+                String.class, user.getTenantId());
+        List<Map<String, Object>> stocks = new ArrayList<Map<String, Object>>();
+        for (Long depotId : allowedDepotIds(user)) {
+            Depot depot = depotService.getDepot(depotId);
+            if (depot == null || depot.getTenantId() == null || !depot.getTenantId().equals(user.getTenantId())) {
+                continue;
+            }
+            for (String code : codes) {
+                MaterialExtend ext = materialExtendService.getInfoByBarCode(code);
+                if (ext == null) {
+                    continue;
+                }
+                Material material = materialService.getMaterial(ext.getMaterialId());
+                if (material == null || material.getTenantId() == null || !material.getTenantId().equals(user.getTenantId())) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<String, Object>();
+                row.put("barCode", code);
+                row.put("depotName", depot.getName());
+                row.put("currentStock", depotItemService.getCurrentStockByParam(depotId, material.getId()));
+                stocks.add(row);
+            }
+        }
+        data.put("stocks", stocks);
+        data.put("nature", "REAL_ERP");
+        return data;
+    }
+
+    private void postNativeBill(String bizType, String number, JSONObject payload, HttpServletRequest request) throws Exception {
+        JSONObject info = new JSONObject();
+        info.put("operTime", LocalDateTime.now().format(TS));
+        info.put("number", number);
+        info.put("remark", payload.getString("remark"));
+        info.put("status", "0");
+        JSONArray rows = new JSONArray();
+        if ("PURCHASE".equals(bizType)) {
+            info.put("type", "入库");
+            info.put("subType", "采购");
+            info.put("organId", payload.getLong("organId"));
+            info.put("accountId", payload.getLong("accountId"));
+            BigDecimal total = sumAmount(payload.getJSONArray("lines"));
+            info.put("totalPrice", total.negate());
+            info.put("changeAmount", total.negate());
+            info.put("discount", 0);
+            info.put("discountMoney", 0);
+            info.put("discountLastMoney", total);
+            info.put("otherMoney", 0);
+            info.put("deposit", 0);
+            rows.addAll(payload.getJSONArray("lines"));
+        } else if ("MIX".equals(bizType)) {
+            info.put("type", "其它");
+            info.put("subType", "组装单");
+            info.put("totalPrice", 0);
+            JSONObject finished = payload.getJSONObject("finished");
+            finished.put("mType", "组合件");
+            rows.add(finished);
+            for (int i = 0; i < payload.getJSONArray("lines").size(); i++) {
+                JSONObject line = payload.getJSONArray("lines").getJSONObject(i);
+                line.put("mType", "普通子件");
+                rows.add(line);
+            }
+        } else if ("SERVICE".equals(bizType)) {
+            info.put("type", "出库");
+            info.put("subType", "其它");
+            info.put("organId", payload.getLong("organId"));
+            BigDecimal total = sumAmount(payload.getJSONArray("lines"));
+            info.put("totalPrice", total);
+            rows.addAll(payload.getJSONArray("lines"));
+        } else {
+            throw new BusinessRunTimeException(400, "未知业务类型");
+        }
+        depotHeadService.addDepotHeadAndDetail(info.toJSONString(), rows.toJSONString(), request);
+        Long headId = jdbcTemplate.queryForObject(
+                "SELECT id FROM jsh_depot_head WHERE number=? AND IFNULL(delete_flag,'0')<>'1' ORDER BY id DESC LIMIT 1",
+                Long.class, number);
+        depotHeadService.batchSetStatus("1", String.valueOf(headId));
+    }
+
+    private JSONObject normalize(String bizType, JSONObject body, User user) throws Exception {
+        JSONObject out = new JSONObject(true);
+        out.put("idempotencyKey", required(body, "idempotencyKey"));
+        out.put("remark", body.getString("remark") == null ? "" : body.getString("remark").trim());
+        if ("MIX".equals(bizType)) {
+            JSONObject finishedIn = body.getJSONObject("finished");
+            if (finishedIn == null) {
+                throw new BusinessRunTimeException(400, "组装单缺少成品行");
+            }
+            ResolvedLine finished = resolveLine(user, required(finishedIn, "barCode"), required(finishedIn, "depotName"),
+                    decimal(finishedIn, "qty"), required(finishedIn, "unit"), false);
+            JSONArray components = new JSONArray();
+            JSONArray rawLines = body.getJSONArray("lines");
+            if (rawLines == null || rawLines.isEmpty()) {
+                throw new BusinessRunTimeException(400, "组装单缺少原料行");
+            }
+            for (int i = 0; i < rawLines.size(); i++) {
+                JSONObject line = rawLines.getJSONObject(i);
+                components.add(toRow(resolveLine(user, required(line, "barCode"), required(line, "depotName"),
+                        decimal(line, "qty"), required(line, "unit"), true)));
+            }
+            out.put("finished", toRow(finished));
+            out.put("lines", components);
+            return out;
+        }
+        String organType = "PURCHASE".equals(bizType) ? "供应商" : "客户";
+        if (!"PURCHASE".equals(bizType) && !"SERVICE".equals(bizType)) {
+            throw new BusinessRunTimeException(400, "未知业务类型");
+        }
+        String organName = required(body, "organName");
+        Long organId = resolveOrgan(user, organName, organType);
+        out.put("organId", organId);
+        out.put("organName", organName);
+        if ("PURCHASE".equals(bizType)) {
+            out.put("accountId", defaultAccountId(user));
+        }
+        JSONArray rawLines = body.getJSONArray("lines");
+        if (rawLines == null || rawLines.isEmpty()) {
+            throw new BusinessRunTimeException(400, "缺少明细行");
+        }
+        JSONArray lines = new JSONArray();
+        for (int i = 0; i < rawLines.size(); i++) {
+            JSONObject line = rawLines.getJSONObject(i);
+            ResolvedLine resolved = resolveLine(user, required(line, "barCode"), required(line, "depotName"),
+                    decimal(line, "qty"), required(line, "unit"), "SERVICE".equals(bizType));
+            if (line.get("unitPrice") != null) {
+                resolved.unitPrice = decimal(line, "unitPrice");
+            }
+            lines.add(toRow(resolved));
+        }
+        out.put("lines", lines);
+        return out;
+    }
+
+    private void reassertAccess(User user, JSONObject payload, String bizType) throws Exception {
+        List<Long> allowed = allowedDepotIds(user);
+        if ("MIX".equals(bizType)) {
+            checkStoredLine(user, payload.getJSONObject("finished"), allowed);
+        }
+        JSONArray lines = payload.getJSONArray("lines");
+        if (lines == null) {
+            throw new BusinessRunTimeException(400, "草稿缺少明细");
+        }
+        for (int i = 0; i < lines.size(); i++) {
+            checkStoredLine(user, lines.getJSONObject(i), allowed);
+        }
+    }
+
+    private void checkStoredLine(User user, JSONObject line, List<Long> allowed) throws Exception {
+        if (line == null) {
+            throw new BusinessRunTimeException(400, "草稿行缺失");
+        }
+        Long depotId = line.getLong("depotId");
+        if (depotId == null || !allowed.contains(depotId)) {
+            throw new BusinessRunTimeException(403, "当前用户无权使用仓库: " + line.getString("depotName"));
+        }
+        Depot depot = depotService.getDepot(depotId);
+        if (depot == null || depot.getTenantId() == null || !depot.getTenantId().equals(user.getTenantId())) {
+            throw new BusinessRunTimeException(400, "仓库不存在或不属于当前租户: " + line.getString("depotName"));
+        }
+        Material material = materialService.getMaterial(line.getLong("materialId"));
+        if (material == null || material.getTenantId() == null || !material.getTenantId().equals(user.getTenantId())) {
+            throw new BusinessRunTimeException(400, "物料不存在或不属于当前租户: " + line.getString("barCode"));
+        }
+    }
+
+    private void assertOutboundStock(String bizType, JSONObject payload) {
+        if ("PURCHASE".equals(bizType)) {
+            return;
+        }
+        JSONArray lines = payload.getJSONArray("lines");
+        Map<String, BigDecimal> need = new LinkedHashMap<String, BigDecimal>();
+        Map<String, Long[]> identity = new LinkedHashMap<String, Long[]>();
+        for (int i = 0; i < lines.size(); i++) {
+            JSONObject line = lines.getJSONObject(i);
+            String key = line.getString("depotId") + ":" + line.getString("materialId");
+            BigDecimal qty = line.getBigDecimal("operNumber");
+            need.put(key, need.containsKey(key) ? need.get(key).add(qty) : qty);
+            identity.put(key, new Long[]{line.getLong("depotId"), line.getLong("materialId")});
+        }
+        for (Map.Entry<String, BigDecimal> entry : need.entrySet()) {
+            Long depotId = identity.get(entry.getKey())[0];
+            Long materialId = identity.get(entry.getKey())[1];
+            BigDecimal stock = depotItemService.getCurrentStockByParam(depotId, materialId);
+            if (stock.compareTo(entry.getValue()) < 0) {
+                throw new BusinessRunTimeException(400, "库存不足，整单拒绝。仓库" + depotId + " 物料" + materialId
+                        + " 可用 " + stock + " 需要 " + entry.getValue());
+            }
+        }
+    }
+
+    private ResolvedLine resolveLine(User user, String barCode, String depotName, BigDecimal qty, String unit, boolean outbound) throws Exception {
+        if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessRunTimeException(400, "数量必须为正数: " + barCode);
+        }
+        MaterialExtend ext = materialExtendService.getInfoByBarCode(barCode.trim());
+        if (ext == null || ext.getTenantId() == null || !ext.getTenantId().equals(user.getTenantId())) {
+            throw new BusinessRunTimeException(400, "物料不存在或不属于当前租户: " + barCode);
+        }
+        Material material = materialService.getMaterial(ext.getMaterialId());
+        if (material == null || material.getTenantId() == null || !material.getTenantId().equals(user.getTenantId())) {
+            throw new BusinessRunTimeException(400, "物料不存在或不属于当前租户: " + barCode);
+        }
+        String expected = ext.getCommodityUnit() != null ? ext.getCommodityUnit() : material.getUnit();
+        if (expected == null || !expected.trim().equalsIgnoreCase(unit.trim())) {
+            throw new BusinessRunTimeException(400, "单位不匹配: " + barCode + " 需要 " + expected + " 实际 " + unit);
+        }
+        Depot depot = findDepot(user, depotName.trim());
+        if (!allowedDepotIds(user).contains(depot.getId())) {
+            throw new BusinessRunTimeException(403, "当前用户无权使用仓库: " + depotName);
+        }
+        ResolvedLine line = new ResolvedLine();
+        line.barCode = ext.getBarCode();
+        line.materialId = material.getId();
+        line.materialName = material.getName();
+        line.depotId = depot.getId();
+        line.depotName = depot.getName();
+        line.unit = expected;
+        line.qty = qty;
+        line.unitPrice = ext.getPurchaseDecimal() == null ? BigDecimal.ZERO : ext.getPurchaseDecimal();
+        line.stock = depotItemService.getCurrentStockByParam(depot.getId(), material.getId());
+        if (outbound && line.stock.compareTo(qty) < 0) {
+            line.stockShort = true;
+        }
+        return line;
+    }
+
+    private Depot findDepot(User user, String depotName) throws Exception {
+        Long id = depotService.getIdByName(depotName);
+        if (id == null || id == 0L) {
+            throw new BusinessRunTimeException(400, "仓库不存在: " + depotName);
+        }
+        Depot depot = depotService.getDepot(id);
+        if (depot == null || depot.getTenantId() == null || !depot.getTenantId().equals(user.getTenantId())) {
+            throw new BusinessRunTimeException(400, "仓库不存在或不属于当前租户: " + depotName);
+        }
+        return depot;
+    }
+
+    private Long resolveOrgan(User user, String name, String type) {
+        List<Long> ids = jdbcTemplate.query(
+                "SELECT id FROM jsh_supplier WHERE supplier=? AND type=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getLong(1), name, type, user.getTenantId());
+        if (ids.isEmpty()) {
+            throw new BusinessRunTimeException(400, "未找到当前租户下的" + type + ": " + name);
+        }
+        return ids.get(0);
+    }
+
+    private Long defaultAccountId(User user) {
+        List<Long> ids = jdbcTemplate.query(
+                "SELECT id FROM jsh_account WHERE tenant_id=? AND IFNULL(delete_flag,'0')<>'1' ORDER BY is_default DESC, id ASC LIMIT 1",
+                (rs, i) -> rs.getLong(1), user.getTenantId());
+        if (ids.isEmpty()) {
+            throw new BusinessRunTimeException(400, "当前租户没有结算账户，无法采购入库");
+        }
+        return ids.get(0);
+    }
+
+    private List<Long> allowedDepotIds(User user) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT `value` FROM jsh_user_business WHERE type='UserDepot' AND key_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getString(1), String.valueOf(user.getId()));
+        List<Long> ids = new ArrayList<Long>();
+        if (values.isEmpty() || values.get(0) == null) {
+            return ids;
+        }
+        Matcher matcher = DEPOT_ID.matcher(values.get(0));
+        while (matcher.find()) {
+            ids.add(Long.valueOf(matcher.group(1)));
+        }
+        return ids;
+    }
+
+    private JSONObject toRow(ResolvedLine line) {
+        JSONObject row = new JSONObject(true);
+        row.put("depotId", String.valueOf(line.depotId));
+        row.put("depotName", line.depotName);
+        row.put("barCode", line.barCode);
+        row.put("materialId", line.materialId);
+        row.put("name", line.materialName);
+        row.put("unit", line.unit);
+        row.put("operNumber", line.qty);
+        row.put("unitPrice", line.unitPrice);
+        row.put("allPrice", line.unitPrice.multiply(line.qty).setScale(2, RoundingMode.HALF_UP));
+        row.put("taxRate", 0);
+        row.put("taxMoney", 0);
+        row.put("taxLastMoney", row.getBigDecimal("allPrice"));
+        return row;
+    }
+
+    private Map<String, BigDecimal> snapshot(JSONObject payload, String bizType) {
+        Map<String, BigDecimal> map = new LinkedHashMap<String, BigDecimal>();
+        if ("MIX".equals(bizType)) {
+            putStock(map, payload.getJSONObject("finished"));
+        }
+        JSONArray lines = payload.getJSONArray("lines");
+        if (lines != null) {
+            for (int i = 0; i < lines.size(); i++) {
+                putStock(map, lines.getJSONObject(i));
+            }
+        }
+        return map;
+    }
+
+    private void putStock(Map<String, BigDecimal> map, JSONObject line) {
+        String key = line.getString("barCode") + "@" + line.getString("depotName");
+        map.put(key, depotItemService.getCurrentStockByParam(line.getLong("depotId"), line.getLong("materialId")));
+    }
+
+    private BigDecimal sumAmount(JSONArray lines) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (int i = 0; i < lines.size(); i++) {
+            total = total.add(lines.getJSONObject(i).getBigDecimal("allPrice"));
+        }
+        return total;
+    }
+
+    private int countStatus(User user, String status) {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND status=?",
+                Integer.class, user.getTenantId(), user.getId(), status);
+        return n == null ? 0 : n;
+    }
+
+    private Map<String, Object> draftView(Map<String, Object> row, boolean replayed) {
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("draftId", ((Number) row.get("id")).longValue());
+        view.put("status", row.get("status"));
+        view.put("replayed", replayed);
+        view.put("billNumber", row.get("bill_number"));
+        view.put("payload", JSON.parseObject(String.valueOf(row.get("payload_json"))));
+        return view;
+    }
+
+    private Map<String, Object> confirmView(Map<String, Object> row, User user, boolean replayed) throws Exception {
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("status", row.get("status"));
+        view.put("replayed", replayed);
+        view.put("billNumber", row.get("bill_number"));
+        view.put("depotHeadId", row.get("depot_head_id"));
+        view.put("loginName", user.getLoginName());
+        if (row.get("bill_number") != null) {
+            List<Map<String, Object>> heads = jdbcTemplate.queryForList(
+                    "SELECT number, type, sub_type, status, organ_id FROM jsh_depot_head WHERE number=? AND tenant_id=?",
+                    row.get("bill_number"), user.getTenantId());
+            view.put("nativeBill", heads.isEmpty() ? null : heads.get(0));
+        }
+        return view;
+    }
+
+    private User currentUser() throws Exception {
+        User user = userService.getCurrentUser();
+        if (user == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "当前会话没有租户身份");
+        }
+        return user;
+    }
+
+    private String required(JSONObject body, String field) {
+        if (body == null || body.getString(field) == null || body.getString(field).trim().isEmpty()) {
+            throw new BusinessRunTimeException(400, "缺少字段 " + field);
+        }
+        return body.getString(field).trim();
+    }
+
+    private BigDecimal decimal(JSONObject body, String field) {
+        try {
+            return new BigDecimal(required(body, field));
+        } catch (BusinessRunTimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessRunTimeException(400, "字段不是数字: " + field);
+        }
+    }
+
+    private String unitOf(String barCode) throws Exception {
+        MaterialExtend ext = materialExtendService.getInfoByBarCode(barCode);
+        if (ext == null || ext.getCommodityUnit() == null) {
+            throw new BusinessRunTimeException(400, "物料不存在: " + barCode);
+        }
+        return ext.getCommodityUnit();
+    }
+
+    private static class ResolvedLine {
+        private String barCode;
+        private Long materialId;
+        private String materialName;
+        private Long depotId;
+        private String depotName;
+        private String unit;
+        private BigDecimal qty;
+        private BigDecimal unitPrice;
+        private BigDecimal stock;
+        private boolean stockShort;
+    }
+}
