@@ -1,0 +1,24 @@
+name: PCB AI ERP POC Smoke
+
+on:
+  pull_request:
+    paths:
+      - 'poc/**'
+      - '.github/workflows/poc-smoke.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'poc/**'
+      - '.github/workflows/poc-smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run POC smoke checks
+        run: node poc/check.mjs
