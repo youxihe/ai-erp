@@ -1,7 +1,9 @@
 # AIERP-001 · jshERP 本地部署及原生业务基线
 
-- **状态**：RELEASED（唯一可认领）  **Owner**：Cursor-ERP
-- **目标**：本地运行原生 jshERP，提供真实 MySQL/Redis 数据和 PC 原生页面，不以 poc/index.html 的 localStorage 模拟代替。
+- **状态**：READY_FOR_REVIEW  
+- **Owner**：Cursor-ERP  
+- **分支**：`feat/aierp-001-local-bootstrap`  
+- **认领时间**：2026-10-20
 
 ## 任务
 1. 完成 JDK/Maven/Node/MySQL/Redis 版本与启动脚本核验；没有资源先列清需求给用户。
@@ -15,3 +17,8 @@
 - MySQL/Redis 配置只使用本仓库独立命名空间，绝不复用 HR 服务。
 - 若外部资源未就绪，标记 `BLOCKED_EXTERNAL_RESOURCE` 并清楚向用户请求，不伪装 PASS。
 - PR：`[AIERP-001] local jshERP bootstrap + baseline`，由 ChatGPT Review 后合并。
+
+## 完成摘要
+- Docker 独立栈：`aierp-mysql:13306` / `aierp-redis:16379` / `aierp-boot:9999`；前端 `localhost:3000`。
+- 登录、采购入库、组装单、其它出库、审核前后库存均已 API 实测通过。
+- 证据：`docs/poc/evidence/baseline-20261019172847.json`；说明：`docs/poc/01-local-bootstrap.md`。

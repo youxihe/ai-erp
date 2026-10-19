@@ -1,0 +1,22 @@
+# Local / Docker-compose profile for AI-ERP POC.
+# Activate with: --spring.profiles.active=local
+# Credentials come from environment variables; defaults match deploy/.env.example.
+
+server:
+  port: ${AIERP_BOOT_PORT:9999}
+  tomcat:
+    basedir: ${AIERP_TOMCAT_BASEDIR:./data/tomcat}
+
+spring:
+  datasource:
+    url: jdbc:mysql://${AIERP_MYSQL_HOST:127.0.0.1}:${AIERP_MYSQL_PORT:13306}/${AIERP_MYSQL_DATABASE:jsh_erp}?useUnicode=true&characterEncoding=utf8&useCursorFetch=true&defaultFetchSize=500&allowMultiQueries=true&rewriteBatchedStatements=true&useSSL=false&serverTimezone=Asia/Shanghai
+    username: ${AIERP_MYSQL_USER:root}
+    password: ${AIERP_MYSQL_PASSWORD:aierp_root_change_me}
+  redis:
+    host: ${AIERP_REDIS_HOST:127.0.0.1}
+    port: ${AIERP_REDIS_PORT:16379}
+    password: ${AIERP_REDIS_PASSWORD:aierp_redis_change_me}
+
+file:
+  path: ${AIERP_UPLOAD_PATH:./data/upload}
+  exportTmp: ${AIERP_EXPORT_PATH:./data/export}

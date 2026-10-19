@@ -8,3 +8,18 @@
 
 ## front
 **/*.lock
+**/node_modules
+
+## AI-ERP local runtime (never commit secrets / tool caches)
+.env
+deploy/.env
+.tools/
+jshERP-boot/data/
+**/data/tomcat/
+**/data/upload/
+**/data/export/
+jshERP-web/node_modules/
+jshERP-web/dist/
+*.log
+.DS_Store
+Thumbs.db
