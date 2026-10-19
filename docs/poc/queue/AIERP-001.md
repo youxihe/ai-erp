@@ -1,6 +1,6 @@
 # AIERP-001 · jshERP 本地部署及原生业务基线
 
-- **状态**：READY_FOR_REVIEW  
+- **状态**：DONE / MERGED PR #3 (`90896d5`)  
 - **Owner**：Cursor-ERP  
 - **分支**：`feat/aierp-001-local-bootstrap`  
 - **认领时间**：2026-10-20
@@ -22,3 +22,6 @@
 - Docker 独立栈：`aierp-mysql:13306` / `aierp-redis:16379` / `aierp-boot:9999`；前端 `localhost:3000`。
 - 登录、采购入库、组装单、其它出库、审核前后库存均已 API 实测通过。
 - 证据：`docs/poc/evidence/baseline-20261019172847.json`；说明：`docs/poc/01-local-bootstrap.md`。
+
+## ChatGPT 最终验收
+2026-10-20：PR #3 通过第二轮审查后 squash merge `90896d5797b1b9ff63c91822f8674d153eda172f`。12/12 库存断言和验证码测前/测后 1→1 证据满足 POC 基线。后续不得重复提交 AIERP-001；前端页面逐页验收属于 AIERP-005。
