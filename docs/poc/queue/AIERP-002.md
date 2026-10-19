@@ -1,6 +1,6 @@
 # AIERP-002 · Excel 模板生成、上传解析及确认
 
-- **状态**：BLOCKED（等待 AIERP-001）  **Owner**：Cursor-ERP
+- **状态**：RELEASED / next_order #2（待 AIERP-003 合并后认领）  **Owner**：Cursor-ERP
 - **规格**：`docs/poc/EXCEL_SPEC.md`
 - 支持 5 种业务工作表：物料期初、采购入库、药水配制、服务耗料、可选销售出库。提供可下载 XLSX 空表和通过对话预填草稿的 XLSX。
 - 按第3行表头/第4行开始的数据解析、识别字段别名，主数据匹配、按行 errors/warnings、单位检查、数字/日期、重复业务单号。未知物料不自动创建。
@@ -10,3 +10,8 @@
 - 测试正确导入、列重命名、空行、重复单、单位不匹配、部分错误、超大文件、XLSX 公式/宏拒绝或隔离。
 - 交付：新增小型模板/Excel 导入模块与测试；`[AIERP-002]` PR，不自行 Merge。
 - **业务核心不在此任务实现；真实确认接口联调须等待 AIERP-003。
+## 执行约束（ChatGPT Release 2026-10-20）
+- 任务已释放给队列但**不要与 AIERP-003 并行认领**；单个 Cursor Agent 按 next_order 执行，等待 AIERP-003 PR 完成并合并。
+- 本次重点是真实 XLSX 下载/上传 → 解析预览 → 行级纠错 → 用户确认 → ERP 真实单据号/库存变更，不允许只输出浏览器模拟或 CSV 代替 XLSX。
+- 示例配方为假设数据而非可用于生产的化学配比；Excel 错误行应可导出修订，失败回执能回查到源行号和单号。
+- 单一实现 PR：`feat/aierp-002-excel-workflow`；提交后等待 ChatGPT Review。
