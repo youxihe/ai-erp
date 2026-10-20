@@ -94,7 +94,7 @@
 
 | 对话步骤 | 原生服务 |
 |---|---|
-| prepare | `AierpGatewayService.createDraft("PURCHASE"\|"MIX"\|"SERVICE", …)` |
+| prepare | `AierpGatewayService.createDraft("PURCHASE"\|"MIX"\|"SERVICE", …)` 的业务验证逻辑可复用；**必须先实现显式授权用户的服务端入口**，或由已登录 ERP 用户在自身 session 中创建；不得伪造 Request/session |
 | confirm | **先审计并消除全调用链对 HTTP Session 的隐式依赖**；安全的 `confirmAs(verifiedActor, …)` 只有在原生创建/审核/审计路径均显式使用该 actor 时才开放；否则走登录 ERP 页面确认 |
 | 单据号 | 现规则 `GW-{bizType}-{draftId}` |
 | 库存 | 现 `addDepotHeadAndDetail` + `batchSetStatus("1")` |
