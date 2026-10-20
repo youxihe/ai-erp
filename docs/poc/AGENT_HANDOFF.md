@@ -1,23 +1,17 @@
-# AI-ERP 专用 Cursor Agent · Demo-first 夜间交接
+# AI-ERP Cursor Agent · AIERP-008 集成交接
 
-> 只操作 `youxihe/ai-erp`，绝不可操作或借用 ZTO HR 代码、配置、数据库或任务队列。
+**仓库**：`youxihe/ai-erp`，绝不跨用其他 HR/HCM 系统项目的代码、服务与凭据。
 
-## 当前已完成
-- AIERP-001 PR #3（本地真实 jshERP Docker）
-- AIERP-003 PR #5（真实网关；merge `d0bcb9f`），测试 34/34 PASS。
+已经合入：
+- AIERP-001 PR #3，AIERP-003 PR #5；
+- AIERP-002 Excel PR #7：本地验证 10/10；
+- AIERP-005 PC/H5 PR #8：原生前端真实库存/单据展示；
+- AIERP-004 Agent PR #10：本地规则助手 4/4（原 PR #9 因文档冲突已关闭）。
 
-## 当前无需再问用户即可执行的队列
-- **#1 AIERP-002**：Excel 下载/上传/行级预览/明确人工确认/真实过账；
-- **#2 AIERP-005**：登录后的 PC/H5 演示工作台、真实库存与 Excel 流程 UI；
-- **#3 AIERP-004**：自然语言 Agent + 工具调用，LLM 可选、没有 Key 使用明确标注的规则演示；
-- **AIERP-008**：待上述任务合并后再做端到端集成。
+**当前唯一任务**：拉取最新 `origin/master` → 阅读 `docs/poc/QUEUE.md` 和 `docs/poc/queue/AIERP-008.md` → 认领 `AIERP-008` → 从 master 新建 `feat/aierp-008-integrated-demo`。
 
-**工作纪律**：一次开发一项；每项从最新 `origin/master` 建独立分支；完成、测试、push、`READY_FOR_REVIEW` 后自动开始下一项，不要因为 GitHub CLI 未登录、PR 还没有创建或 ChatGPT 未合并而停工；允许最多 3 条未合并的实现分支。**绝不自行 merge**。三项不改同一块主要文件：002 Java Excel、005 jshERP-web、004 Agent 服务。
+这次只做真实浏览器端到端联调、PC/H5 页面操作、一键本机启动、客户演示讲解脚本和验收证据；不再拆开发三个功能模块。重点对齐 Excel/助手同源路径、上传/下载/确认、助手模式文案。**未合并的旧分支和本机混跑的 Java 包不是权威实现**。
 
-每个任务优先交付能点通的“纵切”，不影响演示的微小问题写 `docs/poc/TECH_DEBT.md`。不要反复过度 Review 底层网关，不要反复运行会改变库存的破坏性基线，除非测试必需且能说明影响。
+需要真实走三条 Excel 业务与页面确认链路。测试会修改本机真实库存，使用新业务单号和当前库存快照，避免破坏稳定演示数据。不虚构数字/不发明 LLM 能力，不接企微/OpenClaw。
 
-若无法创建 PR，把 push 的分支名、HEAD SHA、完整本地测试结果告知用户，ChatGPT 可从 GitHub 创建 PR。Cursor 自己继续下一条队列即可。
-
-**运行环境**：本机 Docker 专属 MySQL 127.0.0.1:13306、Redis 127.0.0.1:16379、Boot 127.0.0.1:9999，jshERP-web localhost:3000；其他资源不得复用。只在本地演示使用默认账号，不对局域网/公网开放。
-
-详见 `docs/poc/QUEUE.md`、`docs/poc/DEMO_CONTRACT.md` 和对应任务单。
+完成后 Push，反馈新 HEAD、真实演示截图/证据、测试结果和 `READY_FOR_REVIEW`，不要自行合并；若本机 gh 未登录，ChatGPT 可建 PR。小问题记 `docs/poc/TECH_DEBT.md`，避免阻断 Demo。
