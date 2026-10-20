@@ -17,7 +17,7 @@
 | AIERP-011 | **DONE / PR #17** | Windows native（F:）、DeepSeek 真实回复、企微 WS；启动/运维 Review Fix 已通过 |
 | AIERP-012A | **DONE / PR #19** | 可信企微用户绑定 ERP，HMAC/nonce/权限重验，真实库存查询；单用户端到端成功，双用户权限 UAT 待补 |
 | **AIERP-013** | **RELEASED / next_order #1** | **Agent 业务查询扩展：物料、客户/供应商、单据、统计摘要（纯只读）** |
-| **AIERP-014D** | **RELEASED / next_order #2（docs only）** | **对话式业务草稿/确认协议设计，013 分支 push 后继续设计，不直接实现写工具** |
+| **AIERP-014D** | **READY_FOR_REVIEW（docs only）** | **对话式业务草稿/确认协议设计；分支 `product/aierp-014d-conversational-transaction-design`；不直接实现写工具** |
 | AIERP-015 | PLANNED / after 014D reviewed | 企微多轮采购草稿 → 显式确认 → ERP 原生采购入库 |
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017 | PLANNED | Excel 企微文件接入、业务异常处理；图片/Excel/H5 报表按渠道能力降级 |
