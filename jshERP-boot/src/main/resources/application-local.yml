@@ -20,3 +20,9 @@ spring:
 file:
   path: ${AIERP_UPLOAD_PATH:./data/upload}
   exportTmp: ${AIERP_EXPORT_PATH:./data/export}
+
+# AIERP-012A WeCom adapter (HMAC). Required via AIERP_WECOM_ADAPTER_SECRET in deploy/.env — no usable default.
+aierp:
+  wecom:
+    adapter-secret: ${AIERP_WECOM_ADAPTER_SECRET:}
+    default-bot-id: ${AIERP_WECOM_BOT_ID:default}

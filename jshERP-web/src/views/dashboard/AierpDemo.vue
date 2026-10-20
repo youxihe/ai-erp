@@ -11,6 +11,16 @@
 
     <p v-if="banner" class="banner" :class="banner.kind">{{ banner.text }}</p>
 
+    <section class="panel bind-panel">
+      <h2>绑定企业微信</h2>
+      <p class="lead">在企微私聊机器人发送「绑定ERP」获取一次性绑定码，粘贴到下方。使用<strong>当前已登录</strong>的 ERP 账号完成绑定，不会索取密码。</p>
+      <div class="composer">
+        <input v-model="bindCode" maxlength="8" placeholder="8 位绑定码" @keyup.enter="claimBind" />
+        <button class="solid" :disabled="bindBusy || !bindCode" @click="claimBind">确认绑定</button>
+      </div>
+      <p v-if="bindMsg" class="state">{{ bindMsg }}</p>
+    </section>
+
     <section class="grid">
       <article v-for="row in displayStocks" :key="row.barCode + row.depotName" class="card">
         <span>{{ row.depotName }}</span>
@@ -139,7 +149,10 @@ export default {
       draft: '',
       assistantMode: '本地规则演示（RULE_DEMO）· 使用当前登录 ERP 会话',
       isNarrow: false,
-      mediaQuery: null
+      mediaQuery: null,
+      bindCode: '',
+      bindBusy: false,
+      bindMsg: ''
     }
   },
   computed: {
@@ -214,6 +227,30 @@ export default {
     }
   },
   methods: {
+    async claimBind () {
+      const code = (this.bindCode || '').trim().toUpperCase()
+      if (!code) return
+      this.bindBusy = true
+      this.bindMsg = ''
+      try {
+        const res = await axios({
+          url: '/aierp/v1/wecom/binding/claim',
+          method: 'post',
+          data: { bindCode: code }
+        })
+        if (res && res.code === 200 && res.data) {
+          this.bindMsg = '绑定成功：企微 ' + (res.data.wecomUserIdMasked || '') + ' ↔ ERP ' + (res.data.erpLoginName || '')
+          this.bindCode = ''
+          this.banner = { kind: 'ok', text: this.bindMsg }
+        } else {
+          this.bindMsg = (res && (res.data || res.message)) || '绑定失败'
+        }
+      } catch (e) {
+        this.bindMsg = (e && e.message) || '绑定失败'
+      } finally {
+        this.bindBusy = false
+      }
+    },
     closeMobileChrome () {
       // Use jshERP's own sidebar state; avoid touching Ant Design's global DOM.
       // Hiding drawer nodes with inline styles survives this page and breaks
