@@ -33,7 +33,7 @@
           <button @click="downloadTemplate">下载 {{ current.title }} Excel</button>
           <label class="file">
             上传填写后的 xlsx
-            <input type="file" accept=".xlsx" @change="onFile" />
+            <input ref="fileInput" type="file" accept=".xlsx" @change="onFile" />
           </label>
         </div>
         <p class="state">当前状态：{{ stageLabel }}</p>
@@ -55,7 +55,7 @@
           <button v-if="batchId" class="ghost" @click="downloadReceipt">下载回执</button>
         </div>
         <ul v-if="results.length" class="results">
-          <li v-for="item in results" :key="item.businessKey">
+          <li v-for="item in results" :key="item.businessKey + item.status">
             {{ item.businessKey }} · {{ item.status }} · {{ item.billNumber || item.error || '无单据' }}
           </li>
         </ul>
@@ -107,10 +107,12 @@ export default {
       records: [],
       results: [],
       batchId: '',
+      lastConfirmKey: '',
       busy: false,
-      chat: [{ role: 'bot', text: '我可以查询真实库存，或带你下载 Excel。确认过账只能由你点击按钮完成。' }],
+      conversationId: '',
+      chat: [{ role: 'bot', text: '本地规则演示。我可以查询真实库存、引导下载 Excel。确认过账只能由你点击按钮完成。' }],
       draft: '',
-      assistantMode: '助手接口：待接入。下面的回复只做页面引导，不会伪造过账。'
+      assistantMode: '本地规则演示（RULE_DEMO）· 使用当前登录 ERP 会话'
     }
   },
   computed: {
@@ -147,20 +149,30 @@ export default {
       } catch (error) {
         this.stocks = []
         this.bills = []
-        this.banner = { kind: 'wait', text: this.missing(error) ? '库存与单据接口待接入' : '库存查询失败：' + this.reason(error) }
+        this.banner = { kind: 'bad', text: '库存查询失败：' + this.reason(error) }
       }
     },
-    async downloadTemplate () {
+    async downloadTemplate (sceneId) {
+      const scene = sceneId || this.active
+      if (typeof scene === 'string') {
+        this.active = scene
+      }
       try {
-        const blob = await axios({ url: '/aierp/v1/excel/template', method: 'get', params: { scene: this.active }, responseType: 'blob' })
+        const blob = await axios({
+          url: '/aierp/v1/excel/template',
+          method: 'get',
+          params: { scene: this.active },
+          responseType: 'blob'
+        })
         if (this.looksJson(blob)) {
-          this.banner = { kind: 'wait', text: 'Excel 模板接口待接入' }
+          const text = await blob.text()
+          this.banner = { kind: 'bad', text: '模板下载失败：' + text.slice(0, 120) }
           return
         }
         this.saveBlob(blob, this.current.title + '.xlsx')
         this.banner = { kind: 'ok', text: '已下载真实 xlsx 模板' }
       } catch (error) {
-        this.banner = { kind: this.missing(error) ? 'wait' : 'bad', text: this.missing(error) ? 'Excel 模板接口待接入' : this.reason(error) }
+        this.banner = { kind: 'bad', text: this.reason(error) }
       }
     },
     async onFile (event) {
@@ -186,19 +198,22 @@ export default {
         this.records = res.data.records || []
         this.results = []
         this.batchId = ''
+        this.lastConfirmKey = ''
         this.stage = 'previewed'
         this.banner = { kind: 'ok', text: '已解析，库存尚未变化。请核对明细后再确认。' }
       } catch (error) {
         this.stage = 'failed'
-        this.banner = { kind: this.missing(error) ? 'wait' : 'bad', text: this.missing(error) ? 'Excel 解析接口待接入' : this.reason(error) }
+        this.banner = { kind: 'bad', text: this.reason(error) }
       } finally {
         this.busy = false
       }
     },
     async confirmPreview () {
+      if (this.busy || !this.canPost) return
       this.busy = true
       try {
-        const key = 'ui-' + Date.now()
+        const key = this.lastConfirmKey || ('ui-' + Date.now())
+        this.lastConfirmKey = key
         const res = await axios({
           url: '/aierp/v1/excel/confirm',
           method: 'post',
@@ -212,19 +227,35 @@ export default {
         this.results = (res.data && res.data.results) || []
         this.batchId = key
         const posted = this.results.some(item => item.status === 'POSTED')
+        const replayed = !!(res.data && res.data.replayed)
         this.stage = posted ? 'posted' : 'failed'
-        this.banner = { kind: posted ? 'ok' : 'bad', text: posted ? '已审核原生单据。正在刷新真实库存。' : '没有单据入账，请看失败原因。' }
+        this.banner = {
+          kind: posted ? 'ok' : 'bad',
+          text: replayed
+            ? '重复确认已拦截：返回原批次结果，库存不会再次变化。'
+            : (posted ? '已审核原生单据。正在刷新真实库存。' : '没有单据入账，请看失败原因。')
+        }
         await this.loadSummary()
       } catch (error) {
         this.stage = 'failed'
-        this.banner = { kind: this.missing(error) ? 'wait' : 'bad', text: this.missing(error) ? '确认接口待接入' : this.reason(error) }
+        this.banner = { kind: 'bad', text: this.reason(error) }
       } finally {
         this.busy = false
       }
     },
     async downloadReceipt () {
-      const blob = await axios({ url: '/aierp/v1/excel/receipt', method: 'get', params: { batchId: this.batchId }, responseType: 'blob' })
-      this.saveBlob(blob, '回执.xlsx')
+      try {
+        const blob = await axios({
+          url: '/aierp/v1/excel/receipt',
+          method: 'get',
+          params: { batchId: this.batchId },
+          responseType: 'blob'
+        })
+        this.saveBlob(blob, '回执.xlsx')
+        this.banner = { kind: 'ok', text: '已下载处理回执' }
+      } catch (error) {
+        this.banner = { kind: 'bad', text: this.reason(error) }
+      }
     },
     async ask () {
       const message = this.draft.trim()
@@ -232,58 +263,60 @@ export default {
       this.chat.push({ role: 'me', text: message })
       this.draft = ''
       try {
-        const stored = JSON.parse(localStorage.getItem('pro__Access-Token') || '{}')
-        const res = await fetch('/jshERP-boot/aierp/v1/assistant/turn', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Access-Token': stored.value || '' },
-          body: JSON.stringify({ message, context: { previewId: this.previewId || undefined } })
+        const res = await axios({
+          url: '/aierp/v1/assistant/turn',
+          method: 'post',
+          data: {
+            conversationId: this.conversationId || undefined,
+            message,
+            context: { previewId: this.previewId || undefined }
+          }
         })
-        if (res.status === 404) {
-          this.assistantMode = '助手接口：待接入。当前只根据页面上的真实库存做引导。'
-          this.replyLocal(message)
+        if (res && res.code === 200 && res.data) {
+          this.conversationId = res.data.conversationId || this.conversationId
+          this.assistantMode = '本地规则演示（' + (res.data.mode || 'RULE_DEMO') + '）· 使用当前登录 ERP 会话'
+          this.chat.push({ role: 'bot', text: res.data.reply || '助手没有返回文字' })
+          await this.applyActions(res.data.suggestedActions || [])
           return
         }
-        const body = await res.json()
-        if (body && body.code === 200 && body.data) {
-          this.assistantMode = '助手模式：' + (body.data.mode || '未知')
-          this.chat.push({ role: 'bot', text: body.data.reply || '助手没有返回文字' })
-          return
-        }
-        this.replyLocal(message)
+        this.chat.push({ role: 'bot', text: '助手没有返回成功结果' })
       } catch (error) {
         this.chat.push({ role: 'bot', text: '助手请求失败：' + this.reason(error) })
       }
     },
-    replyLocal (message) {
-      if (message.indexOf('库存') >= 0 || message.indexOf('表面活性剂') >= 0) {
-        const hit = this.stocks.find(row => row.barCode === 'RM-A001' && row.depotName === '原料仓')
-        this.chat.push({ role: 'bot', text: hit ? '原料仓表面活性剂 RM-A001 当前库存 ' + hit.currentStock + '。这是实时查询，不是模型生成的数字。' : '页面上还没有 RM-A001 的库存。' })
-        return
+    async applyActions (actions) {
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i]
+        if (action && action.type === 'excel.template') {
+          const scene = action.payload && action.payload.scene ? action.payload.scene : 'PURCHASE'
+          this.active = scene
+          await this.downloadTemplate(scene)
+        }
       }
-      if (message.indexOf('采购') >= 0) {
-        this.active = 'PURCHASE'
-        this.chat.push({ role: 'bot', text: '已切到采购入库。请先下载 Excel，填写后上传。我不会代替你确认入库。' })
-        return
-      }
-      this.chat.push({ role: 'bot', text: '可以问库存，或切换采购、配制、服务。过账必须点击“确认并审核”。' })
     },
     qtyText (row) {
+      if (row.scene === 'MIX' && row.normalized && row.normalized.finished) {
+        const finished = row.normalized.finished
+        const lines = row.normalized.lines || []
+        return finished.barCode + ' ' + finished.qty + finished.unit + ' ← ' + lines.map(line => line.barCode + ' ' + line.qty + line.unit).join(' + ')
+      }
       const lines = row.normalized && row.normalized.lines ? row.normalized.lines : []
       return lines.map(line => line.barCode + ' ' + line.qty + line.unit).join('；')
     },
     messageOf (row) {
       const errors = row.errors || []
-      return errors.length ? errors.join('；') : ((row.warnings || []).join('；') || '可确认')
-    },
-    missing (error) {
-      return error && error.response && (error.response.status === 404 || error.response.status === 0)
+      if (errors.length) {
+        return Array.isArray(errors) ? errors.join('；') : String(errors)
+      }
+      return ((row.warnings || []).join('；') || '可确认')
     },
     reason (error) {
       if (error && error.code === 'ECONNABORTED') return '请求超时'
       const data = error && error.response && error.response.data
       if (data && data.data && data.data.message) return data.data.message
       if (typeof data === 'string') return data
-      return '请求失败'
+      if (data && data.message) return data.message
+      return (error && error.message) || '请求失败'
     },
     looksJson (blob) {
       return blob && blob.type && blob.type.indexOf('json') >= 0
@@ -312,14 +345,14 @@ h1 { margin: 4px 0; font-size: 32px; }
 .card strong { display: block; font-size: 28px; }
 .card em { color: #78716c; font-style: normal; }
 .split { align-items: flex-start; }
-.panel { flex: 1; }
+.panel { flex: 1; min-width: 0; }
 .scenes { flex-wrap: wrap; }
 .scenes button, .actions button, .composer button, .file { border: 1px solid #d6d3d1; background: #fff; border-radius: 10px; padding: 10px 12px; cursor: pointer; }
 .scenes button { text-align: left; }
 .scenes button.on, .solid { background: #1c1917; color: #fff; }
-.file input { display: block; margin-top: 6px; }
+.file input { display: block; margin-top: 6px; max-width: 100%; }
 table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-td, th { border-bottom: 1px solid #e7e5e4; text-align: left; padding: 8px 4px; font-size: 13px; }
+td, th { border-bottom: 1px solid #e7e5e4; text-align: left; padding: 8px 4px; font-size: 13px; word-break: break-word; }
 .banner { padding: 10px 12px; border-radius: 10px; }
 .banner.ok { background: #ecfdf3; }
 .banner.bad { background: #fff1f2; }
@@ -330,5 +363,6 @@ td, th { border-bottom: 1px solid #e7e5e4; text-align: left; padding: 8px 4px; f
 @media (max-width: 800px) {
   .split, .top { flex-direction: column; }
   h1 { font-size: 26px; }
+  .desk { padding: 12px; overflow-x: hidden; }
 }
 </style>

@@ -55,14 +55,19 @@ public class AierpAssistantService {
             return data;
         }
         if (message.contains("模板") || message.contains("采购表") || message.toLowerCase().contains("excel")) {
+            String sceneName = "PURCHASE";
+            if (message.contains("配制") || message.contains("药水")) {
+                sceneName = "MIX";
+            } else if (message.contains("服务") || message.contains("耗料")) {
+                sceneName = "SERVICE";
+            }
             data.put("intent", "excel.template");
-            data.put("errors", list("Excel 模板接口尚未合并到当前代码线，不能伪造文件。"));
             JSONObject action = new JSONObject();
             action.put("type", "excel.template");
-            action.put("label", "待接入：下载采购模板");
-            action.put("payload", scene("PURCHASE"));
+            action.put("label", "下载" + sceneName + "模板");
+            action.put("payload", scene(sceneName));
             actions.add(action);
-            data.put("reply", "本地规则演示：模板下载属于 Excel 工作流，当前助手进程没有该接口，状态是待接入。");
+            data.put("reply", "本地规则演示（RULE_DEMO）：请点击页面上的下载按钮获取真实 xlsx。我不会代替你确认过账。");
             return data;
         }
         if (message.contains("配制") || message.contains("组装")) {
@@ -163,7 +168,7 @@ public class AierpAssistantService {
     private JSONObject scene(String scene) {
         JSONObject payload = new JSONObject();
         payload.put("scene", scene);
-        payload.put("status", "NOT_INTEGRATED");
+        payload.put("status", "READY");
         return payload;
     }
 }
