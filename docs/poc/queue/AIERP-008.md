@@ -1,8 +1,11 @@
 # AIERP-008 · 一体化 Demo 联调、真实浏览器验收及交付
 
-- **状态**：RELEASED / next_order #1（002、004、005 均已合并）
+- **状态**：READY_FOR_REVIEW
 - **优先级**：P0 Demo Gate
-- **Owner**：Cursor-ERP，**分支**：`feat/aierp-008-integrated-demo`（从最新 `origin/master` 建）
+- **Owner**：Cursor-ERP；**分支**：`feat/aierp-008-integrated-demo`（从最新 `origin/master` 建）
+- **证据**：`docs/poc/evidence/demo-e2e-20261020014600.json`；截图 `docs/poc/screenshots/`；操作说明 `docs/poc/08-demo-runbook.md`
+- **浏览器单据**：GW-PURCHASE-94 / GW-MIX-95 / GW-SERVICE-96；脚本单据 GW-PURCHASE-91 / GW-MIX-92 / GW-SERVICE-93
+- **测试**：`node deploy/scripts/demo-e2e.mjs` 通过；`http://localhost:3002/dashboard/aierp` 已人工点通。未创建 PR（gh 未登录）。
 - **关键约束**：只操作 `youxihe/ai-erp`，使用 AI-ERP 本地独立服务；严禁 HR 项目资源，Cursor 不自行合并。
 
 ## A. 第一阶段：整合到真正可点通的页面（先解决，不扩大功能）

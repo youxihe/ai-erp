@@ -1,0 +1,566 @@
+{
+  "startedAt": "2026-10-20T01:46:00.973Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "chains": {
+    "purchase": {
+      "businessKey": "POC-PI-008-20261020014600",
+      "billNumber": "GW-PURCHASE-91",
+      "before": 135.9,
+      "after": 137.9,
+      "rejected": "REJECTED"
+    },
+    "mix": {
+      "businessKey": "POC-MIX-008-20261020014600",
+      "billNumber": "GW-MIX-92",
+      "fgBefore": 152,
+      "fgAfter": 153,
+      "bBefore": 5,
+      "bAfter": 4.9
+    },
+    "service": {
+      "businessKey": "POC-SV-008-20261020014600",
+      "billNumber": "GW-SERVICE-93",
+      "before": 153,
+      "after": 152,
+      "subType": "其它",
+      "note": "不是销售"
+    }
+  },
+  "checks": [
+    {
+      "name": "assistant-rule-demo",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "conversationId": "conv-74e24db86e5d4ea3a030939dc182f9f9",
+          "mode": "RULE_DEMO",
+          "intent": "stock.query",
+          "suggestedActions": [],
+          "facts": {
+            "barCode": "RM-A001",
+            "materialName": "表面活性剂",
+            "depotId": 14,
+            "depotName": "原料仓",
+            "unit": "L",
+            "currentStock": 135.9,
+            "tenantId": 63,
+            "loginName": "jsh"
+          },
+          "reply": "本地规则演示： 原料仓 表面活性剂 当前库存 135.900000 L。这是 ERP 实时库存。"
+        }
+      }
+    },
+    {
+      "name": "assistant-template-action",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "conversationId": "conv-8edcece77bd64f62b36eb1159b1e9352",
+          "mode": "RULE_DEMO",
+          "intent": "excel.template",
+          "suggestedActions": [
+            {
+              "payload": {
+                "scene": "PURCHASE",
+                "status": "NOT_INTEGRATED"
+              },
+              "label": "下载PURCHASE模板",
+              "type": "excel.template"
+            }
+          ],
+          "reply": "本地规则演示（RULE_DEMO）：请点击页面上的下载按钮获取真实 xlsx。我不会代替你确认过账。"
+        }
+      }
+    },
+    {
+      "name": "purchase-preview",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "previewId": "pv-4c435e9ed67e40d398a9c31e99896b3d",
+          "status": "PREVIEWED",
+          "posted": false,
+          "records": [
+            {
+              "scene": "PURCHASE",
+              "sourceSheet": "02采购入库",
+              "sourceRows": [
+                4
+              ],
+              "errors": [],
+              "warnings": [],
+              "businessKey": "POC-PI-008-20261020014600",
+              "normalized": {
+                "organName": "华东化工",
+                "remark": "AIERP-008",
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": "2",
+                    "unit": "L",
+                    "unitPrice": "20"
+                  }
+                ]
+              },
+              "canConfirm": true
+            },
+            {
+              "scene": "PURCHASE",
+              "sourceSheet": "02采购入库",
+              "sourceRows": [
+                5
+              ],
+              "errors": [
+                "单位不匹配: RM-A001 需要 L 实际 桶"
+              ],
+              "warnings": [],
+              "businessKey": "POC-PI-BAD-008-20261020014600",
+              "normalized": {
+                "organName": "华东化工",
+                "remark": "bad unit",
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": "1",
+                    "unit": "桶",
+                    "unitPrice": "20"
+                  }
+                ]
+              },
+              "canConfirm": false
+            }
+          ],
+          "summary": {
+            "records": 2,
+            "confirmable": 1,
+            "posted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "purchase-confirm",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-pi-20261020014600",
+          "previewId": "pv-4c435e9ed67e40d398a9c31e99896b3d",
+          "results": [
+            {
+              "businessKey": "POC-PI-008-20261020014600",
+              "scene": "PURCHASE",
+              "status": "POSTED",
+              "billNumber": "GW-PURCHASE-91",
+              "replayed": false,
+              "stockBefore": {
+                "RM-A001@原料仓": 135.9
+              },
+              "stockAfter": {
+                "RM-A001@原料仓": 137.9
+              },
+              "error": ""
+            },
+            {
+              "businessKey": "POC-PI-BAD-008-20261020014600",
+              "scene": "PURCHASE",
+              "status": "REJECTED",
+              "error": "[\"单位不匹配: RM-A001 需要 L 实际 桶\"]"
+            }
+          ],
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "purchase-idempotent",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-pi-20261020014600",
+          "previewId": "pv-4c435e9ed67e40d398a9c31e99896b3d",
+          "results": [
+            {
+              "stockAfter": {
+                "RM-A001@原料仓": 137.9
+              },
+              "businessKey": "POC-PI-008-20261020014600",
+              "stockBefore": {
+                "RM-A001@原料仓": 135.9
+              },
+              "billNumber": "GW-PURCHASE-91",
+              "error": "",
+              "scene": "PURCHASE",
+              "status": "POSTED",
+              "replayed": false
+            },
+            {
+              "businessKey": "POC-PI-BAD-008-20261020014600",
+              "error": "[\"单位不匹配: RM-A001 需要 L 实际 桶\"]",
+              "scene": "PURCHASE",
+              "status": "REJECTED"
+            }
+          ],
+          "replayed": true
+        }
+      }
+    },
+    {
+      "name": "purchase-receipt",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "purchase-stock",
+      "pass": true,
+      "detail": {
+        "beforeA": 135.9,
+        "afterA": 137.9,
+        "posted": {
+          "businessKey": "POC-PI-008-20261020014600",
+          "scene": "PURCHASE",
+          "status": "POSTED",
+          "billNumber": "GW-PURCHASE-91",
+          "replayed": false,
+          "stockBefore": {
+            "RM-A001@原料仓": 135.9
+          },
+          "stockAfter": {
+            "RM-A001@原料仓": 137.9
+          },
+          "error": ""
+        },
+        "rejected": {
+          "businessKey": "POC-PI-BAD-008-20261020014600",
+          "scene": "PURCHASE",
+          "status": "REJECTED",
+          "error": "[\"单位不匹配: RM-A001 需要 L 实际 桶\"]"
+        }
+      }
+    },
+    {
+      "name": "mix-preview",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "previewId": "pv-d8eca9059023465d81272efc07d11647",
+          "status": "PREVIEWED",
+          "posted": false,
+          "records": [
+            {
+              "scene": "MIX",
+              "sourceSheet": "03药水配制",
+              "sourceRows": [
+                4,
+                5,
+                6
+              ],
+              "errors": [],
+              "warnings": [
+                "配比为虚构软件测试数据，成品默认成品仓，原料默认原料仓"
+              ],
+              "businessKey": "POC-MIX-008-20261020014600",
+              "normalized": {
+                "remark": "虚构配比",
+                "finished": {
+                  "barCode": "FG-101",
+                  "depotName": "成品仓",
+                  "qty": "1",
+                  "unit": "L"
+                },
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": "0.6",
+                    "unit": "L"
+                  },
+                  {
+                    "barCode": "RM-B002",
+                    "depotName": "原料仓",
+                    "qty": "0.1",
+                    "unit": "L"
+                  },
+                  {
+                    "barCode": "RM-C003",
+                    "depotName": "原料仓",
+                    "qty": "0.3",
+                    "unit": "L"
+                  }
+                ]
+              },
+              "canConfirm": true
+            }
+          ],
+          "summary": {
+            "records": 1,
+            "confirmable": 1,
+            "posted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "mix-confirm",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-mix-20261020014600",
+          "previewId": "pv-d8eca9059023465d81272efc07d11647",
+          "results": [
+            {
+              "businessKey": "POC-MIX-008-20261020014600",
+              "scene": "MIX",
+              "status": "POSTED",
+              "billNumber": "GW-MIX-92",
+              "replayed": false,
+              "stockBefore": {
+                "FG-101@成品仓": 152,
+                "RM-A001@原料仓": 137.9,
+                "RM-B002@原料仓": 5,
+                "RM-C003@原料仓": 37
+              },
+              "stockAfter": {
+                "FG-101@成品仓": 153,
+                "RM-A001@原料仓": 137.3,
+                "RM-B002@原料仓": 4.9,
+                "RM-C003@原料仓": 36.7
+              },
+              "error": ""
+            }
+          ],
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "mix-idempotent",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-mix-20261020014600",
+          "previewId": "pv-d8eca9059023465d81272efc07d11647",
+          "results": [
+            {
+              "stockAfter": {
+                "FG-101@成品仓": 153,
+                "RM-A001@原料仓": 137.3,
+                "RM-B002@原料仓": 4.9,
+                "RM-C003@原料仓": 36.7
+              },
+              "businessKey": "POC-MIX-008-20261020014600",
+              "stockBefore": {
+                "FG-101@成品仓": 152,
+                "RM-A001@原料仓": 137.9,
+                "RM-B002@原料仓": 5,
+                "RM-C003@原料仓": 37
+              },
+              "billNumber": "GW-MIX-92",
+              "error": "",
+              "scene": "MIX",
+              "status": "POSTED",
+              "replayed": false
+            }
+          ],
+          "replayed": true
+        }
+      }
+    },
+    {
+      "name": "mix-receipt",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "mix-stock",
+      "pass": true,
+      "detail": {
+        "mix": {
+          "batchId": "batch-mix-20261020014600",
+          "previewId": "pv-d8eca9059023465d81272efc07d11647",
+          "results": [
+            {
+              "businessKey": "POC-MIX-008-20261020014600",
+              "scene": "MIX",
+              "status": "POSTED",
+              "billNumber": "GW-MIX-92",
+              "replayed": false,
+              "stockBefore": {
+                "FG-101@成品仓": 152,
+                "RM-A001@原料仓": 137.9,
+                "RM-B002@原料仓": 5,
+                "RM-C003@原料仓": 37
+              },
+              "stockAfter": {
+                "FG-101@成品仓": 153,
+                "RM-A001@原料仓": 137.3,
+                "RM-B002@原料仓": 4.9,
+                "RM-C003@原料仓": 36.7
+              },
+              "error": ""
+            }
+          ],
+          "replayed": false
+        },
+        "beforeFg": 152,
+        "afterFgMix": 153,
+        "beforeB": 5,
+        "afterB": 4.9
+      }
+    },
+    {
+      "name": "service-preview",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "previewId": "pv-aed55501961a40019b417c7dd499d55e",
+          "status": "PREVIEWED",
+          "posted": false,
+          "records": [
+            {
+              "scene": "SERVICE",
+              "sourceSheet": "04服务耗料",
+              "sourceRows": [
+                4
+              ],
+              "errors": [],
+              "warnings": [],
+              "businessKey": "POC-SV-008-20261020014600",
+              "normalized": {
+                "organName": "苏州精密电子",
+                "remark": "AIERP-008",
+                "lines": [
+                  {
+                    "barCode": "FG-101",
+                    "depotName": "成品仓",
+                    "qty": "1",
+                    "unit": "L"
+                  }
+                ]
+              },
+              "canConfirm": true
+            }
+          ],
+          "summary": {
+            "records": 1,
+            "confirmable": 1,
+            "posted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "service-confirm",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-svc-20261020014600",
+          "previewId": "pv-aed55501961a40019b417c7dd499d55e",
+          "results": [
+            {
+              "businessKey": "POC-SV-008-20261020014600",
+              "scene": "SERVICE",
+              "status": "POSTED",
+              "billNumber": "GW-SERVICE-93",
+              "replayed": false,
+              "stockBefore": {
+                "FG-101@成品仓": 153
+              },
+              "stockAfter": {
+                "FG-101@成品仓": 152
+              },
+              "error": ""
+            }
+          ],
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "service-idempotent",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-svc-20261020014600",
+          "previewId": "pv-aed55501961a40019b417c7dd499d55e",
+          "results": [
+            {
+              "stockAfter": {
+                "FG-101@成品仓": 152
+              },
+              "businessKey": "POC-SV-008-20261020014600",
+              "stockBefore": {
+                "FG-101@成品仓": 153
+              },
+              "billNumber": "GW-SERVICE-93",
+              "error": "",
+              "scene": "SERVICE",
+              "status": "POSTED",
+              "replayed": false
+            }
+          ],
+          "replayed": true
+        }
+      }
+    },
+    {
+      "name": "service-receipt",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "service-stock",
+      "pass": true,
+      "detail": {
+        "svc": {
+          "batchId": "batch-svc-20261020014600",
+          "previewId": "pv-aed55501961a40019b417c7dd499d55e",
+          "results": [
+            {
+              "businessKey": "POC-SV-008-20261020014600",
+              "scene": "SERVICE",
+              "status": "POSTED",
+              "billNumber": "GW-SERVICE-93",
+              "replayed": false,
+              "stockBefore": {
+                "FG-101@成品仓": 153
+              },
+              "stockAfter": {
+                "FG-101@成品仓": 152
+              },
+              "error": ""
+            }
+          ],
+          "replayed": false
+        },
+        "beforeSvc": 153,
+        "afterSvc": 152
+      }
+    }
+  ],
+  "ok": true,
+  "samples": [
+    "docs/poc/samples/purchase-demo.xlsx",
+    "docs/poc/samples/mix-demo.xlsx",
+    "docs/poc/samples/service-demo.xlsx"
+  ],
+  "finishedAt": "2026-10-20T01:46:03.857Z"
+}
