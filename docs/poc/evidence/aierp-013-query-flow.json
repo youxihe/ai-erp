@@ -1,0 +1,106 @@
+{
+  "task": "AIERP-013",
+  "at": "2026-10-20T23:02:23.363Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "wecomUserIdMasked": "ai***",
+  "passed": 19,
+  "total": 19,
+  "dualUserUat": "NOT_VERIFIED",
+  "results": [
+    {
+      "name": "unbound_material_401",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bind_issue",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bind_claim",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "spoof_identity_rejected",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "material_search",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "partner_supplier",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "partner_customer",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "partner_bad_type",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bill_search_purchase",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bill_search_mix",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bill_search_service",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bill_detail_purchase",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bill_detail_missing",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "bill_range_reject",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "report_purchase_summary",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "report_service_by_customer",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "report_unsupported",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "stock_compat",
+      "ok": true,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "unbind",
+      "ok": true,
+      "detail": "[object Object]"
+    }
+  ]
+}
