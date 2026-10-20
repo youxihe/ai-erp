@@ -1,0 +1,110 @@
+# Isolated OpenClaw Gateway for AI-ERP (AIERP-011).
+# Does NOT join aierp MySQL/Redis/boot networks. No Docker socket mount.
+# Official image: ghcr.io/openclaw/openclaw (or Docker Hub mirror openclaw/openclaw).
+
+name: aierp-openclaw
+
+services:
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: aierp-openclaw-gateway
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_PORT: "18789"
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_DISABLE_BONJOUR: ${OPENCLAW_DISABLE_BONJOUR:-1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      WECOM_BOT_ID: ${WECOM_BOT_ID:-}
+      WECOM_BOT_SECRET: ${WECOM_BOT_SECRET:-}
+      TZ: ${OPENCLAW_TZ:-Asia/Shanghai}
+    volumes:
+      - aierp_openclaw_state:/home/node/.openclaw
+      - aierp_openclaw_auth:/home/node/.config/openclaw
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Host loopback only — never publish to 0.0.0.0
+      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    init: true
+    restart: unless-stopped
+    networks:
+      - aierp_openclaw_net
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${OPENCLAW_GATEWAY_BIND:-lan}",
+        "--port",
+        "18789",
+      ]
+    healthcheck:
+      test: ["CMD", "node", "dist/docker-healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  openclaw-cli:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: aierp-openclaw-cli
+    network_mode: "service:openclaw-gateway"
+    profiles: ["cli"]
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_PORT: "18789"
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      WECOM_BOT_ID: ${WECOM_BOT_ID:-}
+      WECOM_BOT_SECRET: ${WECOM_BOT_SECRET:-}
+      BROWSER: echo
+      TZ: ${OPENCLAW_TZ:-Asia/Shanghai}
+    volumes:
+      - aierp_openclaw_state:/home/node/.openclaw
+      - aierp_openclaw_auth:/home/node/.config/openclaw
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]
+    depends_on:
+      - openclaw-gateway
+
+networks:
+  aierp_openclaw_net:
+    name: aierp_openclaw_net
+    driver: bridge
+
+volumes:
+  aierp_openclaw_state:
+    name: aierp_openclaw_state
+  aierp_openclaw_auth:
+    name: aierp_openclaw_auth

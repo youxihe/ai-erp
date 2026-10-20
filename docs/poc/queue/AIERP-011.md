@@ -1,7 +1,8 @@
 # AIERP-011 · OpenClaw + DeepSeek + 企业微信 Bot WebSocket 本机部署
 
-- **状态**：RELEASED / next_order #1
+- **状态**：**READY_FOR_REVIEW**（本机 Gateway + DeepSeek + 企微 WS 探针已过；企微真人私聊待用户点验）
 - **Owner**：Cursor-ERP，分支 `feat/aierp-011-openclaw-local`（从最新 `origin/master` 建）
+- **运行时**：因 Ubuntu WSL vhdx 缺失且 Docker 镜像拉取受阻，采用 **Windows 原生隔离安装**（`%LOCALAPPDATA%\aierp-openclaw` + Node 24.16）；仓库仍提供 Docker Compose 模板供镜像可用后切换。
 - **已具备资源**：用户已安装 WSL；持有企业微信 API 模式机器人 Bot ID、Secret 和 DeepSeek API Key。**不可要求用户把密钥发聊天或 commit。**
 - **目标**：WSL/Docker 中常驻 OpenClaw，连接真实 DeepSeek 模型与企业微信 WS；在企微私聊发“你好”并得到真实模型回复，重启后继续工作。**本任务禁止接入 ERP 写操作**。
 - **参考**：`deploy/openclaw/README.md`、`deploy/openclaw/openclaw.example.json`、`deploy/openclaw/workspace/*.md`。
@@ -44,3 +45,14 @@
 - 不让模型执行 arbitrary shell、docker、SQL，也不认为 `AGENTS.md` 中一条文字就能实现数据权限。
 - 如需用户手工确认 Bot ID/Secret 的读取位置，列出 WSL 本地路径供用户填写后继续，**不要停下来等待用户把密钥发给 ChatGPT**。
 - Cursor 不自行 merge；提交 PR 或 push 并反馈 `READY_FOR_REVIEW`，由 ChatGPT Review。
+
+## READY_FOR_REVIEW · 本机结果（脱敏）
+
+- **HEAD**：见 push 后 SHA；分支 `feat/aierp-011-openclaw-local`
+- **管理入口**：http://127.0.0.1:18789/ （token 在本机 `deploy/openclaw/.env` 的 `OPENCLAW_GATEWAY_TOKEN`，勿提交）
+- **模型**：`deepseek/deepseek-v4-flash`（agent smoke 返回 `AIERP-011-OK`）
+- **企微**：`channels status --probe` → `enabled, configured, running, works`
+- **密钥路径**：`D:\ERP\ai-erp\deploy\openclaw\.env` 与 `%LOCALAPPDATA%\aierp-openclaw\state\.env`（ACL 限当前用户）
+- **证据**：`deploy/openclaw/logs/evidence-aierp-011.md`、`deepseek-smoke.txt`
+- **待用户**：企微私聊「你好」「你可以做什么」；若 pairing，在 Control UI 批准；建议事后轮换已在聊天中暴露过的密钥
+- **AIERP-012**：未执行

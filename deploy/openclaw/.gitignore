@@ -7,4 +7,6 @@
 *.local.json
 state/
 credentials/
-logs/
+logs/*
+!logs/evidence-aierp-011.md
+!logs/.gitkeep
