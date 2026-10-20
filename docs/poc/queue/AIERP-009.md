@@ -1,6 +1,6 @@
 # AIERP-009 · PC/H5 Demo 体验收口（仅一轮）
 
-- **状态**：READY_FOR_REVIEW
+- **状态**：DONE / PR #14 MERGED（`9caf6dd2`）
 - **分支**：`feat/aierp-009-demo-polish`
 - **优先级**：P1，**PC Demo v1 已可演示，本任务不阻塞其使用**；正式对客户展示手机端前须完成
 - **Owner**：Cursor-ERP，单一实现 PR，ChatGPT Review 和 merge。
@@ -23,3 +23,10 @@
 
 - 不修改原生 jshERP 库存表、`AierpGatewayService`、Excel 批量确认事务、租户权限、业务金额计算。
 - 不新增 LLM、企业微信、OpenClaw，不做大范围 UI 全站换肤。
+
+## ChatGPT 最终 Review
+
+- 2026-10-20：PC 状态显示与单据可读性已复核，`009` 截图与原 7/7 静态冒烟证据已核查；PR #14 合并 `9caf6dd2f13ffdc8b5269c6aaa37610c32c61387`。
+- Review 追加两个安全收口提交：`2eacaef` 改用系统 `CloseSidebar` action，不永久隐藏全局 Ant DOM；`6bea94f` 增加两条无过账源码回归断言。
+- 注意：原 390/375 手机截图拍摄于最终两个提交之前。代码静态检查通过，但最新 master 的手机端点击/退出回到 ERP 其他页面需在客户手机演示前快速复核，不宣称已独立实机验收。
+- 无新开发任务自动释放，停止反复打磨 POC；下一步以用户对外演示/LLM/渠道目标为准。
