@@ -20,6 +20,8 @@
 | TD-013 | P1 | PR #12 H5 390×844 截图有原生侧栏/灰色遮罩挡住业务区，不能算手机可用验收 | AIERP-009 修复默认进入业务页、侧栏可折叠、遮罩恢复与无横向裁切，重拍真正可操作 H5 截图 |
 | TD-014 | P2 | PR #12 的“05-pc-three-chains”截图受布局/蒙层遮挡，无法清楚展示完整三条单据链 | AIERP-009 补完整真实 PC 截图，单据列表去掉连写 raw 字符串，突出状态和日期 |
 | TD-015 | P2 | `deploy/scripts/demo-e2e.mjs` 用绝对 Windows 路径 `D:/ERP/ai-erp/.tools/excel-node/package.json` 创建 ExcelJS require | AIERP-009 改成基于脚本路径/受控依赖解析，保留旧 Windows 环境兼容，提供运行要求 |
+| TD-016 | P1 | AIERP-013 报表 `SUM(oper_number)` 跨单位相加无业务意义；应分组或标 `unit:mixed` | 013 Review Fix 优先修 P0 跨仓泄漏；报表单位分组延后 |
+| TD-017 | P1 | 服务耗料统计当前按 `出库/其它`，可能含非服务单据；缺来源标识时口径应写明「其它出库」 | 013 记债；待单据来源字段或备注约定后再收窄 |
 
 ## 哪些必须当场阻断而非记技术债
 

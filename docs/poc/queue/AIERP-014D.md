@@ -1,8 +1,12 @@
 # AIERP-014D · 对话式业务草稿及显式确认协议（设计闸门）
 
-- **状态**：RELEASED / next_order #2；**仅 docs-only，等 013 代码分支 push 后接力开始**
-- **Owner**：Cursor Product/Architecture；分支 `product/aierp-014d-conversational-transaction-design`，**单独基于最新 `origin/master`**，不要从未合并 013 分支派生。
+- **状态**：DONE / PR #22 MERGED（`df31637`；设计 Review PASS，不等于可信企微确认事件已实际实现）
+- **Owner**：Cursor Product/Architecture；分支 `product/aierp-014d-conversational-transaction-design`，**单独基于最新 `origin/master`**（未从 013 功能分支派生）。
 - **任务原则**：交付可以复用的**服务端确认协议、会话槽位规范与验收方案**；不改动任何 Java/OpenClaw 正式写入 API，不启用 Agent 过账工具，等待 ChatGPT 正式 Review 再 Release 015 实现。
+- **交付物**：
+  - `docs/poc/adr/AIERP-014D-conversational-confirmation.md`
+  - `docs/poc/14d-conversation-prototype.md`
+  - `docs/poc/14d-api-contract.md`（含安全验收矩阵）
 
 ## 要设计的完整采购链路
 
@@ -29,3 +33,9 @@
 5. `READY_FOR_REVIEW`、产品设计 PR、Review 收口后才可释放 `AIERP-015`。
 
 **不安装新 OpenClaw、不修改 ERP 过账代码、不假设企微模板卡片一定支持我们所需行为。** 不需要等待 013 merge 才做文档设计。
+
+## 设计 Review 结论（2026-10-21）
+- 014D ADR、API 合同及采购/配制/耗料中文原型已审查并合并。
+- 企微确认只有直接可验证的原始入站消息/卡片事件才有效；LLM Tool/模型代述不算用户确认，可靠事件缺失则退化到真实登录 ERP PC/H5 页面。
+- `createDraft`、`confirmInTx`、`DepotHeadService` 原生方法多处读取 HTTP Session；不得伪造 Request/Redis Session 或使用管理员 Token 冒充绑定用户。后续实现需要显式授权 actor 贯穿创建、审核和审计。
+- 基于此先释放 AIERP-015A 只做真实采购 DRAFT 与对话槽位，AIERP-015B 的可信正式过账另外 Review/Release。

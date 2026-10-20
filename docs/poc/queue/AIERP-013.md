@@ -1,7 +1,7 @@
 # AIERP-013 · 企微 Agent 真实业务查询工具包
 
-- **状态**：READY_FOR_REVIEW
-- **Owner**：Cursor-ERP；分支 `feat/aierp-013-business-query-tools`，基于最新 `origin/master`。
+- **状态**：REVIEW_FIX_PUSHED / PR #21
+- **Owner**：Cursor-ERP；分支 `feat/aierp-013-business-query-tools`（已合并最新 master 控制面：014D DONE / 015A RELEASED）。
 - **工作前提**：PR #19 已合并；已配置 F: Windows native OpenClaw 的 `aierp-erp-tools` 和可信 `requesterSenderId` 绑定逻辑。**绝不重装/升级 OpenClaw**。
 - **目标**：让用户可以真正从企微完成物料、客户/供应商、原生单据、经营摘要的多种**只读查询**，而非只查一个实时库存；仍不能过账或创建单据。
 

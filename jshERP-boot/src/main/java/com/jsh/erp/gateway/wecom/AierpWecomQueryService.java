@@ -165,7 +165,7 @@ public class AierpWecomQueryService {
         sql.append("SELECT h.id, h.number, h.type, h.sub_type, h.status, h.total_price, h.oper_time, ");
         sql.append("IFNULL(s.supplier,'') AS partner_name ");
         sql.append("FROM jsh_depot_head h ");
-        sql.append("LEFT JOIN jsh_supplier s ON s.id=h.organ_id ");
+        sql.append("LEFT JOIN jsh_supplier s ON s.id=h.organ_id AND s.tenant_id=h.tenant_id ");
         sql.append("WHERE h.tenant_id=? AND IFNULL(h.delete_flag,'0')<>'1' ");
         sql.append("AND h.type=? AND h.sub_type=? ");
         sql.append("AND h.oper_time>=? AND h.oper_time<? ");
@@ -186,10 +186,15 @@ public class AierpWecomQueryService {
             sql.append("AND s.supplier LIKE ? ");
             args.add("%" + partner + "%");
         }
+        // P0: only bills whose *every* active line is in allowed depots (no partial-header leak).
         sql.append("AND EXISTS (SELECT 1 FROM jsh_depot_item di WHERE di.header_id=h.id ");
         sql.append("AND IFNULL(di.delete_flag,'0')<>'1' AND di.depot_id IN (");
         appendIn(sql, args, depots);
         sql.append(")) ");
+        sql.append("AND NOT EXISTS (SELECT 1 FROM jsh_depot_item di2 WHERE di2.header_id=h.id ");
+        sql.append("AND IFNULL(di2.delete_flag,'0')<>'1' AND (di2.depot_id IS NULL OR di2.depot_id NOT IN (");
+        appendIn(sql, args, depots);
+        sql.append("))) ");
         sql.append("ORDER BY h.oper_time DESC, h.id DESC LIMIT ?");
         args.add(limit);
 
@@ -224,7 +229,7 @@ public class AierpWecomQueryService {
         List<Map<String, Object>> heads = jdbcTemplate.queryForList(
                 "SELECT h.id, h.number, h.type, h.sub_type, h.status, h.total_price, h.oper_time, h.tenant_id, "
                         + "IFNULL(s.supplier,'') AS partner_name "
-                        + "FROM jsh_depot_head h LEFT JOIN jsh_supplier s ON s.id=h.organ_id "
+                        + "FROM jsh_depot_head h LEFT JOIN jsh_supplier s ON s.id=h.organ_id AND s.tenant_id=h.tenant_id "
                         + "WHERE h.number=? AND h.tenant_id=? AND IFNULL(h.delete_flag,'0')<>'1' LIMIT 1",
                 number, user.getTenantId());
         if (heads.isEmpty()) {
@@ -241,13 +246,7 @@ public class AierpWecomQueryService {
             throw new BusinessRunTimeException(403, "当前用户没有可查询的仓库权限");
         }
         Long headerId = ((Number) head.get("id")).longValue();
-        Integer visible = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM jsh_depot_item di WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1' "
-                        + "AND di.depot_id IN (" + placeholders(depots.size()) + ")",
-                Integer.class, withLeading(headerId, depots));
-        if (visible == null || visible < 1) {
-            throw new BusinessRunTimeException(403, "当前用户无权查看该单据涉及的仓库明细");
-        }
+        assertBillFullyAuthorized(headerId, depots);
         StringBuilder lineSql = new StringBuilder();
         List<Object> lineArgs = new ArrayList<Object>();
         lineSql.append("SELECT IFNULL(me.bar_code,'') AS bar_code, IFNULL(m.name,'') AS material_name, ");
@@ -257,10 +256,9 @@ public class AierpWecomQueryService {
         lineSql.append("LEFT JOIN jsh_material m ON m.id=di.material_id ");
         lineSql.append("LEFT JOIN jsh_material_extend me ON me.id=di.material_extend_id ");
         lineSql.append("LEFT JOIN jsh_depot d ON d.id=di.depot_id ");
-        lineSql.append("WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1' AND di.depot_id IN (");
+        // All lines are authorized (assertBillFullyAuthorized); return full detail set.
+        lineSql.append("WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1' ORDER BY di.id");
         lineArgs.add(headerId);
-        appendIn(lineSql, lineArgs, depots);
-        lineSql.append(") ORDER BY di.id");
         List<Map<String, Object>> rawLines = jdbcTemplate.queryForList(lineSql.toString(), lineArgs.toArray());
         List<Map<String, Object>> lines = new ArrayList<Map<String, Object>>();
         for (Map<String, Object> r : rawLines) {
@@ -512,6 +510,26 @@ public class AierpWecomQueryService {
             return LocalDate.parse(raw.trim().substring(0, Math.min(10, raw.trim().length())));
         } catch (Exception ex) {
             throw new BusinessRunTimeException(400, "日期格式无效，请用 yyyy-MM-dd");
+        }
+    }
+
+    /**
+     * Reject bill detail/header when any active line is outside the user's allowed depots.
+     * Prevents leaking totalAmount / partner from mixed-depot bills via a single visible line.
+     */
+    private void assertBillFullyAuthorized(Long headerId, List<Long> depots) {
+        Integer totalLines = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jsh_depot_item di WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1'",
+                Integer.class, headerId);
+        if (totalLines == null || totalLines < 1) {
+            throw new BusinessRunTimeException(404, "单据没有有效明细");
+        }
+        Integer allowedLines = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jsh_depot_item di WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1' "
+                        + "AND di.depot_id IN (" + placeholders(depots.size()) + ")",
+                Integer.class, withLeading(headerId, depots));
+        if (allowedLines == null || allowedLines.intValue() != totalLines.intValue()) {
+            throw new BusinessRunTimeException(403, "当前用户无权查看该单据（含未授权仓库明细，拒绝对整单表头与金额）");
         }
     }
 
