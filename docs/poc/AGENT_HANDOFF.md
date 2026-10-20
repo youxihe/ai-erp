@@ -1,17 +1,13 @@
-# AI-ERP Cursor Agent · AIERP-008 集成交接
+# AI-ERP Cursor Agent · AIERP-009 简短交接
 
-**仓库**：`youxihe/ai-erp`，绝不跨用其他 HR/HCM 系统项目的代码、服务与凭据。
+**范围严格限定 `youxihe/ai-erp`。** 已合并 AIERP-001/#3、003/#5、002/#7、005/#8、004/#10、008/#12。
 
-已经合入：
-- AIERP-001 PR #3，AIERP-003 PR #5；
-- AIERP-002 Excel PR #7：本地验证 10/10；
-- AIERP-005 PC/H5 PR #8：原生前端真实库存/单据展示；
-- AIERP-004 Agent PR #10：本地规则助手 4/4（原 PR #9 因文档冲突已关闭）。
+**现状**：PC Demo v1 已具备三个真实业务流程（采购、配制、耗料），AI 助手明确标识 RULE_DEMO。真实 ERP API、Excel 过账/审计、权限/并发已经验证；**本轮不允许重构原生交易网关**。
 
-**当前唯一任务**：拉取最新 `origin/master` → 阅读 `docs/poc/QUEUE.md` 和 `docs/poc/queue/AIERP-008.md` → 认领 `AIERP-008` → 从 master 新建 `feat/aierp-008-integrated-demo`。
+**当前可认领**：从最新 `origin/master` 建 `feat/aierp-009-demo-polish`，按 `docs/poc/queue/AIERP-009.md` 做**一次小范围 UI/便携性收口**：
+- PC：入账后行级状态“已审核”，避免还显示“待确认”；减少 0 库存无关卡片及单据拼接乱码，保持真实数据；
+- H5：修复遮罩/菜单压住业务区，390×844 真实点击下载、上传、预览、确认区域，重新截图。
+- 开发工具：相对路径装载 ExcelJS，原生启动说明能在正确项目目录使用。
+- 重点是用户体验，不做大模型、企微、OpenClaw。
 
-这次只做真实浏览器端到端联调、PC/H5 页面操作、一键本机启动、客户演示讲解脚本和验收证据；不再拆开发三个功能模块。重点对齐 Excel/助手同源路径、上传/下载/确认、助手模式文案。**未合并的旧分支和本机混跑的 Java 包不是权威实现**。
-
-需要真实走三条 Excel 业务与页面确认链路。测试会修改本机真实库存，使用新业务单号和当前库存快照，避免破坏稳定演示数据。不虚构数字/不发明 LLM 能力，不接企微/OpenClaw。
-
-完成后 Push，反馈新 HEAD、真实演示截图/证据、测试结果和 `READY_FOR_REVIEW`，不要自行合并；若本机 gh 未登录，ChatGPT 可建 PR。小问题记 `docs/poc/TECH_DEBT.md`，避免阻断 Demo。
+记录调整前后的 PC/H5 截图和最小回归测试。不要重复制造很多真实采购单据；验证需有新单号或使用只读截图。小问题放技术债；完工 push、`READY_FOR_REVIEW`；ChatGPT 创建 PR/Review/merge，Cursor 不合并。
