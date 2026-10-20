@@ -1,31 +1,27 @@
 # AI-ERP POC · Demo-first Delivery Queue
 
-> **唯一工作域：** `youxihe/ai-erp`，与 ZTO HR/HCM 完全隔离。不得复用其他项目的数据库、Redis、凭据、服务器或代码。
+> **唯一工作域**：`youxihe/ai-erp`，与所有 HR/HCM 及其它项目完全隔离。
 
-## 2026-10-20 当前里程碑
+## 2026-10-20 交付状态
 
-| 任务 | 状态 | 交付 |
+| ID | 状态 | 说明 |
 |---|---|---|
-| AIERP-001 | **DONE / PR #3** | 独立本地 jshERP 基线 |
-| AIERP-003 | **DONE / PR #5** | 原生采购/组装/耗料事务网关与并发保护 |
-| AIERP-002 | **DONE / PR #7** | XLSX 下载、预览、人工确认、过账、回执；本地测试 10/10 |
-| AIERP-005 | **DONE / PR #8** | 登录后 PC/H5 工作台，真实库存、单据、Excel 操作入口；待集成浏览器验收 |
-| AIERP-004 | **DONE / PR #10** | ERP 实时库存对话与 RULE_DEMO 助手；本地测试 4/4（PR #9 文档冲突已关闭） |
-| **AIERP-008** | **RELEASED / next_order #1** | **正式集成联调与本机客户 Demo 验收** |
-| AIERP-006 | BACKLOG | 企业微信，等本机 Demo 稳定及用户资源 |
-| AIERP-007 | BACKLOG | OpenClaw，可选后期评估 |
+| AIERP-001 | **DONE / PR #3** | 独立本地 jshERP 基础环境 |
+| AIERP-003 | **DONE / PR #5** | 真实原生采购、组装、服务耗料网关及权限幂等 |
+| AIERP-002 | **DONE / PR #7** | XLSX 下载、解析、预览、人工确认、回执 |
+| AIERP-005 | **DONE / PR #8** | PC/H5 演示工作台基础入口 |
+| AIERP-004 | **DONE / PR #10** | 规则型助手与 ERP 实时库存查询 |
+| AIERP-008 | **DONE / PR #12** | PC Demo 集成；17/17 脚本验收、本机浏览器三链路操作；**H5 尚未验收通过** |
+| **AIERP-009** | **RELEASED / next_order #1** | **演示页面状态与布局收口、手机可操作性、脚本便携性；仅一轮小迭代** |
+| AIERP-006 | BACKLOG | 企微接入，待用户确定渠道资源和需求 |
+| AIERP-007 | BACKLOG | OpenClaw，后续按需要评估 |
 
-## 当前唯一自动认领任务：AIERP-008
+## 本轮目标与边界
 
-在 `feat/aierp-008-integrated-demo` 从 **最新 `origin/master`** 开工。现在代码已全量合入，无需再用三条未合并的开发分支；禁止把旧 worktree、数据库或环境作为新权威源。完整验收见 `docs/poc/queue/AIERP-008.md`。
+**当前唯一新任务**：`AIERP-009`，从最新 `origin/master` 建分支 `feat/aierp-009-demo-polish`。详情见 `docs/poc/queue/AIERP-009.md`。
 
-**演示核心三条闭环：**
-1. 采购 XLSX：下载 → 上传 → 行级预览 → 人工点击确认 → 原生采购入库审核 → 实时原料库存 +N、真单号、回执。
-2. 药水配制 XLSX：按配制单分组合并 → 预览 → 人工确认 → 真组装单，原料减、成品增，比例只是虚构软件演示。
-3. 服务耗料 XLSX：真客户关联 → 人工确认 → 原生“出库/其它”，成品减；不计销售收入。
+**当前可演示能力：PC 端 Demo v1**，唯一受信数据源是 jshERP 真实业务 API。采购入库 → 药水组装配制 → 客户服务耗料，均按文件上传、预览、人工确认、原生审核、真实库存变化和下载回执展示。助手当前仅 `RULE_DEMO`，不得宣传为真实 LLM 或无需人工审核。
 
-**AI 演示底线：** 有效操作结果来自真实 ERP；助手当前是 `RULE_DEMO` 而非真实大模型，不执行用户未确认的 `draft.confirm` 或 `excel.confirm`。整合后要去掉“Excel 待接入”等过时文案，保留模式标识。
+**审查标准：** 只针对页面真实可读/可点通、单据状态与结果表述一致、H5 上游遮罩/布局干扰、工具示例能在项目目录执行。**不修改核心库存、租户、权限、确认事务、ERP 栈**；小问题记 `docs/poc/TECH_DEBT.md`，不要重启大规模重构。
 
-**Review 阻断范围（Demo-first）：** 真实库存方向/金额/客户错误，未授权操作或跨租户，重复确认重复扣库存，文件预览即过账，主流程 404/500/无法操作，真实数据被模拟替代。其它次要问题登记 `docs/poc/TECH_DEBT.md`，尽快闭环，不再反复回修底层网关。
-
-**工作流：** Cursor 本地做 008 → 保存实际 UI 和端到端证据 → 推送分支，`READY_FOR_REVIEW` → ChatGPT 创建 PR、Review、合并。Cursor 不自行 Merge；无 gh 登录也不阻塞 Push。当前不释放新的 ERP 模块或企微任务。不新建重复定时轮询，若已有本仓库 10 分钟巡检只保留一份。
+**原则**：只一个开发 PR，Cursor 本地测试和截图 → Push、`READY_FOR_REVIEW`；GitHub CLI 未登录可跳过建 PR，ChatGPT Review/merge。不要自行合并。不接入企微/OpenClaw，不从其他项目借资源。后台巡检如存在只留一个专属实例。

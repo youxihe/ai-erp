@@ -1,6 +1,6 @@
 # AIERP-008 · 一体化 Demo 联调、真实浏览器验收及交付
 
-- **状态**：READY_FOR_REVIEW
+- **状态**：DONE / PR #12 MERGED（`5a4762d`）；PC Demo v1 验收通过，H5 展示未验收通过
 - **优先级**：P0 Demo Gate
 - **Owner**：Cursor-ERP；**分支**：`feat/aierp-008-integrated-demo`（从最新 `origin/master` 建）
 - **证据**：`docs/poc/evidence/demo-e2e-20261020014600.json`；截图 `docs/poc/screenshots/`；操作说明 `docs/poc/08-demo-runbook.md`
