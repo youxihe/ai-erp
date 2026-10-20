@@ -27,6 +27,8 @@ assert('confirm-hidden-when-done', vue.includes('hasPendingConfirm') && vue.incl
 assert('stock-filter', vue.includes('RAW_CODES') && vue.includes('FG_CODES') && vue.includes('displayStocks'), 'stock filter missing')
 assert('bill-chinese-type', vue.includes('采购入库') && vue.includes('药水配制') && vue.includes('服务耗料') && vue.includes('displayBills'), 'bill labels missing')
 assert('h5-mask-guard', vue.includes('aierp-demo-active') && vue.includes('closeMobileChrome'), 'h5 guard missing')
+assert('h5-sidebar-owned-state', vue.includes("dispatch('CloseSidebar'") && !vue.includes("dispatch('setSidebar', true)"), 'H5 must close sidebar via ERP store')
+assert('h5-no-persistent-global-hide', !vue.includes("el.style.setProperty") && !vue.includes("body.aierp-demo-active .ant-drawer-mask"), 'H5 must not permanently hide all Ant drawers or mask overlays')
 assert('e2e-relative-exceljs', e2e.includes(".tools', 'excel-node'") && !e2e.includes('D:/ERP/ai-erp/.tools'), e2e.match(/D:\\\\ERP|D:\/ERP/)?.[0] || 'ok')
 assert('e2e-install-hint', e2e.includes('npm install exceljs --prefix .tools/excel-node'), 'install hint missing')
 
