@@ -54,6 +54,12 @@ export const constantRouterMap = [
         name: 'analysis',
         meta: { title: '首页' },
         component: () => import(/* webpackChunkName: "dashboard" */ '@/views/dashboard/Analysis')
+      },
+      {
+        path: 'aierp',
+        name: 'aierp-demo',
+        meta: { title: 'AI 进销存演示' },
+        component: () => import(/* webpackChunkName: "aierp" */ '@/views/dashboard/AierpDemo')
       }
     ]
   },

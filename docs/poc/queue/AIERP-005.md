@@ -1,6 +1,8 @@
 # AIERP-005 · 真实 PC/H5 演示工作台
 
-- **状态**：RELEASED / next_order #2（AIERP-002 分支 push 后即可开始，无须等它 merge）
+- **状态**：READY_FOR_REVIEW
+- **验证**：本机 `http://localhost:3001/dashboard/aierp` 登录后看到真实库存 RM-A001 135.9、最近单据 GW-PURCHASE-88 / GW-MIX-89 / GW-SERVICE-90。助手接口未合并时显示待接入，并用页面库存回答，没有弹出伪造过账。窄屏 390px 下左右栏改为上下排列。
+- **说明**：Excel 按钮调用的是 002 契约。本分支不包含 Excel Java。3000 端口已被占用，本次前端实际跑在 3001。
 - **Owner**：Cursor-ERP；**分支**：`feat/aierp-005-demo-workbench`
 - **基础**：jshERP 原生登录后的 Vue 前端；复用既有登录态和 API 封装，参照 `poc/index.html` 的叙事/视觉，不把 localStorage 作为库存权威。
 
