@@ -190,9 +190,9 @@ export default {
     this.loadSummary()
   },
   mounted () {
-    this.closeMobileChrome()
     this.mediaQuery = window.matchMedia('(max-width: 800px)')
     this.isNarrow = this.mediaQuery.matches
+    if (this.isNarrow) this.closeMobileChrome()
     this.onNarrow = (event) => {
       this.isNarrow = event.matches
       if (event.matches) this.closeMobileChrome()
@@ -215,28 +215,12 @@ export default {
   },
   methods: {
     closeMobileChrome () {
-      try {
-        if (this.$store && this.$store.dispatch) {
-          this.$store.dispatch('setSidebar', true)
-        }
-      } catch (e) { /* ignore */ }
-      this.$nextTick(() => {
-        document.querySelectorAll('.ant-drawer-open .ant-drawer-mask, .drawer-sider .ant-drawer-mask').forEach(el => {
-          el.click()
-        })
-        document.querySelectorAll('.ant-drawer-open').forEach(el => {
-          el.classList.remove('ant-drawer-open')
-        })
-        document.querySelectorAll('.ant-drawer-mask, .setting-drawer, .setting-drawer-index-handle').forEach(el => {
-          el.setAttribute('hidden', 'true')
-          el.setAttribute('aria-hidden', 'true')
-          if (el.style) {
-            el.style.setProperty('display', 'none', 'important')
-            el.style.setProperty('visibility', 'hidden', 'important')
-            el.style.setProperty('pointer-events', 'none', 'important')
-          }
-        })
-      })
+      // Use jshERP's own sidebar state; avoid touching Ant Design's global DOM.
+      // Hiding drawer nodes with inline styles survives this page and breaks
+      // unrelated ERP screens after navigation.
+      if (this.$store && this.$store.dispatch) {
+        this.$store.dispatch('CloseSidebar', { withoutAnimation: true })
+      }
     },
     async loadSummary () {
       try {
@@ -533,18 +517,13 @@ td, th { border-bottom: 1px solid #e7e5e4; text-align: left; padding: 8px 4px; f
 </style>
 
 <style>
-body.aierp-demo-active .ant-drawer-mask {
-  display: none !important;
-  pointer-events: none !important;
-}
+/* Scoped to this workspace; removing body class on exit restores ERP UI. */
 body.aierp-demo-active .setting-drawer,
 body.aierp-demo-active .setting-drawer-index-handle {
   display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
 }
 @media (max-width: 800px) {
-  body.aierp-demo-active .ant-drawer.ant-drawer-open {
+  body.aierp-demo-active .drawer-sider.ant-drawer-open {
     transform: translateX(-100%) !important;
     visibility: hidden !important;
     pointer-events: none !important;
