@@ -1,7 +1,8 @@
 # AIERP-011 · OpenClaw + DeepSeek + 企业微信 Bot WebSocket 本机部署
 
-- **状态**：RELEASED / next_order #1
+- **状态**：**REVIEW_FIX_PUSHED**（PR #17 Round-1：native 运维脚本安全修复；不重装、不切 Docker）
 - **Owner**：Cursor-ERP，分支 `feat/aierp-011-openclaw-local`（从最新 `origin/master` 建）
+- **运行时**：因 Ubuntu WSL vhdx 缺失且 Docker 镜像拉取受阻，采用 **Windows 原生隔离安装**（**`F:\aierp-openclaw`** + Node 24.16；`%LOCALAPPDATA%\aierp-openclaw` 为 junction）；仓库仍提供 Docker Compose 模板供镜像可用后切换。
 - **已具备资源**：用户已安装 WSL；持有企业微信 API 模式机器人 Bot ID、Secret 和 DeepSeek API Key。**不可要求用户把密钥发聊天或 commit。**
 - **目标**：WSL/Docker 中常驻 OpenClaw，连接真实 DeepSeek 模型与企业微信 WS；在企微私聊发“你好”并得到真实模型回复，重启后继续工作。**本任务禁止接入 ERP 写操作**。
 - **参考**：`deploy/openclaw/README.md`、`deploy/openclaw/openclaw.example.json`、`deploy/openclaw/workspace/*.md`。
@@ -44,3 +45,23 @@
 - 不让模型执行 arbitrary shell、docker、SQL，也不认为 `AGENTS.md` 中一条文字就能实现数据权限。
 - 如需用户手工确认 Bot ID/Secret 的读取位置，列出 WSL 本地路径供用户填写后继续，**不要停下来等待用户把密钥发给 ChatGPT**。
 - Cursor 不自行 merge；提交 PR 或 push 并反馈 `READY_FOR_REVIEW`，由 ChatGPT Review。
+
+## READY_FOR_REVIEW · 本机结果（脱敏）
+
+- **HEAD**：见 push 后 SHA；分支 `feat/aierp-011-openclaw-local`
+- **管理入口**：http://127.0.0.1:18789/ （token 在本机 `deploy/openclaw/.env` 的 `OPENCLAW_GATEWAY_TOKEN`，勿提交）
+- **模型**：`deepseek/deepseek-v4-flash`（agent smoke 返回 `AIERP-011-OK`）
+- **企微**：`channels status --probe` → `enabled, configured, running, works`
+- **密钥路径**：`D:\ERP\ai-erp\deploy\openclaw\.env` 与 `F:\aierp-openclaw\state\.env`（ACL 限当前用户）
+- **证据**：`deploy/openclaw/logs/evidence-aierp-011.md`、`deepseek-smoke.txt`
+- **待用户**：企微私聊「你好」「你可以做什么」；若 pairing，在 Control UI 批准；建议事后轮换已在聊天中暴露过的密钥
+- **AIERP-012**：未执行
+
+## REVIEW_FIX（PR #17 Round-1）
+
+- `start-gateway-native.ps1`：只停止归属本项目的 `node … gateway run`；拒绝误杀；**不再**传 `--token` / `--force`
+- `health/backup/restore/restart/logs/upgrade/smoke`：默认 auto-detect → **native**；Docker 需显式 `-Mode docker`
+- 备份目录：`deploy/openclaw/backups\`（gitignore；C: 盘空间紧张时避免写 LOCALAPPDATA）
+- README：Windows native 为当前生效路径；开机需手动 `start-gateway-native.ps1`
+- 本机复验：`cmdline_token_leak=false`、HTTP 200、DeepSeek `AIERP-011-OK`、企微 probe `works`、restore 清除 workspace 多余文件
+- **磁盘**：运行时迁至 **`F:\aierp-openclaw`**（`%LOCALAPPDATA%\aierp-openclaw` → junction）；安装包可放 `F:\openclaw-installs\`；F: 为外置盘，冷启动较慢属预期
