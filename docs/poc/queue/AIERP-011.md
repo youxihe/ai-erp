@@ -1,6 +1,6 @@
 # AIERP-011 · OpenClaw + DeepSeek + 企业微信 Bot WebSocket 本机部署
 
-- **状态**：**REVIEW_FIX_PUSHED**（PR #17 Round-1：native 运维脚本安全修复；不重装、不切 Docker）
+- **状态**：**DONE / PR #17 MERGED**（2026-10-20；`85e4676a`）Windows native 运行与 Review Fix 通过
 - **Owner**：Cursor-ERP，分支 `feat/aierp-011-openclaw-local`（从最新 `origin/master` 建）
 - **运行时**：因 Ubuntu WSL vhdx 缺失且 Docker 镜像拉取受阻，采用 **Windows 原生隔离安装**（**`F:\aierp-openclaw`** + Node 24.16；`%LOCALAPPDATA%\aierp-openclaw` 为 junction）；仓库仍提供 Docker Compose 模板供镜像可用后切换。
 - **已具备资源**：用户已安装 WSL；持有企业微信 API 模式机器人 Bot ID、Secret 和 DeepSeek API Key。**不可要求用户把密钥发聊天或 commit。**
@@ -65,3 +65,7 @@
 - README：Windows native 为当前生效路径；开机需手动 `start-gateway-native.ps1`
 - 本机复验：`cmdline_token_leak=false`、HTTP 200、DeepSeek `AIERP-011-OK`、企微 probe `works`、restore 清除 workspace 多余文件
 - **磁盘**：运行时迁至 **`F:\aierp-openclaw`**（`%LOCALAPPDATA%\aierp-openclaw` → junction）；安装包可放 `F:\openclaw-installs\`；F: 为外置盘，冷启动较慢属预期
+
+## Review 结论
+
+PR #17 merged。F: 本机原生运行、企微真实 DeepSeek 回复与密钥命令行安全修复均已验收。**技术债**：`restore.ps1` 跳过 SQLite，会话完整灾备未验证；F: 冷启动慢、电脑重启后需手工启动；实际运行平台不是 Docker。后续改动不应自动重新安装当前有效 Gateway。
