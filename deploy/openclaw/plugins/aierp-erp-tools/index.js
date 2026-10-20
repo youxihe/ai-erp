@@ -121,10 +121,19 @@ async function signedPost(path, bodyObj) {
   return json.data;
 }
 
+/**
+ * OpenClaw's extractToolPayload prefers `details` over `content[].text`.
+ * If details is only {ok,tool}, the model never sees bind codes / stock text.
+ * Always mirror the user-visible string into details.summary (and structured fields).
+ */
 function toolResult(ok, text, details) {
   return {
     content: [{ type: "text", text }],
-    details: { ok, ...(details || {}) },
+    details: {
+      ok,
+      summary: text,
+      ...(details || {}),
+    },
   };
 }
 
@@ -179,9 +188,13 @@ function registerErpTools(api) {
             };
             try {
               const data = await signedPost(path, buildBody(wecomUserId, safeParams));
-              return toolResult(true, format(data), { redacted: true });
+              const formatted = format(data);
+              const text = typeof formatted === "string" ? formatted : formatted.text;
+              const extra = typeof formatted === "string" ? {} : formatted.details || {};
+              // Never set details.redacted=true (hides content from the model).
+              return toolResult(true, text, { tool: name, ...extra });
             } catch (err) {
-              return toolResult(false, String(err?.message || err), { reason: "ERP_ADAPTER_ERROR" });
+              return toolResult(false, String(err?.message || err), { reason: "ERP_ADAPTER_ERROR", tool: name });
             }
           },
         }),
@@ -194,8 +207,14 @@ function registerErpTools(api) {
     "为企业微信当前用户签发一次性 ERP 绑定码（5 分钟）。仅私聊。不要索取 ERP 密码。",
     "/aierp/v1/wecom/binding/issue",
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
-    (data) =>
-      `绑定码：${data.bindCode}\n有效期 ${data.expiresInSec} 秒。请打开已登录的 ERP 工作台「绑定企业微信」输入该码。勿把 ERP 密码发到聊天。`,
+    (data) => {
+      const bindCode = data.bindCode;
+      const expiresInSec = data.expiresInSec ?? 300;
+      return {
+        text: `绑定码：${bindCode}\n有效期 ${expiresInSec} 秒。请打开已登录的 ERP 工作台「绑定企业微信」输入该码。勿把 ERP 密码发到聊天。`,
+        details: { bindCode, expiresInSec },
+      };
+    },
   );
 
   make(
@@ -203,10 +222,19 @@ function registerErpTools(api) {
     "查询当前企微用户是否已绑定 ERP（仅私聊）。",
     "/aierp/v1/wecom/binding/status",
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
-    (data) =>
-      data.bound
+    (data) => {
+      const text = data.bound
         ? `已绑定 ERP 账号 ${data.erpLoginName}（租户 ${data.tenantId}）。`
-        : data.hint || "尚未绑定 ERP。",
+        : data.hint || "尚未绑定 ERP。";
+      return {
+        text,
+        details: {
+          bound: !!data.bound,
+          erpLoginName: data.erpLoginName || null,
+          tenantId: data.tenantId ?? null,
+        },
+      };
+    },
   );
 
   make(
@@ -214,7 +242,10 @@ function registerErpTools(api) {
     "解除当前企微用户与 ERP 的绑定（仅私聊）。",
     "/aierp/v1/wecom/binding/unbind",
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
-    (data) => (data.unbound ? "已解绑 ERP。" : "当前没有有效绑定。"),
+    (data) => ({
+      text: data.unbound ? "已解绑 ERP。" : "当前没有有效绑定。",
+      details: { unbound: !!data.unbound },
+    }),
   );
 
   make(
@@ -229,7 +260,15 @@ function registerErpTools(api) {
       barCode: p.barCode,
       depotName: p.depotName,
     }),
-    formatStock,
+    (data) => ({
+      text: formatStock(data),
+      details: {
+        boundErpLoginName: data?.boundErpLoginName || data?.loginName || null,
+        rowCount: Array.isArray(data?.rows) ? data.rows.length : 0,
+        rows: Array.isArray(data?.rows) ? data.rows : [],
+        asOf: data?.asOf || null,
+      },
+    }),
   );
 }
 
