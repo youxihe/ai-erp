@@ -15,8 +15,8 @@
 
 确认入口**不是**模型 Tool，而是：
 
-1. OpenClaw 渠道钩子：检测到私聊消息匹配 `确认-XXXX` → 调用适配器 `confirm-with-challenge`；或  
-2. 已登录 H5/PC：`POST /aierp/v1/wecom/draft/confirm-ui`（session 用户必须等于绑定 erpUser）。
+1. **可信渠道原始入站事件**：经企业微信官方 WS Channel 认证的用户真实私聊消息（需保留未经模型生成/改写的原文、可信发送者、消息 ID、私聊来源），服务端匹配完整挑战短语并限次校验。**不得把 LLM 工具参数、模型推断的确认意图、Agent 转述当作用户事件**；SDK 若不能给出可靠原始事件来源，则不开放企微消息确认入口。
+2. 已登录 ERP H5/PC：`POST /aierp/v1/wecom/draft/confirm-ui`（当前 session 用户必须等于绑定 erpUser；再次核验草稿/租户/版本/权限）。
 
 ## 2. Prepare 请求 DTO（适配器 HMAC）
 
@@ -50,7 +50,7 @@
   "summary": { "materialName": "表面活性剂", "barCode": "RM-A001", "qty": 10, "unit": "L", "depotName": "原料仓", "partnerName": "华东化工", "amount": 200.00, "stockDeltaHint": "+10 @原料仓" },
   "challenge": {
     "expiresInSec": 420,
-    "phrase": "确认-K7P2",
+    "phrase": "确认-K7P2M8Q4",
     "h5Path": "/dashboard/aierp?confirmDraft=1024"
   }
 }
@@ -67,7 +67,7 @@
   "channel": "wecom",
   "draftId": 1024,
   "draftVersion": 1,
-  "phrase": "确认-K7P2",
+  "phrase": "确认-K7P2M8Q4",
   "messageMsgId": "<optional wecom msg id for audit>"
 }
 ```
@@ -95,7 +95,7 @@
 | 对话步骤 | 原生服务 |
 |---|---|
 | prepare | `AierpGatewayService.createDraft("PURCHASE"\|"MIX"\|"SERVICE", …)` |
-| confirm | 抽取 `confirmAs(boundUser, …)` ← 现 `confirmInTx` |
+| confirm | **先审计并消除全调用链对 HTTP Session 的隐式依赖**；安全的 `confirmAs(verifiedActor, …)` 只有在原生创建/审核/审计路径均显式使用该 actor 时才开放；否则走登录 ERP 页面确认 |
 | 单据号 | 现规则 `GW-{bizType}-{draftId}` |
 | 库存 | 现 `addDepotHeadAndDetail` + `batchSetStatus("1")` |
 
@@ -125,13 +125,15 @@
 | # | 场景 | 自动化 | 真人企微 | 期望 |
 |---|---|---|---|---|
 | 1 | 绑定用户私聊正确短语 | Y | Y | POSTED，一单一号 |
-| 2 | 仅模型调用「假 confirm Tool」 | Y | — | 无此 Tool / 404 |
+| 2 | 仅模型调用「假 confirm Tool」或自报用户已确认 | Y | — | 无此 Tool / 404；无原始可信事件不允许过账 |
 | 3 | 群聊发送确认码 | Y | Y | 403 |
 | 4 | 另一 wecomUser 确认 | Y | Y | 403 |
 | 5 | 跨租户 draftId | Y | — | 404/403 |
 | 6 | 挑战重放（已消费） | Y | Y | 若已 POSTED → replay 原单；否则 409 |
 | 7 | 双击并发两请求 | Y | Y | 仅一单；另一 replay |
 | 8 | 断线重连后再确认 | — | Y | 同 1 或 replay |
+| 8a | LLM 伪造入站“确认”文本但无企微原始事件 | Y | — | 必须拒绝，原生单据/库存完全不变 |
+| 8b | 原生 addDepotHeadAndDetail/batchSetStatus 仍依赖 session | Y | — | 不得创建合成 HTTP Session/借用管理员，必须降级 ERP 已登录页面确认 |
 | 9 | 确认前禁用用户 | Y | — | 403 |
 | 10 | 确认前去掉仓库权限 | Y | — | 403 |
 | 11 | 确认前改 payload | Y | — | 哈希失败，须新挑战 |
