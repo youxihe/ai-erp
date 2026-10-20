@@ -1,6 +1,6 @@
 # AIERP-011 · OpenClaw + DeepSeek + 企业微信 Bot WebSocket 本机部署
 
-- **状态**：**READY_FOR_REVIEW**（本机 Gateway + DeepSeek + 企微 WS 探针已过；企微真人私聊待用户点验）
+- **状态**：**REVIEW_FIX_PUSHED**（PR #17 Round-1：native 运维脚本安全修复；不重装、不切 Docker）
 - **Owner**：Cursor-ERP，分支 `feat/aierp-011-openclaw-local`（从最新 `origin/master` 建）
 - **运行时**：因 Ubuntu WSL vhdx 缺失且 Docker 镜像拉取受阻，采用 **Windows 原生隔离安装**（`%LOCALAPPDATA%\aierp-openclaw` + Node 24.16）；仓库仍提供 Docker Compose 模板供镜像可用后切换。
 - **已具备资源**：用户已安装 WSL；持有企业微信 API 模式机器人 Bot ID、Secret 和 DeepSeek API Key。**不可要求用户把密钥发聊天或 commit。**
@@ -56,3 +56,11 @@
 - **证据**：`deploy/openclaw/logs/evidence-aierp-011.md`、`deepseek-smoke.txt`
 - **待用户**：企微私聊「你好」「你可以做什么」；若 pairing，在 Control UI 批准；建议事后轮换已在聊天中暴露过的密钥
 - **AIERP-012**：未执行
+
+## REVIEW_FIX（PR #17 Round-1）
+
+- `start-gateway-native.ps1`：只停止归属本项目的 `node … gateway run`；拒绝误杀；**不再**传 `--token` / `--force`
+- `health/backup/restore/restart/logs/upgrade/smoke`：默认 auto-detect → **native**（`%LOCALAPPDATA%\aierp-openclaw`）；Docker 需显式 `-Mode docker`
+- 备份目录：`deploy/openclaw/backups\`（gitignore；C: 盘空间紧张时避免写 LOCALAPPDATA）
+- README：Windows native 为当前生效路径；开机需手动 `start-gateway-native.ps1`
+- 本机复验：`cmdline_token_leak=false`、HTTP 200、DeepSeek `AIERP-011-OK`、企微 probe `works`、restore 清除 workspace 多余文件

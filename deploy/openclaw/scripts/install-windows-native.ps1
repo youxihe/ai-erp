@@ -41,17 +41,31 @@ Get-Content $EnvFile | ForEach-Object {
 
 Set-Location $prefix
 if (-not (Test-Path (Join-Path $prefix "package.json"))) { npm init -y | Out-Null }
-npm install openclaw@latest --allow-scripts=openclaw
+# Pin by default; override with $env:OPENCLAW_NPM_VERSION if needed.
+$ocVer = if ($env:OPENCLAW_NPM_VERSION) { $env:OPENCLAW_NPM_VERSION } else { "2026.10.5" }
+Write-Host "Installing openclaw@$ocVer (pinned; set OPENCLAW_NPM_VERSION to override)"
+npm install "openclaw@$ocVer" --allow-scripts=openclaw
 $cli = Join-Path $prefix "node_modules\.bin\openclaw.cmd"
 if (-not (Test-Path $cli)) { throw "openclaw CLI missing after npm install" }
 & $cli --version
 
-# Seed workspace from repo templates (backup existing)
+# Seed workspace from repo templates: only add missing files (never overwrite personalized MD).
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
-if (Test-Path $workspaceDst) {
-  Copy-Item $workspaceDst "$workspaceDst.bak-$stamp" -Recurse -Force -ErrorAction SilentlyContinue
+$existingMd = @(Get-ChildItem -LiteralPath $workspaceDst -Filter "*.md" -ErrorAction SilentlyContinue)
+if ($existingMd.Count -gt 0) {
+  $bak = "$workspaceDst.bak-$stamp"
+  Copy-Item $workspaceDst $bak -Recurse -Force -ErrorAction SilentlyContinue
+  Write-Host "Workspace already present — backup=$bak ; only filling missing template files."
 }
-Copy-Item (Join-Path $WorkspaceSrc "*") $workspaceDst -Force
+Get-ChildItem -LiteralPath $WorkspaceSrc -File -ErrorAction SilentlyContinue | ForEach-Object {
+  $dest = Join-Path $workspaceDst $_.Name
+  if (-not (Test-Path $dest)) {
+    Copy-Item -LiteralPath $_.FullName -Destination $dest
+    Write-Host "Seeded missing workspace file: $($_.Name)"
+  } else {
+    Write-Host "Keep existing workspace file: $($_.Name)"
+  }
+}
 
 # Seed config if missing
 $cfg = Join-Path $state "openclaw.json"

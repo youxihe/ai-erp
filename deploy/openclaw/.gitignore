@@ -6,7 +6,12 @@
 *.backup
 *.local.json
 state/
+backups/
 credentials/
 logs/*
 !logs/evidence-aierp-011.md
 !logs/.gitkeep
+# Native runtime lives under %LOCALAPPDATA%\aierp-openclaw — never commit copies
+**/gateway.pid
+**/*.sqlite
+**/*.sqlite-*
