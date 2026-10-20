@@ -1,0 +1,42 @@
+{
+  "startedAt": "2026-10-20T03:56:27.364Z",
+  "checks": [
+    {
+      "name": "row-status-uses-results",
+      "pass": true,
+      "detail": "missing result binding"
+    },
+    {
+      "name": "confirm-hidden-when-done",
+      "pass": true,
+      "detail": "confirm gate missing"
+    },
+    {
+      "name": "stock-filter",
+      "pass": true,
+      "detail": "stock filter missing"
+    },
+    {
+      "name": "bill-chinese-type",
+      "pass": true,
+      "detail": "bill labels missing"
+    },
+    {
+      "name": "h5-mask-guard",
+      "pass": true,
+      "detail": "h5 guard missing"
+    },
+    {
+      "name": "e2e-relative-exceljs",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "name": "e2e-install-hint",
+      "pass": true,
+      "detail": "install hint missing"
+    }
+  ],
+  "ok": true,
+  "finishedAt": "2026-10-20T03:56:27.365Z"
+}
