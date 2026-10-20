@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+*secret*
+*.bak
+*.backup
+*.local.json
+state/
+credentials/
+logs/
