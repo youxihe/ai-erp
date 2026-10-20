@@ -1,0 +1,391 @@
+{
+  "startedAt": "2026-10-19T19:43:25.329Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "checks": [
+    {
+      "name": "template-xlsx",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "head": "PK"
+      }
+    },
+    {
+      "name": "preview-no-post",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "previewId": "pv-5222967e197f4045ad2488597869ca64",
+          "status": "PREVIEWED",
+          "posted": false,
+          "records": [
+            {
+              "scene": "PURCHASE",
+              "sourceSheet": "02采购入库",
+              "sourceRows": [
+                4
+              ],
+              "errors": [],
+              "warnings": [],
+              "businessKey": "POC-PI-20261019194325",
+              "normalized": {
+                "organName": "华东化工",
+                "remark": "AIERP-002 purchase",
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": "2",
+                    "unit": "L",
+                    "unitPrice": "20"
+                  }
+                ]
+              },
+              "canConfirm": true
+            },
+            {
+              "scene": "PURCHASE",
+              "sourceSheet": "02采购入库",
+              "sourceRows": [
+                5
+              ],
+              "errors": [
+                "单位不匹配: RM-A001 需要 L 实际 桶"
+              ],
+              "warnings": [],
+              "businessKey": "POC-PI-BAD-20261019194325",
+              "normalized": {
+                "organName": "华东化工",
+                "remark": "bad unit",
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": "1",
+                    "unit": "桶",
+                    "unitPrice": "20"
+                  }
+                ]
+              },
+              "canConfirm": false
+            },
+            {
+              "scene": "PURCHASE",
+              "sourceSheet": "02采购入库",
+              "sourceRows": [
+                6
+              ],
+              "errors": [
+                "物料不存在或不属于当前租户: NO-SUCH"
+              ],
+              "warnings": [],
+              "businessKey": "POC-PI-UNK-20261019194325",
+              "normalized": {
+                "organName": "华东化工",
+                "remark": "unknown",
+                "lines": [
+                  {
+                    "barCode": "NO-SUCH",
+                    "depotName": "原料仓",
+                    "qty": "1",
+                    "unit": "L",
+                    "unitPrice": "1"
+                  }
+                ]
+              },
+              "canConfirm": false
+            }
+          ],
+          "summary": {
+            "records": 3,
+            "confirmable": 1,
+            "posted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "preview-stock-unchanged",
+      "pass": true,
+      "detail": {
+        "beforeA": 134.5,
+        "afterPreview": 134.5
+      }
+    },
+    {
+      "name": "purchase-posted",
+      "pass": true,
+      "detail": {
+        "confirmed": {
+          "code": 200,
+          "data": {
+            "batchId": "batch-20261019194325",
+            "previewId": "pv-5222967e197f4045ad2488597869ca64",
+            "results": [
+              {
+                "businessKey": "POC-PI-20261019194325",
+                "scene": "PURCHASE",
+                "status": "POSTED",
+                "billNumber": "GW-PURCHASE-88",
+                "replayed": false,
+                "stockBefore": {
+                  "RM-A001@原料仓": 134.5
+                },
+                "stockAfter": {
+                  "RM-A001@原料仓": 136.5
+                },
+                "error": ""
+              },
+              {
+                "businessKey": "POC-PI-BAD-20261019194325",
+                "scene": "PURCHASE",
+                "status": "REJECTED",
+                "error": "[\"单位不匹配: RM-A001 需要 L 实际 桶\"]"
+              },
+              {
+                "businessKey": "POC-PI-UNK-20261019194325",
+                "scene": "PURCHASE",
+                "status": "REJECTED",
+                "error": "[\"物料不存在或不属于当前租户: NO-SUCH\"]"
+              }
+            ],
+            "replayed": false
+          }
+        },
+        "beforeA": 134.5,
+        "after": 136.5
+      }
+    },
+    {
+      "name": "batch-idempotent",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "batchId": "batch-20261019194325",
+          "previewId": "pv-5222967e197f4045ad2488597869ca64",
+          "results": [
+            {
+              "stockAfter": {
+                "RM-A001@原料仓": 136.5
+              },
+              "businessKey": "POC-PI-20261019194325",
+              "stockBefore": {
+                "RM-A001@原料仓": 134.5
+              },
+              "billNumber": "GW-PURCHASE-88",
+              "error": "",
+              "scene": "PURCHASE",
+              "status": "POSTED",
+              "replayed": false
+            },
+            {
+              "businessKey": "POC-PI-BAD-20261019194325",
+              "error": "[\"单位不匹配: RM-A001 需要 L 实际 桶\"]",
+              "scene": "PURCHASE",
+              "status": "REJECTED"
+            },
+            {
+              "businessKey": "POC-PI-UNK-20261019194325",
+              "error": "[\"物料不存在或不属于当前租户: NO-SUCH\"]",
+              "scene": "PURCHASE",
+              "status": "REJECTED"
+            }
+          ],
+          "replayed": true
+        }
+      }
+    },
+    {
+      "name": "receipt-xlsx",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "mix-grouped",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "previewId": "pv-2325e6919fbc465aa6fca03cd29d653f",
+          "status": "PREVIEWED",
+          "posted": false,
+          "records": [
+            {
+              "scene": "MIX",
+              "sourceSheet": "03药水配制",
+              "sourceRows": [
+                4,
+                5,
+                6
+              ],
+              "errors": [],
+              "warnings": [
+                "配比为虚构软件测试数据，成品默认成品仓，原料默认原料仓"
+              ],
+              "businessKey": "POC-MIX-20261019194325",
+              "normalized": {
+                "remark": "虚构配比",
+                "finished": {
+                  "barCode": "FG-101",
+                  "depotName": "成品仓",
+                  "qty": "1",
+                  "unit": "L"
+                },
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": "0.6",
+                    "unit": "L"
+                  },
+                  {
+                    "barCode": "RM-B002",
+                    "depotName": "原料仓",
+                    "qty": "0.1",
+                    "unit": "L"
+                  },
+                  {
+                    "barCode": "RM-C003",
+                    "depotName": "原料仓",
+                    "qty": "0.3",
+                    "unit": "L"
+                  }
+                ]
+              },
+              "canConfirm": true
+            }
+          ],
+          "summary": {
+            "records": 1,
+            "confirmable": 1,
+            "posted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "mix-posted",
+      "pass": true,
+      "detail": {
+        "mixConfirm": {
+          "code": 200,
+          "data": {
+            "batchId": "mix-20261019194325",
+            "previewId": "pv-2325e6919fbc465aa6fca03cd29d653f",
+            "results": [
+              {
+                "businessKey": "POC-MIX-20261019194325",
+                "scene": "MIX",
+                "status": "POSTED",
+                "billNumber": "GW-MIX-89",
+                "replayed": false,
+                "stockBefore": {
+                  "FG-101@成品仓": 152,
+                  "RM-A001@原料仓": 136.5,
+                  "RM-B002@原料仓": 5.1,
+                  "RM-C003@原料仓": 37.3
+                },
+                "stockAfter": {
+                  "FG-101@成品仓": 153,
+                  "RM-A001@原料仓": 135.9,
+                  "RM-B002@原料仓": 5,
+                  "RM-C003@原料仓": 37
+                },
+                "error": ""
+              }
+            ],
+            "replayed": false
+          }
+        },
+        "beforeFg": 152,
+        "fgAfterMix": 153,
+        "beforeB": 5.1,
+        "bAfterMix": 5
+      }
+    },
+    {
+      "name": "service-posted",
+      "pass": true,
+      "detail": {
+        "svcConfirm": {
+          "code": 200,
+          "data": {
+            "batchId": "svc-20261019194325",
+            "previewId": "pv-cd34aeae084845f4ab032abdeaccceb5",
+            "results": [
+              {
+                "businessKey": "POC-SV-20261019194325",
+                "scene": "SERVICE",
+                "status": "POSTED",
+                "billNumber": "GW-SERVICE-90",
+                "replayed": false,
+                "stockBefore": {
+                  "FG-101@成品仓": 153
+                },
+                "stockAfter": {
+                  "FG-101@成品仓": 152
+                },
+                "error": ""
+              }
+            ],
+            "replayed": false
+          }
+        },
+        "beforeSvc": 153,
+        "afterSvc": 152
+      }
+    },
+    {
+      "name": "formula-rejected",
+      "pass": true,
+      "detail": {
+        "code": 200,
+        "data": {
+          "previewId": "pv-0d3efa85cfef49debc100b995fea9877",
+          "status": "PREVIEWED",
+          "posted": false,
+          "records": [
+            {
+              "scene": "PURCHASE",
+              "sourceSheet": "02采购入库",
+              "sourceRows": [
+                4
+              ],
+              "errors": [
+                "公式不能作为业务输入",
+                "缺少 入库数量"
+              ],
+              "warnings": [],
+              "businessKey": "POC-PI-F-20261019194325",
+              "normalized": {
+                "organName": "华东化工",
+                "remark": "formula",
+                "lines": [
+                  {
+                    "barCode": "RM-A001",
+                    "depotName": "原料仓",
+                    "qty": null,
+                    "unit": "L",
+                    "unitPrice": "20"
+                  }
+                ]
+              },
+              "canConfirm": false
+            }
+          ],
+          "summary": {
+            "records": 1,
+            "confirmable": 0,
+            "posted": false
+          }
+        }
+      }
+    }
+  ],
+  "ok": true,
+  "finishedAt": "2026-10-19T19:43:28.265Z"
+}
