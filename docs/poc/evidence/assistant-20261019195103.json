@@ -1,0 +1,65 @@
+{
+  "startedAt": "2026-10-19T19:51:03.753Z",
+  "checks": [
+    {
+      "name": "rule-stock",
+      "pass": true,
+      "detail": {
+        "conversationId": "conv-eb1234f0c23847f99b151e2320ff85c2",
+        "mode": "RULE_DEMO",
+        "intent": "stock.query",
+        "suggestedActions": [],
+        "facts": {
+          "barCode": "RM-A001",
+          "materialName": "表面活性剂",
+          "depotId": 14,
+          "depotName": "原料仓",
+          "unit": "L",
+          "currentStock": 135.9,
+          "tenantId": 63,
+          "loginName": "jsh"
+        },
+        "reply": "本地规则演示： 原料仓 表面活性剂 当前库存 135.900000 L。这是 ERP 实时库存。"
+      }
+    },
+    {
+      "name": "no-auto-confirm",
+      "pass": true,
+      "detail": {
+        "forced": {
+          "conversationId": "conv-1a2e726dd0f14ae98fb266c8da17c7b9",
+          "mode": "RULE_DEMO",
+          "intent": "needs_user_confirm",
+          "suggestedActions": [],
+          "reply": "本地规则演示：我不能代替你确认过账。请在页面上核对草稿后再点击确认。"
+        },
+        "before": 135.9,
+        "after": 135.9
+      }
+    },
+    {
+      "name": "unknown-material",
+      "pass": true,
+      "detail": {
+        "conversationId": "conv-898b796057174d3cb4011df1907d7189",
+        "mode": "RULE_DEMO",
+        "intent": "purchase.createDraft",
+        "suggestedActions": [],
+        "errors": [
+          "物料不存在或不属于当前租户: NO-SUCH"
+        ],
+        "reply": "草稿没有创建：物料不存在或不属于当前租户: NO-SUCH"
+      }
+    },
+    {
+      "name": "still-unchanged",
+      "pass": true,
+      "detail": {
+        "before": 135.9,
+        "again": 135.9
+      }
+    }
+  ],
+  "ok": true,
+  "finishedAt": "2026-10-19T19:51:04.591Z"
+}
