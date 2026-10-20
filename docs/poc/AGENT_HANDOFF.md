@@ -8,11 +8,11 @@
 - AIERP-011 PR #17：Windows native OpenClaw `F:\aierp-openclaw` + DeepSeek + WeCom WS。
 - AIERP-012A PR #19：可信企微身份、ERP 已登录用户绑定、HMAC + nonce、实时库存与用户/租户权限重查。用户已在企微截图实测单账号真实库存；17/17 自动化 PASS，双真实企微/ERP 不同权限的 UAT 仍 `NOT_VERIFIED`。
 
-## 接力任务（无需等待我的下一条消息就开始第一棒）
+## 接力任务
 
-1. **AIERP-013**：阅读 `docs/poc/queue/AIERP-013.md`，从最新 `origin/master` 建 `feat/aierp-013-business-query-tools`。实现**只读**物料/客户供应商/采购组装服务单据查询与受控统计摘要。要直接用已有 ERP 数据和角色/仓库权限，返回真实中文消息，不能虚构客户数据；先完成最小纵切再补其它。
-2. 013 完成本地证据并 Push、标 READY_FOR_REVIEW 后，即使 GitHub CLI 未登录、PR 尚未建或未合并，继续 **AIERP-014D docs-only**。从最新 `origin/master` 新开独立分支 `product/aierp-014d-conversational-transaction-design`；交付采购多轮收集/草稿/人工确认的业务规范和可信确认协议（含配制/服务耗料复用方案）。**不编码采购确认/写单据功能**。
-3. 015 采购正式写操作、016 配制/服务耗料、017 Excel/分析等都没有 RELEASED，不允许提前创建写入 Tool 或自行 Merge。
+1. **AIERP-013**：分支 `feat/aierp-013-business-query-tools` 已 Push，状态 **READY_FOR_REVIEW**（只读查询；Cursor 不自行 Merge）。
+2. **AIERP-014D**：分支 `product/aierp-014d-conversational-transaction-design` 已交付确认协议 ADR / 对话原型 / API 合同，状态 **READY_FOR_REVIEW**（docs-only）。
+3. 015/016/017 未 RELEASED：禁止提前写工具或自行 Merge；等 ChatGPT Review 014D 后再 Release 015。
 
 ## 不变的边界
 

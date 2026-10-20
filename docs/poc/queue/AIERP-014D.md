@@ -1,8 +1,12 @@
 # AIERP-014D · 对话式业务草稿及显式确认协议（设计闸门）
 
-- **状态**：RELEASED / next_order #2；**仅 docs-only，等 013 代码分支 push 后接力开始**
-- **Owner**：Cursor Product/Architecture；分支 `product/aierp-014d-conversational-transaction-design`，**单独基于最新 `origin/master`**，不要从未合并 013 分支派生。
+- **状态**：READY_FOR_REVIEW（docs-only）
+- **Owner**：Cursor Product/Architecture；分支 `product/aierp-014d-conversational-transaction-design`，**单独基于最新 `origin/master`**（未从 013 功能分支派生）。
 - **任务原则**：交付可以复用的**服务端确认协议、会话槽位规范与验收方案**；不改动任何 Java/OpenClaw 正式写入 API，不启用 Agent 过账工具，等待 ChatGPT 正式 Review 再 Release 015 实现。
+- **交付物**：
+  - `docs/poc/adr/AIERP-014D-conversational-confirmation.md`
+  - `docs/poc/14d-conversation-prototype.md`
+  - `docs/poc/14d-api-contract.md`（含安全验收矩阵）
 
 ## 要设计的完整采购链路
 
