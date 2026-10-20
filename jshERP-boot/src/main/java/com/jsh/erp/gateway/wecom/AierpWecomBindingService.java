@@ -181,12 +181,10 @@ public class AierpWecomBindingService {
             throw new BusinessRunTimeException(401, "尚未绑定 ERP，请先发送「绑定ERP」");
         }
         long erpUserId = ((Number) binding.get("erp_user_id")).longValue();
-        long tenantId = ((Number) binding.get("tenant_id")).longValue();
+        long boundTenantId = ((Number) binding.get("tenant_id")).longValue();
         // Do NOT use userService.getUser(id): it requires an HTTP session and returns null for adapter calls.
         User user = loadUserById(erpUserId);
-        if (user == null || user.getTenantId() == null || !user.getTenantId().equals(tenantId)) {
-            throw new BusinessRunTimeException(403, "绑定的 ERP 用户无效或跨租户，请重新绑定");
-        }
+        assertActiveUserAndTenant(user, boundTenantId);
         JSONObject query = new JSONObject();
         if (body.getString("barCode") != null) {
             query.put("barCode", body.getString("barCode"));
@@ -231,6 +229,63 @@ public class AierpWecomBindingService {
             user.setStatus(((Number) row.get("status")).byteValue());
         }
         return user;
+    }
+
+    /**
+     * Real-time authz: disabled users / disabled or expired tenants cannot use a stale binding.
+     * Bound tenantId is only for cross-check — never elevates identity.
+     */
+    void assertActiveUserAndTenant(User user, long boundTenantId) {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "绑定的 ERP 用户无效，请重新绑定");
+        }
+        if (!user.getTenantId().equals(boundTenantId)) {
+            throw new BusinessRunTimeException(403, "绑定租户与 ERP 用户租户不一致，请重新绑定");
+        }
+        if (user.getStatus() == null || user.getStatus().byteValue() != 0) {
+            throw new BusinessRunTimeException(403, "ERP 用户已禁用，无法查询库存");
+        }
+        List<Map<String, Object>> tenants = jdbcTemplate.queryForList(
+                "SELECT tenant_id, enabled, expire_time FROM jsh_tenant WHERE tenant_id=? LIMIT 1",
+                user.getTenantId());
+        if (tenants.isEmpty()) {
+            throw new BusinessRunTimeException(403, "ERP 租户不存在，无法查询库存");
+        }
+        Map<String, Object> tenant = tenants.get(0);
+        // Mirror UserService.validateUser: reject only when enabled is present and false.
+        if (tenant.get("enabled") != null && !isTenantEnabledFlag(tenant.get("enabled"))) {
+            throw new BusinessRunTimeException(403, "ERP 租户已停用，无法查询库存");
+        }
+        Object expire = tenant.get("expire_time");
+        if (expire != null) {
+            java.sql.Timestamp expTs;
+            if (expire instanceof java.sql.Timestamp) {
+                expTs = (java.sql.Timestamp) expire;
+            } else if (expire instanceof java.util.Date) {
+                expTs = new java.sql.Timestamp(((java.util.Date) expire).getTime());
+            } else {
+                expTs = java.sql.Timestamp.valueOf(String.valueOf(expire).replace('T', ' ').substring(0, 19));
+            }
+            if (expTs.getTime() < System.currentTimeMillis()) {
+                throw new BusinessRunTimeException(403, "ERP 租户已过期，无法查询库存");
+            }
+        }
+    }
+
+    /** MySQL BIT(1) may arrive as Boolean, Number, or byte[]. */
+    private static boolean isTenantEnabledFlag(Object enabled) {
+        if (enabled instanceof Boolean) {
+            return (Boolean) enabled;
+        }
+        if (enabled instanceof Number) {
+            return ((Number) enabled).intValue() != 0;
+        }
+        if (enabled instanceof byte[]) {
+            byte[] bits = (byte[]) enabled;
+            return bits.length > 0 && bits[0] != 0;
+        }
+        String s = String.valueOf(enabled).trim().toLowerCase();
+        return !"0".equals(s) && !"false".equals(s) && !"b'0'".equals(s);
     }
 
     private void rateLimitIssue(String wecomUserId) {

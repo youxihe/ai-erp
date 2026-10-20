@@ -33,9 +33,13 @@ const trustedRequesterUserId =
 2. 用户在已登录的 ERP PC（`/dashboard/aierp`）输入绑定码；`claim` 使用当前 `X-Access-Token` 会话用户完成绑定。
 3. `erp_stock_query` / `erp_binding_status` / `erp_unbind` 同样只带适配器签名 + 可信 wecomUserId；ERP 按绑定解析 `tenantId+erpUserId`，内部以该用户执行既有 `stockQuery` 权限/仓库检查。
 4. 适配器密钥 `AIERP_WECOM_ADAPTER_SECRET` 仅存本机 `.env` / ERP 环境，不进 Git，不交给模型。
+5. **Fail-closed 密钥**：Boot `@PostConstruct` 与每次请求均拒绝缺失 / 过短 / `change-me` 等占位密钥；YAML / compose **无可用默认值**。OpenClaw 与 ERP 共用同一本机高熵密钥。
+6. HMAC 载荷含 `timestamp + nonce + body`；服务端短期 nonce 去重防重放（进程内 map；集群级持久化列为技术债）。
+7. **实时授权**：`stockQueryDelegated` 每次加载 ERP 用户并校验 `status==0`、租户 `enabled`、未过期；禁用后拒绝，恢复后按**当前**用户权限查询（不缓存旧授权）。
 
 ## 后果
 
 - 写单据工具本阶段不注册；网关写接口对适配器路径不可达。
-- 群聊：工具要求私聊（`chatType!==group`）；业务写操作仍禁止。
+- 群聊：工具层尽量私聊限定——检测 `chatType` / `sessionKey` / `nativeChannelId` 中的 group|channel 则拒绝；官方 WeCom SDK 有 chatType，OpenClaw ToolContext 基类未必透传，故以启发式 + 渠道侧 groupPolicy 双保险。
 - F:`\aierp-openclaw` 不重装；插件以本地目录安装并备份配置。
+- 自动化隔离测试（单合成企微用户）≠ 双真实 ERP 用户企微权限 UAT（后者单独标 NOT_VERIFIED）。
