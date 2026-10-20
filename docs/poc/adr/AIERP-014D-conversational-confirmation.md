@@ -81,14 +81,15 @@ POSTED →（终态；重放返回同一 billNumber）
 
 验证步骤（全部通过才过账）：
 
-1. **原始入站确认事件必须在模型执行之前或旁路解析**：官方企微 Channel 经认证的真实发送者、私聊类型、原始文本和消息 ID 均须可验证；OpenClaw 普通 LLM Tool 返回的“用户已回复确认”不属于可用事件。若 SDK 无法证明该来源，则禁用消息确认，只走 ERP 登录页面确认。\n2. HMAC 适配器签名 + nonce（同 012A）；
+1. **原始入站确认事件必须在模型执行之前或旁路解析**：官方企微 Channel 经认证的真实发送者、私聊类型、原始文本和消息 ID 均须可验证；OpenClaw 普通 LLM Tool 返回的“用户已回复确认”不属于可用事件。若 SDK 无法证明该来源，则禁用消息确认，只走 ERP 登录页面确认。
+2. HMAC 适配器签名 + nonce（同 012A）；
 3. `wecomUserId` 来自渠道可信身份，与挑战绑定一致；
-3. 绑定仍 ACTIVE；用户/租户实时启停校验（同 012A）；
-4. 角色仍具备对应 biz 的审核按钮（现网 `BTN_AUDIT`）；
-5. 仓库/供应商/客户/物料仍属于租户且在授权范围（`reassertAccess`/`reassertParties`）；
-6. 当前 draft payload 的 `businessHash` 与挑战一致；
-7. 挑战未过期、未消费；消费用 `UPDATE ... WHERE consumed_at IS NULL` 单行；
-8. 非群聊。
+4. 绑定仍 ACTIVE；用户/租户实时启停校验（同 012A）；
+5. 角色仍具备对应 biz 的审核按钮（现网 `BTN_AUDIT`）；
+6. 仓库/供应商/客户/物料仍属于租户且在授权范围（`reassertAccess`/`reassertParties`）；
+7. 当前 draft payload 的 `businessHash` 与挑战一致；
+8. 挑战未过期、未消费；消费用 `UPDATE ... WHERE consumed_at IS NULL` 单行；
+9. 非群聊。
 
 **明确拒绝**：模型自报「用户说确认了」而无挑战消费；群聊转发挑战码；另一企微用户；跨租户 draftId。
 
@@ -98,7 +99,7 @@ POSTED →（终态；重放返回同一 billNumber）
 
 015 设计（不在本 PR 实现）：
 
-1. 先完成调用链审计：`AierpGatewayService.confirmInTx/postNativeBill` 与 `DepotHeadService.addDepotHeadAndDetail` 以及 `batchSetStatus` 当前均可能使用 `UserService.getCurrentUser()` / HTTP `RequestContextHolder`，不能简单抽一个 `confirmAs` 就假定身份委托成立。
+1. 先完成**草稿创建与确认两条调用链**审计：`AierpGatewayService.createDraft/confirmInTx/postNativeBill` 与 `DepotHeadService.addDepotHeadAndDetail` 以及 `batchSetStatus` 当前均可能使用 `UserService.getCurrentUser()` / HTTP `RequestContextHolder`，不能简单抽一个 `confirmAs` 就假定身份委托成立。
 2. **优先方案（正式企微直接过账）**：Java 增加 `confirmAs(VerifiedActor, draftId, challenge)`，在可信 adapter 服务端解析绑定用户后，所有下游与库存/审计相关调用**显式传入用户、tenantId 和审计 actor**；原生 Service 中的 session 读取须逐处重构为接受受控 actor 的内部 API，复用原有库存锁/审核事务和幂等数据。测试要求同一绑定普通用户的原生单据 `creator`、`tenant`、角色/仓库与审计记录保持一致。
 3. **禁止以人为构造/替换 HttpServletRequest、Redis session、RequestContextHolder 或共享管理员 Token 来冒充绑定用户。** 若受控显式身份改造尚未贯穿全部原生调用，不开放企微直接提交/过账工具。
 4. **POC 安全降级**：企微可生成 `DRAFT` 并返回摘要；用户使用已登录 ERP PC/H5（真实 ERP session、原生权限）查看并确认。此路径也必须检查草稿属于当前绑定 ERP 用户、tenant 和版本，不得把他人的草稿开放给有 session 的任意用户。
