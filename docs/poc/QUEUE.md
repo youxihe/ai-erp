@@ -15,17 +15,31 @@
 | AIERP-009 | **DONE / PR #14** | PC 确认状态、库存与单据排版收口；H5 遮罩已改善，最终补丁的手机点击回归待确认 |
 | AIERP-010 | PLANNED | 首页库存按仓库分组、名称与编码并显；非阻断小任务 |
 | AIERP-011 | **DONE / PR #17** | Windows native（F:）、DeepSeek 真实回复、企微 WS；启动/运维 Review Fix 已通过 |
-| **AIERP-012A** | **RELEASED / next_order #1** | **企微用户绑定 ERP 已登录账号、按账号权限只读查询真实库存** |
-| AIERP-012B | PLANNED / after 012A | 采购草稿/复杂报表/确认事件；先验证 012A 的身份审计
+| AIERP-012A | **DONE / PR #19** | 可信企微用户绑定 ERP，HMAC/nonce/权限重验，真实库存查询；单用户端到端成功，双用户权限 UAT 待补 |
+| **AIERP-013** | **RELEASED / next_order #1** | **Agent 业务查询扩展：物料、客户/供应商、单据、统计摘要（纯只读）** |
+| **AIERP-014D** | **RELEASED / next_order #2（docs only）** | **对话式业务草稿/确认协议设计，013 分支 push 后继续设计，不直接实现写工具** |
+| AIERP-015 | PLANNED / after 014D reviewed | 企微多轮采购草稿 → 显式确认 → ERP 原生采购入库 |
+| AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
+| AIERP-017 | PLANNED | Excel 企微文件接入、业务异常处理；图片/Excel/H5 报表按渠道能力降级 |
+| AIERP-018 | PLANNED | 多企微身份、不同 ERP 仓库权限/租户 UAT 与渠道安全收口 |
+| AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
 
-## Demo-first 里程碑完成；现在启动 Agent 接入阶段
+## 2026-10-21 新阶段：从库存问答到业务流程 Agent
 
-**当前唯一 RELEASED 任务：AIERP-012A。** 按 `docs/poc/queue/AIERP-012.md` 执行**只读**闭环；AIERP-011 PR #17 已 Review + MERGE，当前真实运行时是 `F:\aierp-openclaw` Windows native，不能因为 WSL/Docker 初始规格重复安装。 PC Demo v1 已在本地走通真实 jshERP 的采购 → 药水配制 → 服务耗料链路，支持 XLSX 解析预览、用户确认、真实库存变化、单据号与回执。规则型助手当前标明 `RULE_DEMO`，不是接入大模型的 Agent。
+**当前自动接力顺序**：013 功能代码（首先完成 2–3 条真实查询纵切并扩充）→ 013 分支推送、标 READY_FOR_REVIEW → 014D **仅产品/架构设计**，不用等 013 merge（独立 branch from latest origin/master）。两项允许不同分支待 Review，Cursor 不自行 Merge；015/016/017 **未 Release，不得擅自开发 ERP 写操作**。控制面详见 `docs/poc/AGENT_BUSINESS_ROADMAP.md` 和任务卡。
 
-AIERP-009 PR #14 已将 PC 行级状态、近期单据可读性、零库存卡片精简、手机端布局和测试脚本路径收口；ChatGPT Review 附加修复了隐藏全局抽屉的跨页面副作用。原 `009` 手机截图拍于最后一次安全补丁之前，**正式给客户手机展示前，需在最新 master 上快速复核 H5 打开菜单/回到其他 ERP 页面和下载上传控件的实际可操作性**。无需重复执行会新增真实单据的 E2E。
+AIERP-011/012A 已完成：本机 Windows native `F:\\aierp-openclaw`，DeepSeek + WeCom WS 私聊工作；当前 AI 工具只支持账号绑定和真实库存查询。用户已实测 1 个已绑定 ERP 用户的真实库存，`AIERP-012A` 新证据 17/17 PASS；**双真实企微身份 + 不同仓库权限 UAT 仍 NOT_VERIFIED**，因此不要宣称正式多用户上线准备完成。
 
-企微 WebSocket + DeepSeek 聊天已实测成功。现在以企微私聊身份发起 ERP 账号绑定，用户在**已经登录的 ERP PC 页面**核验绑定短码，再用专用只读工具查询库存。若无法从官方 Channel 工具上下文取得可信的企微发送者身份，**不得采用 LLM 参数里的 userId 冒充身份**；本轮如实报 BLOCKED_IDENTITY_CONTEXT。
+### 013 查询范围
+- 查询主数据：物料/编码/单位、供应商/客户，按用户租户和真实业务权限。
+- 查询业务单据：最近采购入库、组装配制、服务耗料；筛选日期/状态/关键字、查看单据明细，正确中文类型、审核状态与仓库。
+- 查询统计：真实后端按日期区间、客户、物料聚合数量/金额，若当前 ERP 没有所需数据必须提示“不支持/数据不足”，**不允许 AI 编造报表数字或自行汇总无权限行**。
+- 企微简单答案在聊天框显示；复杂结果先做结构化摘要/Excel 输出适配建议，图片/H5 由 017 实施，先别开发公网穿透。
+- 首页物料名称 + 编码 + 仓库分组的小优化 AIERP-010 可随 013 的前端同域变更**捎带**；不在本轮扩大 UI 版图。
 
-**使用限制**：目前是本机 POC，不是生产上线；演示数据为虚构软件测试配比；原生 jshERP 其他写入口尚不共用 AI 网关库存行锁。所有 ERP 项目与 HR/HCM 资源隔离。Cursor 不自行 Merge，不新增未释放任务。AIERP-012A 禁止采购过账和管理员共享 Token。
+### 014D / 015 写操作设计闸门
+现有 `/purchase/draft`、`/mix/draft`、`/service/draft`、`/draft/confirm` 和 Excel API 可复用。但**OpenClaw 不得直接暴露现有管理员会话或新增可由模型任意调用的 confirm Tool**。确认必须由真实企微私聊事件/可信卡片回调或 ERP H5 已登录用户动作产生单次、绑定草稿的服务器确认凭据。先提交 014D ADR 和可验证交互样例，经 ChatGPT Review 后才 Release 015 代码。
+
+当前 POC 只能承诺本机对话和 Demo，不代表生产化。严禁修改 HR 项目、向 Git 上传真实 Secret/用户聊天记录；暂不安装新 OpenClaw 或迁回 WSL/Docker。已合并的采购、配制、耗料真网关不得重构。Cursor 每任务 push + 测试 + READY_FOR_REVIEW 之后按队列接力，不能自行 Merge。
