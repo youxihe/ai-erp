@@ -10,10 +10,21 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(path.resolve('D:/ERP/ai-erp/.tools/excel-node/package.json'))
-const ExcelJS = require('exceljs')
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '../..')
+function loadExcelJS () {
+  const candidates = [
+    path.join(ROOT, '.tools', 'excel-node', 'package.json'),
+    path.join(ROOT, 'node_modules', 'exceljs', 'package.json')
+  ]
+  for (const pkg of candidates) {
+    if (fs.existsSync(pkg)) {
+      return createRequire(pkg)('exceljs')
+    }
+  }
+  throw new Error('exceljs not found. Run: npm install exceljs --prefix .tools/excel-node')
+}
+const ExcelJS = loadExcelJS()
 const BASE = process.env.AIERP_BOOT_URL || 'http://127.0.0.1:9999/jshERP-boot'
 const PASS = process.env.AIERP_MYSQL_ROOT_PASSWORD || 'aierp_root_change_me'
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)

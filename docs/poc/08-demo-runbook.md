@@ -10,6 +10,18 @@ cd D:\ERP\ai-erp
 deploy\scripts\start-all.ps1   # 若容器已在跑可跳过
 ```
 
+Excel 脚本依赖（项目相对路径，首次需要）：
+
+```powershell
+npm install exceljs --prefix .tools/excel-node
+```
+
+界面收口冒烟（不过账）：
+
+```powershell
+node deploy/scripts/demo-ui-smoke.mjs
+```
+
 前端（本机实测端口）：
 
 ```powershell
