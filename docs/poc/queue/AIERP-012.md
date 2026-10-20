@@ -1,6 +1,6 @@
 # AIERP-012A · 企业微信已验证身份 → ERP 授权绑定 → 只读库存查询
 
-- **状态**：READY_FOR_REVIEW（分支 `feat/aierp-012a-wecom-readonly-stock`；自动化隔离 10/10；企微真人 UAT NOT_VERIFIED）
+- **状态**：DONE / PR #19 MERGED（`cc3bd0e`；17/17 自动化通过，真实企微单账号库存已验证，双真实用户隔离 UAT NOT_VERIFIED）
 - **仓库**：`youxihe/ai-erp`，**分支**：`feat/aierp-012a-wecom-readonly-stock`，从最新 `origin/master` 建。
 - **依赖**：AIERP-011 已在 PR #17 Merge。OpenClaw 本机采用 Windows native `F:\aierp-openclaw`，DeepSeek V4 Flash 与官方 WeCom Bot WebSocket 已工作；已有 jshERP Docker 后端及网关。
 - **本阶段唯一目标**：在企微私聊“绑定 ERP”→ 用户在已登录的 ERP PC 网页输入/核验短码 → 用户说“查表面活性剂库存”→ 返回**该用户有权限看到的真实 ERP 库存、仓库、物料中文名称、编码和单位**。
@@ -43,3 +43,7 @@
 - Cursor 编码、同步本机配置、运行，只在 `youxihe/ai-erp` 新分支提交后反馈 `READY_FOR_REVIEW`、HEAD、脱敏测试证据、企微实测状态；**不自行 merge**。
 - 非阻断 UX/UI 问题记录技术债；采购草稿、实际确认、图表/H5、企微群聊及 OpenClaw 额外工具统一在 **AIERP-012B** 之后再讨论并由 ChatGPT 单独 Release。
 - 最新官方参考：https://docs.openclaw.ai/zh-CN/plugins/sdk-overview 和 https://github.com/WecomTeam/wecom-openclaw-plugin ；**以本机装好的实际版本接口为准**，不要照抄不兼容 SDK。
+
+## ChatGPT Round 2 完成记录
+
+2026-10-21：PR #19 Review + Merge（`cc3bd0e`），公开默认 HMAC 密钥移除、服务端强校验和 nonce、禁用用户/租户即时授权拒绝均通过；实际企微截图显示已绑定 `jsh` 对原料仓和成品仓的实时库存列表。第二位不同角色 ERP 用户/企微真人 UAT 未完成，因此仍是本机 POC，不代表生产多用户验收。非阻断测试技术债：`aierp-012a-readonly-flow.mjs` 对原先 NULL 的租户到期时间没有完整原样恢复，不要把此脚本运行于正式环境。
