@@ -1,0 +1,58 @@
+{
+  "suite": "aierp-012a-readonly-flow",
+  "passed": 10,
+  "failed": 0,
+  "results": [
+    {
+      "name": "unsigned_adapter_rejected",
+      "ok": true,
+      "detail": "{\"code\":401,\"data\":{\"message\":\"缺少适配器签名头\"}}"
+    },
+    {
+      "name": "issue_bind_code",
+      "ok": true,
+      "detail": "codeLen=8"
+    },
+    {
+      "name": "stock_unbound_rejected",
+      "ok": true,
+      "detail": "{\"code\":401,\"data\":{\"message\":\"尚未绑定 ERP，请先发送「绑定ERP」\"}}"
+    },
+    {
+      "name": "claim_ok",
+      "ok": true,
+      "detail": "{\"status\":\"ACTIVE\",\"wecomUserIdMasked\":\"ai***-A\",\"erpLoginName\":\"jsh\",\"tenantId\":63,\"boundAt\":\"2026-10-20 13:59:20\"}"
+    },
+    {
+      "name": "claim_reuse_rejected",
+      "ok": true,
+      "detail": "{\"code\":409,\"data\":{\"message\":\"绑定码已使用，不能重复消费\"}}"
+    },
+    {
+      "name": "spoof_fields_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"拒绝客户端伪造身份字段\"}}"
+    },
+    {
+      "name": "stock_bound_ok",
+      "ok": true,
+      "detail": "{\"barCode\":\"RM-A001\",\"materialName\":\"表面活性剂\",\"depotId\":14,\"depotName\":\"原料仓\",\"unit\":\"L\",\"currentStock\":158.7}"
+    },
+    {
+      "name": "other_wecom_unbound",
+      "ok": true,
+      "detail": "{\"code\":401,\"data\":{\"message\":\"尚未绑定 ERP，请先发送「绑定ERP」\"}}"
+    },
+    {
+      "name": "unbind_ok",
+      "ok": true,
+      "detail": "{\"unbound\":true,\"status\":\"UNBOUND\"}"
+    },
+    {
+      "name": "claim_unknown_rejected",
+      "ok": true,
+      "detail": "{\"code\":404,\"data\":{\"message\":\"绑定码不存在或已失效\"}}"
+    }
+  ],
+  "note": "Live WeCom multi-user UAT NOT_VERIFIED in this script; adapter/isolation covered."
+}

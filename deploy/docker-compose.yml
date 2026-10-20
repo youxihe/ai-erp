@@ -73,6 +73,8 @@ services:
       AIERP_TOMCAT_BASEDIR: /opt/tmp/tomcat
       AIERP_UPLOAD_PATH: /opt/jshERP/upload
       AIERP_EXPORT_PATH: /opt/jshERP/export
+      AIERP_WECOM_ADAPTER_SECRET: ${AIERP_WECOM_ADAPTER_SECRET:-aierp-local-wecom-adapter-change-me}
+      AIERP_WECOM_BOT_ID: ${AIERP_WECOM_BOT_ID:-default}
     ports:
       - "127.0.0.1:9999:9999"
     volumes:

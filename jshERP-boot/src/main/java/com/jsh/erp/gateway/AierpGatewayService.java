@@ -66,10 +66,33 @@ public class AierpGatewayService {
     private PlatformTransactionManager transactionManager;
 
     public Map<String, Object> stockQuery(JSONObject body, HttpServletRequest request) throws Exception {
-        User user = currentUser();
+        return stockQueryAs(currentUser(), body);
+    }
+
+    /**
+     * Read-only stock for an explicit ERP user (WeCom delegated identity).
+     * Does not use X-Access-Token; caller must already authorize the User.
+     */
+    public Map<String, Object> stockQueryAs(User user, JSONObject body) throws Exception {
+        if (user == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "当前会话没有租户身份");
+        }
         assertFunction(user, FUN_STOCK, null, "库存查询");
-        String barCode = required(body, "barCode");
-        String depotName = required(body, "depotName");
+        String barCode = body == null ? null : trimToNull(body.getString("barCode"));
+        String depotName = body == null ? null : trimToNull(body.getString("depotName"));
+        String keyword = body == null ? null : firstNonEmpty(
+                trimToNull(body.getString("query")),
+                trimToNull(body.getString("materialName")));
+        if (barCode == null && keyword != null) {
+            barCode = resolveBarCodeByKeyword(user, keyword);
+        }
+        if (barCode == null) {
+            // Return all visible stocks for demo materials / keyword miss guidance
+            return stockListAs(user, keyword);
+        }
+        if (depotName == null) {
+            return stockAcrossDepots(user, barCode);
+        }
         ResolvedLine line = resolveLine(user, barCode, depotName, BigDecimal.ONE, unitOf(barCode), false);
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("barCode", line.barCode);
@@ -80,7 +103,143 @@ public class AierpGatewayService {
         data.put("currentStock", line.stock);
         data.put("tenantId", user.getTenantId());
         data.put("loginName", user.getLoginName());
+        data.put("rows", Collections.singletonList(copyStockRow(line)));
         return data;
+    }
+
+    private Map<String, Object> stockAcrossDepots(User user, String barCode) throws Exception {
+        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+        MaterialExtend ext = materialExtendService.getInfoByBarCode(barCode);
+        if (ext == null) {
+            throw new BusinessRunTimeException(404, "未找到物料编码: " + barCode);
+        }
+        Material material = materialService.getMaterial(ext.getMaterialId());
+        if (material == null || material.getTenantId() == null || !material.getTenantId().equals(user.getTenantId())) {
+            throw new BusinessRunTimeException(404, "物料不存在或不属于当前租户");
+        }
+        for (Long depotId : allowedDepotIds(user)) {
+            Depot depot = depotService.getDepot(depotId);
+            if (depot == null || depot.getTenantId() == null || !depot.getTenantId().equals(user.getTenantId())) {
+                continue;
+            }
+            Map<String, Object> row = new LinkedHashMap<String, Object>();
+            row.put("barCode", barCode);
+            row.put("materialName", material.getName());
+            row.put("depotId", depotId);
+            row.put("depotName", depot.getName());
+            row.put("unit", unitOf(barCode));
+            row.put("currentStock", depotItemService.getCurrentStockByParam(depotId, material.getId()));
+            rows.add(row);
+        }
+        if (rows.isEmpty()) {
+            throw new BusinessRunTimeException(403, "当前用户没有可查询的仓库权限");
+        }
+        Map<String, Object> data = new LinkedHashMap<String, Object>();
+        data.put("barCode", barCode);
+        data.put("materialName", material.getName());
+        data.put("unit", unitOf(barCode));
+        data.put("tenantId", user.getTenantId());
+        data.put("loginName", user.getLoginName());
+        data.put("rows", rows);
+        data.put("currentStock", rows.get(0).get("currentStock"));
+        data.put("depotName", rows.get(0).get("depotName"));
+        return data;
+    }
+
+    private Map<String, Object> stockListAs(User user, String keyword) throws Exception {
+        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+        List<Map<String, Object>> materials = jdbcTemplate.queryForList(
+                "SELECT m.id AS material_id, m.name AS material_name, e.bar_code AS bar_code " +
+                        "FROM jsh_material m JOIN jsh_material_extend e ON e.material_id=m.id " +
+                        "WHERE m.tenant_id=? AND IFNULL(m.delete_flag,'0')<>'1' AND IFNULL(e.delete_flag,'0')<>'1' " +
+                        (keyword == null ? "" : "AND (m.name LIKE ? OR e.bar_code LIKE ?) ") +
+                        "ORDER BY e.bar_code LIMIT 40",
+                keyword == null
+                        ? new Object[]{user.getTenantId()}
+                        : new Object[]{user.getTenantId(), "%" + keyword + "%", "%" + keyword + "%"});
+        for (Long depotId : allowedDepotIds(user)) {
+            Depot depot = depotService.getDepot(depotId);
+            if (depot == null || depot.getTenantId() == null || !depot.getTenantId().equals(user.getTenantId())) {
+                continue;
+            }
+            for (Map<String, Object> mat : materials) {
+                Map<String, Object> row = new LinkedHashMap<String, Object>();
+                String code = String.valueOf(mat.get("bar_code"));
+                row.put("barCode", code);
+                row.put("materialName", mat.get("material_name"));
+                row.put("depotId", depotId);
+                row.put("depotName", depot.getName());
+                row.put("unit", unitOf(code));
+                row.put("currentStock", depotItemService.getCurrentStockByParam(depotId, ((Number) mat.get("material_id")).longValue()));
+                rows.add(row);
+            }
+        }
+        if (rows.isEmpty()) {
+            throw new BusinessRunTimeException(404, keyword == null
+                    ? "当前用户没有可查询的库存"
+                    : "未识别物料「" + keyword + "」，请补充中文名称或编码");
+        }
+        Map<String, Object> data = new LinkedHashMap<String, Object>();
+        data.put("loginName", user.getLoginName());
+        data.put("tenantId", user.getTenantId());
+        data.put("rows", rows);
+        return data;
+    }
+
+    private String resolveBarCodeByKeyword(User user, String keyword) {
+        List<String> codes = jdbcTemplate.query(
+                "SELECT e.bar_code FROM jsh_material m JOIN jsh_material_extend e ON e.material_id=m.id " +
+                        "WHERE m.tenant_id=? AND IFNULL(m.delete_flag,'0')<>'1' AND IFNULL(e.delete_flag,'0')<>'1' " +
+                        "AND (m.name LIKE ? OR e.bar_code LIKE ?) ORDER BY CASE WHEN m.name=? THEN 0 WHEN e.bar_code=? THEN 1 ELSE 2 END, e.bar_code LIMIT 2",
+                (rs, i) -> rs.getString(1),
+                user.getTenantId(), "%" + keyword + "%", "%" + keyword + "%", keyword, keyword);
+        if (codes.isEmpty()) {
+            return null;
+        }
+        if (codes.size() > 1 && !codes.get(0).equalsIgnoreCase(keyword) && !keywordEqualsMaterial(user, keyword, codes.get(0))) {
+            // Ambiguous: let stockListAs return candidates
+            return null;
+        }
+        return codes.get(0);
+    }
+
+    private boolean keywordEqualsMaterial(User user, String keyword, String barCode) {
+        List<String> names = jdbcTemplate.query(
+                "SELECT m.name FROM jsh_material m JOIN jsh_material_extend e ON e.material_id=m.id " +
+                        "WHERE m.tenant_id=? AND e.bar_code=? AND IFNULL(m.delete_flag,'0')<>'1' LIMIT 1",
+                (rs, i) -> rs.getString(1), user.getTenantId(), barCode);
+        return !names.isEmpty() && keyword.equals(names.get(0));
+    }
+
+    private static Map<String, Object> copyStockRow(ResolvedLine line) {
+        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        row.put("barCode", line.barCode);
+        row.put("materialName", line.materialName);
+        row.put("depotId", line.depotId);
+        row.put("depotName", line.depotName);
+        row.put("unit", line.unit);
+        row.put("currentStock", line.stock);
+        return row;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String t = value.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private static String firstNonEmpty(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String v : values) {
+            if (v != null && !v.isEmpty()) {
+                return v;
+            }
+        }
+        return null;
     }
 
     public Map<String, Object> createDraft(String bizType, JSONObject body, HttpServletRequest request) throws Exception {

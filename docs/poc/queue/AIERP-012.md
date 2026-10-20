@@ -1,6 +1,6 @@
 # AIERP-012A · 企业微信已验证身份 → ERP 授权绑定 → 只读库存查询
 
-- **状态**：RELEASED / next_order #1
+- **状态**：READY_FOR_REVIEW（分支 `feat/aierp-012a-wecom-readonly-stock`；自动化隔离 10/10；企微真人 UAT NOT_VERIFIED）
 - **仓库**：`youxihe/ai-erp`，**分支**：`feat/aierp-012a-wecom-readonly-stock`，从最新 `origin/master` 建。
 - **依赖**：AIERP-011 已在 PR #17 Merge。OpenClaw 本机采用 Windows native `F:\aierp-openclaw`，DeepSeek V4 Flash 与官方 WeCom Bot WebSocket 已工作；已有 jshERP Docker 后端及网关。
 - **本阶段唯一目标**：在企微私聊“绑定 ERP”→ 用户在已登录的 ERP PC 网页输入/核验短码 → 用户说“查表面活性剂库存”→ 返回**该用户有权限看到的真实 ERP 库存、仓库、物料中文名称、编码和单位**。

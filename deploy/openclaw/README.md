@@ -84,6 +84,21 @@ Gateway Token：从 `F:\aierp-openclaw\state\.env` 的 `OPENCLAW_GATEWAY_TOKEN` 
 - 改行为 MD：优先改 `%LOCALAPPDATA%\...\workspace\`；仓库 `workspace/*.md` 仅作模板同步（安装时不覆盖已有文件）。
 - **禁止**：挂 Docker socket、挂宿主根目录、连 ERP MySQL/Redis、公网暴露 18789、宣称已有 ERP 过账能力。
 
+## AIERP-012A 插件（只读 ERP）
+
+仓库插件：`deploy/openclaw/plugins/aierp-erp-tools`  
+本机安装（不重装 OpenClaw）：
+
+```powershell
+cd D:\ERP\ai-erp\deploy\openclaw
+# 先备份 F:\aierp-openclaw\state\openclaw.json
+.\scripts\common.ps1  # or: Import via start script env
+& "$env:LOCALAPPDATA\aierp-openclaw\node_modules\.bin\openclaw.cmd" plugins install (Resolve-Path .\plugins\aierp-erp-tools)
+```
+
+要求 `state/.env` 含 `AIERP_WECOM_ADAPTER_SECRET`（与 `deploy/.env` 一致）与 `AIERP_ERP_BASE_URL=http://127.0.0.1:9999/jshERP-boot`。  
+工具身份仅信任 `ctx.requesterSenderId`（`messageChannel=wecom`）。
+
 ## 验收检查清单
 
 - [ ] `health.ps1` 显示 `runtime=native`，`http_status=200`，`cmdline_token_leak=false`
