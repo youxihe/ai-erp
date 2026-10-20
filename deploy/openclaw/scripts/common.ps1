@@ -1,5 +1,5 @@
 # Shared helpers for AIERP OpenClaw management.
-# Active runtime on this host: Windows native under %LOCALAPPDATA%\aierp-openclaw.
+# Active runtime: Windows native. Large install prefers F:\aierp-openclaw (C: is tight).
 # Docker Compose helpers remain for optional fallback only.
 $ErrorActionPreference = "Stop"
 
@@ -9,11 +9,23 @@ $EnvFile = Join-Path $OpenclawRoot ".env"
 $WorkspaceSrc = Join-Path $OpenclawRoot "workspace"
 $EvidenceDir = Join-Path $OpenclawRoot "logs"
 
-$NativePrefix = Join-Path $env:LOCALAPPDATA "aierp-openclaw"
+function Resolve-NativeOpenclawPrefix {
+  # 1) explicit override  2) F: preferred home  3) LOCALAPPDATA (may be junction → F:)
+  if ($env:AIERP_OPENCLAW_HOME -and (Test-Path $env:AIERP_OPENCLAW_HOME)) {
+    return $env:AIERP_OPENCLAW_HOME
+  }
+  $onF = "F:\aierp-openclaw"
+  if (Test-Path (Join-Path $onF "node_modules\.bin\openclaw.cmd")) {
+    return $onF
+  }
+  return (Join-Path $env:LOCALAPPDATA "aierp-openclaw")
+}
+
+$NativePrefix = Resolve-NativeOpenclawPrefix
 $NativeStateDir = Join-Path $NativePrefix "state"
 $NativeWorkspaceDir = Join-Path $NativeStateDir "workspace"
 $NativeCli = Join-Path $NativePrefix "node_modules\.bin\openclaw.cmd"
-# Prefer repo deploy/openclaw/backups (usually D:, gitignored). C: LOCALAPPDATA may be disk-full.
+# Backups on D: (repo deploy tree, gitignored) — not C:
 $NativeBackupRoot = Join-Path $OpenclawRoot "backups"
 $NativePidFile = Join-Path $NativeStateDir "gateway.pid"
 $NativeGatewayPort = 18789

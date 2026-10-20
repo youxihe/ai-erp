@@ -1,9 +1,12 @@
-# Fallback when Docker image pull is blocked: isolated OpenClaw under %LOCALAPPDATA%\aierp-openclaw
+# Fallback when Docker image pull is blocked: isolated OpenClaw (prefer F:\aierp-openclaw).
 # Requires/downloads Node 24.16+ into that prefix. Does not use HR/ERP Docker networks.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "common.ps1")
 
-$prefix = Join-Path $env:LOCALAPPDATA "aierp-openclaw"
+$prefix = if ($env:AIERP_OPENCLAW_HOME) { $env:AIERP_OPENCLAW_HOME }
+  elseif (Test-Path "F:\") { "F:\aierp-openclaw" }
+  else { Join-Path $env:LOCALAPPDATA "aierp-openclaw" }
+Write-Host "Install prefix: $prefix"
 $nodeRoot = Join-Path $prefix "node"
 $state = Join-Path $prefix "state"
 $workspaceDst = Join-Path $state "workspace"
