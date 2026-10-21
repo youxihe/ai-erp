@@ -1,17 +1,24 @@
-# AI-ERP Agent · 当前唯一关键任务：017A 真实文件预览失败修复
+# AI-ERP Cursor · 当前客户 Demo 两棒接力（2026-10-21 20:48）
 
-**Repo** `youxihe/ai-erp`。当前 master：
-- PR #27 AIERP-015B **已合并**（`c94e192c`）：真人企微采购 #111 原生成功入库，18/18 修复安全测试。
-- PR #31 AIERP-019A **已合并**（`6a447f13`）：operationId 目录、采购/库存/生产/耗料/分析/Excel SOP；运行时动态网关 019B 未释放。
-- **PR #30 AIERP-017A REVIEW_FIX_REQUIRED**：Java Excel 预览 14/14 PASS，但企微真实文件上报未生成 previewId。Agent 把 `采购入库模板---100L---.xlsx` 的文件名内容当做数量创建未审核采购草稿 #113。**不得确认或自动处理 #113**。
+**master 已合并**：AIERP-015B PR #27（单张采购可信原文入库）、019A PR #31（ERP 能力目录/SOP）。**目前 PR #30 Excel 预览修复未合并**。
 
-## P0 收口步骤（执行，无需再等待用户下指令）
+### 第一棒：原 PR #30 · 少量 P0 与模板/文案收口
 
-1. 阅读 GitHub PR #30 最新 ChatGPT Round 3 评论（`docs/poc/QUEUE.md` 也已写明）；在原分支从最新 `origin/master` rebase/merge，保留 015B `before_dispatch` 原文确认钩子，13 个模型工具和 017A Excel 处理；不覆盖已合并的目录/SOP。
-2. 在 F:\aierp-openclaw 真正生效的官方企业微信 SDK 和 OpenClaw 插件源码中查入站原始文件 → 媒资下载 → 临时落盘 → 插件消息钩子；只记录脱敏文件后缀/SHA/消息 ID/发送者掩码、hook 到达/staged 状态/异常，不能上传客户真实文件到 Git。官方 `message_received` 为 OBSERVE；`inbound_claim` 仅在 owner plugin 已绑定路由时触发，不能靠修改这两个 hook event 字段完成可靠预览。
-3. 用已认证的企微私聊身份和真实 staged XLSX **bytes** 调 Java `previewAs`，服务端严格校验文件 hash 与绑定 ERP actor/tenant/warehouse；生成 `previewId` 才允许回复“已解析”。失败明确回复 `FILE_PARSE_FAILED`，不让 DeepSeek 凭文件名/历史猜行数、数量、供应商/价格。
-4. **服务端 file workflow 状态阻断**：本阶段用户上传 XLSX/要求按文件内容创建草稿时，如果没有 verified `PREVIEWED`，不得借原单张 `erp_purchase_prepare` 建一个假定文件来源的草稿。只能在用户明确取消文件流程并重新开始独立口头采购后走普通草稿。
-5. 回归：真实修改 .xlsx，文件名 `采购入库模板---100L---.xlsx` 但单元格保留 20L 时，真实 preview 返回 20L，并展示预览 ID/行/单据/错误；原生库存和已审核单据不变，期间新草稿数为 0。验证模型无权触发 excel.confirm、单张真实确认钩子没有被改没。日志查清 FILE_SENT 与 PREVIEWED 的独立状态。
-6. 非过账本地脚本 + 可信企微真人附件收发预览证据，Push `REVIEW_FIX_PUSHED` 新 HEAD，ChatGPT 审阅再 Merge；不自行 Merge，暂不释放 017B/C。
+用户在企微发送 Excel 后，后台已实际返回 PREVIEWED：`T-20261021`，1 张采购单，100 L RM-A001，华东化工，原料仓，20 元/L，错误 0。**无需继续重复诊断已成功的文件字节收发**。
 
-运行实例只有一个 F:，不能任由不同 PR 覆盖安装；部署前备份现有插件、MD、配置和版本，不重新安装。
+立即按 PR #30 ChatGPT Round 4 评论修复：
+1. 删除服务端 `purchasePrepare` 接受模型参数 `excelWorkflowCancel:true` 的绕过；Redis 文件工作流只允许本人调用独立可信 `取消文件` 关闭。补恶意绕过负例。
+2. 完善真实 XLSX 模板设计：优先看 jshERP 原生模板是否可复用；现有模板表头/数据裸文本、没有必填/选填；采购单号首次被漏填。清晰、好看的企业模板：必填 *、选填提示、字段填写说明/例子、分组与标题、冻结表头、筛选、列宽/打印、错误回传友好；预填必须自动带唯一业务单号和日期，不能编造供应商/价格。保留模板解析兼容。
+3. 面向用户只输出“文件已核对：1张采购单，100L×20=2000元，华东化工、原料仓，数据无误，**尚未入库**”，不展示 `status=PREVIEWED`、`previewId`、`scene`、`canConfirm` 或 “行null”。修正行号从 sourceRows 获取。
+4. 上传成功以后服务端能用可信 WeCom sender/bot/binding generation 找到最新有效 preview；即使模型/会话重启也不能回复“未收到文件”。017A 只预览，明确下一步，不要自行入库/新建猜测草稿。
+5. 原分支 `feat/aierp-017a-wecom-xlsx-inbound-preview` 同步最新 master，保留单张采购的 trusted before_dispatch 确认和 13 工具；提交非过账测试、真实企微简洁回复证据，Push `REVIEW_FIX_PUSHED`，等 ChatGPT 合并。Cursor 不自行 Merge。
+
+### 第二棒：AIERP-017B1 · 一张采购单 Excel 的最快正式闭环
+
+**任务卡已释放但有合并门槛**：`docs/poc/queue/AIERP-017B1.md`，只有 #30 最终 Review/Merge 后才部署。可在 #30 Push Fix 后先读任务卡/准备隔离实现分支，不能动 F: 共享运行环境。
+
+目标：已经正确解析且单一有效采购业务单的 Excel → 服务端从 previewId 的存档 normalized lines 创建**真正未审核 DRAFT**（不是由 Agent 猜数量）→ 企微返回真实草稿摘要及 `确认采购{id}` → 用户本人仅确认一次 → 复用 015B 原生事务入库、返回真实单据与库存变化。下一句“入库吧”不能丢失 preview；最多提示一次明确确认短语，不要求用户重新传文件。**严禁模型调用 excel.confirm**。
+
+数据来源绑定用户+bot+ERP 租户+bindingVersion+fileSha256+previewVersion，同一 Excel/业务号幂等；文件编辑重传使旧确认失效；不自动确认 #113 和 #111。多张单、配制生产、服务耗料扩展留 017B/017C。
+
+本轮不要启动 019B 通用动态工具框架；客户 Demo 交付速度优先。。
