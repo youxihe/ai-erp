@@ -166,11 +166,18 @@ public class DepotItemService {
 
     public List<DepotItemVo4DetailByTypeAndMId> findDetailByDepotIdsAndMaterialIdList(String depotIds, Boolean forceFlag, Boolean inOutManageFlag, String sku, String batchNumber,
                                                                                       String number, String beginTime, String endTime, Long mId, Integer offset, Integer rows)throws Exception {
+        return findDetailByDepotIdsAndMaterialIdList(depotIds, forceFlag, inOutManageFlag, sku, batchNumber,
+                number, beginTime, endTime, mId, offset, rows, null);
+    }
+
+    public List<DepotItemVo4DetailByTypeAndMId> findDetailByDepotIdsAndMaterialIdList(String depotIds, Boolean forceFlag, Boolean inOutManageFlag, String sku, String batchNumber,
+                                                                                      String number, String beginTime, String endTime, Long mId, Integer offset, Integer rows,
+                                                                                      User actor)throws Exception {
         String[] depotIdArrOld = null;
         if(StringUtil.isNotEmpty(depotIds)) {
             depotIdArrOld = depotIds.split(",");
         }
-        List<Long> depotList = depotService.parseDepotListByArr(depotIdArrOld);
+        List<Long> depotList = depotService.parseDepotListByArr(depotIdArrOld, actor);
         Long[] depotIdArray = StringUtil.listToLongArray(depotList);
         List<DepotItemVo4DetailByTypeAndMId> list =null;
         try{
@@ -379,6 +386,14 @@ public class DepotItemService {
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public void saveDetials(String rows, Long headerId, String actionType, DepotHead preDepotHead, HttpServletRequest request) throws Exception{
+        saveDetials(rows, headerId, actionType, preDepotHead, request, null);
+    }
+
+    /**
+     * AIERP-015B: when actor is set, cost/stock helpers use explicit user (no getCurrentUser session).
+     */
+    public void saveDetials(String rows, Long headerId, String actionType, DepotHead preDepotHead,
+                            HttpServletRequest request, User actor) throws Exception{
         //查询单据主表信息
         DepotHead depotHead =depotHeadMapper.selectByPrimaryKey(headerId);
         //删除序列号和回收序列号
@@ -686,10 +701,11 @@ public class DepotItemService {
             for (DepotItem depotItem : depotItemList) {
                 //更新当前库存
                 updateCurrentStock(depotItem);
-                //更新当前成本价
-                updateCurrentUnitPrice(depotItem);
+                //更新当前成本价（actor 路径不依赖 HTTP session）
+                updateCurrentUnitPrice(depotItem, actor);
                 //更新商品的价格
-                updateMaterialExtendPrice(depotItem.getMaterialExtendId(), depotHead.getSubType(), depotHead.getBillType(), depotItem.getUnitPrice());
+                updateMaterialExtendPrice(depotItem.getMaterialExtendId(), depotHead.getSubType(), depotHead.getBillType(),
+                        depotItem.getUnitPrice(), actor);
             }
             //如果关联单据号非空则更新订单的状态,单据类型：采购入库单、销售出库单、盘点复盘单、其它入库单、其它出库单
             if(BusinessConstants.SUB_TYPE_PURCHASE.equals(depotHead.getSubType())
@@ -954,6 +970,11 @@ public class DepotItemService {
      */
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public void updateMaterialExtendPrice(Long meId, String subType, String billType, BigDecimal unitPrice) throws Exception {
+        updateMaterialExtendPrice(meId, subType, billType, unitPrice, null);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public void updateMaterialExtendPrice(Long meId, String subType, String billType, BigDecimal unitPrice, User actor) throws Exception {
         if(systemConfigService.getUpdateUnitPriceFlag()) {
             if (unitPrice!=null) {
                 MaterialExtend materialExtend = new MaterialExtend();
@@ -973,7 +994,11 @@ public class DepotItemService {
                         materialExtend.setPurchaseDecimal(unitPrice);
                     }
                 }
-                materialExtendService.updateMaterialExtend(materialExtend);
+                if (actor != null) {
+                    materialExtendService.updateMaterialExtend(materialExtend, actor);
+                } else {
+                    materialExtendService.updateMaterialExtend(materialExtend);
+                }
             }
         }
     }
@@ -1135,13 +1160,20 @@ public class DepotItemService {
      */
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public void updateCurrentUnitPrice(DepotItem depotItem) throws Exception {
+        updateCurrentUnitPrice(depotItem, null);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public void updateCurrentUnitPrice(DepotItem depotItem, User actor) throws Exception {
         Boolean forceFlag = systemConfigService.getForceApprovalFlag();
         //此处给出入库管理的传值默认为false，不然会导致查询不到销售相关的单据
         Boolean inOutManageFlag = false;
         //查询多单位信息
         Unit unitInfo = materialService.findUnit(depotItem.getMaterialId());
-        List<DepotItemVo4DetailByTypeAndMId> itemList = findDetailByDepotIdsAndMaterialIdList(null, forceFlag, inOutManageFlag, null,
-                null, null, null, null, depotItem.getMaterialId(), null, null);
+        // Prefer the line's depot to avoid session lookup; fall back to actor's authorized depots.
+        String depotIds = depotItem.getDepotId() != null ? String.valueOf(depotItem.getDepotId()) : null;
+        List<DepotItemVo4DetailByTypeAndMId> itemList = findDetailByDepotIdsAndMaterialIdList(depotIds, forceFlag, inOutManageFlag, null,
+                null, null, null, null, depotItem.getMaterialId(), null, null, actor);
         Collections.reverse(itemList); //倒序之后变成按时间从前往后排序
         BigDecimal currentNumber = BigDecimal.ZERO;
         BigDecimal currentUnitPrice = BigDecimal.ZERO;

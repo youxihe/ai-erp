@@ -60,11 +60,18 @@ public class AierpWecomDraftService {
 
     private static AierpGatewayService.WecomDraftOwner toOwner(AierpWecomBindingService.BoundContext ctx) {
         long bindingId = ((Number) ctx.binding.get("id")).longValue();
+        long bindingVersion = ctx.binding.get("binding_version") == null
+                ? 0L : ((Number) ctx.binding.get("binding_version")).longValue();
+        if (bindingVersion < 1L) {
+            // Pre-015B rows: fall back to treating missing version as 1 after migration default.
+            bindingVersion = 1L;
+        }
         String boundAt = String.valueOf(ctx.binding.get("bound_at")).replace('T', ' ');
         if (boundAt.length() > 19) {
             boundAt = boundAt.substring(0, 19);
         }
-        return new AierpGatewayService.WecomDraftOwner(CHANNEL, ctx.botId, ctx.wecomUserId, bindingId, boundAt);
+        return new AierpGatewayService.WecomDraftOwner(
+                CHANNEL, ctx.botId, ctx.wecomUserId, bindingId, bindingVersion, boundAt);
     }
 
     private JSONObject buildPurchaseBody(JSONObject body) {
@@ -155,7 +162,17 @@ public class AierpWecomDraftService {
         }
         data.put("summary", summary);
         if (!confirmed) {
-            data.put("hint", "待确认、未入库。库存尚未变化。正式过账属后续可信确认阶段，当前无法通过对话直接审核。");
+            Object draftId = created.get("draftId");
+            Object challenge = created.get("challenge");
+            if (challenge instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> ch = (Map<String, Object>) challenge;
+                data.put("challenge", ch);
+                data.put("hint", ch.get("hint") != null ? ch.get("hint")
+                        : ("待确认、未入库。请回复「确认采购" + draftId + "」提交入库。"));
+            } else {
+                data.put("hint", "待确认、未入库。请回复「确认采购" + draftId + "」提交入库；仅一个待确认草稿时可回复「确认」。");
+            }
         }
         return data;
     }
@@ -172,7 +189,7 @@ public class AierpWecomDraftService {
     }
 
     private static String statusLabel(String status) {
-        if ("DRAFT".equals(status)) {
+        if ("DRAFT".equals(status) || "AWAITING_CONFIRM".equals(status)) {
             return "待确认、未入库";
         }
         if ("CANCELLED".equals(status)) {

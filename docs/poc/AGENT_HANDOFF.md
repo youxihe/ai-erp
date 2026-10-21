@@ -1,21 +1,14 @@
-# AI-ERP Cursor Agent · 017A READY_FOR_REVIEW（2026-10-21）
+# AI-ERP Cursor Agent · 交接（015B+017A 统一插件）
 
-## PR #27（等待 ChatGPT Review，不 Merge）
-- 分支：`feat/aierp-015b-trusted-confirm-receipt`
-- **HEAD**：`2b645be2` — confirm-ui 重验 ACTIVE `binding_version`；PDF 重验用户/仓库权限
-- 证据：`docs/poc/evidence/aierp-015b-authz-fix.*` ALL_PASS 18；未重跑 #111 过账
+## PR #27 AIERP-015B
 
-## AIERP-017A（本棒）
-- 分支：`feat/aierp-017a-wecom-xlsx-inbound-preview`
-- **HEAD**：`d4fede6f76e2dddc7acceb9ca985f6a49b89f8cd`
-- HMAC：`/aierp/v1/wecom/excel/template` + `/preview`（`templateAs`/`previewAs`）
-- OpenClaw：`erp_excel_template` + 入站 xlsx 预览钩子；**无** `excel.confirm`
-- SALE：仅模板；PURCHASE/MIX/SERVICE 预览；库存不变
-- 证据：`docs/poc/evidence/aierp-017a-excel-preview.md` ALL_PASS 14
-- F: 已备份 `openclaw.json` / 插件并 `restart.ps1`（PID 见健康检查）
+- 冲突已与 master（含 019A）和解并 Push；待 ChatGPT Merge。
+- 真人企微 #111 → `GW-PURCHASE-111` 已过账；**勿重跑**破坏性确认。
 
-## 019A（并行 docs）
-- 分支：`product/aierp-019a-capability-catalog-skills` HEAD `862a1fab`（含更新后的 `erp-batch-excel/SKILL.md`）
+## PR #30 AIERP-017A（本分支）
 
-## 未做
-- 017B 批次草稿、017C 可信批量过账；Cursor 不自行 Merge。
+- 已合入 master + 015B 确认/授权代码。
+- **统一插件**：12 ERP 工具 + `erp_excel_template`（支持 `rows` 预填）+ `before_dispatch` 采购确认钩子 + Excel 入站预览钩子。
+- **禁止**模型注册 `erp_draft_confirm` / `excel.confirm`。
+- AGENTS：单张采购可由企微原文确认入库；Excel 仅模板+预览，无批量过账。
+- 验收门槛：真人企微收到可编辑预填 XLSX → 回传 → 真实预览；库存不变。不自行 Merge。

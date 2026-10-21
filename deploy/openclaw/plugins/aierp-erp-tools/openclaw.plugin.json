@@ -1,7 +1,7 @@
 {
   "id": "aierp-erp-tools",
   "name": "AIERP ERP Tools",
-  "description": "WeCom trusted-identity ERP bind + queries + purchase DRAFT (no confirm)",
+  "description": "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm + excel template/preview",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -20,7 +20,8 @@
       "erp_report_query",
       "erp_purchase_prepare",
       "erp_draft_status",
-      "erp_draft_cancel"
+      "erp_draft_cancel",
+      "erp_excel_template"
     ]
   }
 }

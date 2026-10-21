@@ -114,16 +114,26 @@ public class AierpWecomBindingService {
             List<Map<String, Object>> existing = jdbcTemplate.queryForList(
                     "SELECT id FROM aierp_wecom_binding WHERE channel=? AND bot_id=? AND wecom_user_id=?",
                     CHANNEL, botId, wecomUserId);
+            long bindingVersion;
             if (existing.isEmpty()) {
                 jdbcTemplate.update(
-                        "INSERT INTO aierp_wecom_binding (channel, bot_id, wecom_user_id, tenant_id, erp_user_id, erp_login_name, status, bound_at, updated_at) VALUES (?,?,?,?,?,?, 'ACTIVE', ?, ?)",
+                        "INSERT INTO aierp_wecom_binding (channel, bot_id, wecom_user_id, tenant_id, erp_user_id, erp_login_name, status, binding_version, bound_at, updated_at) VALUES (?,?,?,?,?,?, 'ACTIVE', 1, ?, ?)",
                         CHANNEL, botId, wecomUserId, user.getTenantId(), user.getId(), user.getLoginName(),
                         TS.format(now), TS.format(now));
+                bindingVersion = 1L;
             } else {
+                // Monotonic generation: same-second rebind must get a new version.
                 jdbcTemplate.update(
-                        "UPDATE aierp_wecom_binding SET tenant_id=?, erp_user_id=?, erp_login_name=?, status='ACTIVE', bound_at=?, unbound_at=NULL, updated_at=? WHERE channel=? AND bot_id=? AND wecom_user_id=?",
+                        "UPDATE aierp_wecom_binding SET tenant_id=?, erp_user_id=?, erp_login_name=?, status='ACTIVE', "
+                                + "binding_version=IFNULL(binding_version,0)+1, bound_at=?, unbound_at=NULL, updated_at=? "
+                                + "WHERE channel=? AND bot_id=? AND wecom_user_id=?",
                         user.getTenantId(), user.getId(), user.getLoginName(), TS.format(now), TS.format(now),
                         CHANNEL, botId, wecomUserId);
+                List<Map<String, Object>> verRows = jdbcTemplate.queryForList(
+                        "SELECT binding_version FROM aierp_wecom_binding WHERE channel=? AND bot_id=? AND wecom_user_id=?",
+                        CHANNEL, botId, wecomUserId);
+                bindingVersion = verRows.isEmpty() || verRows.get(0).get("binding_version") == null
+                        ? 1L : ((Number) verRows.get(0).get("binding_version")).longValue();
             }
             Map<String, Object> data = new LinkedHashMap<String, Object>();
             data.put("status", "ACTIVE");
@@ -131,6 +141,7 @@ public class AierpWecomBindingService {
             data.put("erpLoginName", user.getLoginName());
             data.put("tenantId", user.getTenantId());
             data.put("boundAt", TS.format(now));
+            data.put("bindingVersion", bindingVersion);
             return data;
         });
     }
@@ -152,6 +163,9 @@ public class AierpWecomBindingService {
         data.put("tenantId", binding.get("tenant_id"));
         data.put("wecomUserIdMasked", mask(wecomUserId));
         data.put("boundAt", String.valueOf(binding.get("bound_at")));
+        if (binding.get("binding_version") != null) {
+            data.put("bindingVersion", ((Number) binding.get("binding_version")).longValue());
+        }
         return data;
     }
 
@@ -253,6 +267,69 @@ public class AierpWecomBindingService {
             user.setStatus(((Number) row.get("status")).byteValue());
         }
         return user;
+    }
+
+    /**
+     * ERP session UI / PDF: reload user from DB and reject disabled / expired tenant.
+     */
+    public void assertSessionUserLive(User sessionUser) {
+        if (sessionUser == null || sessionUser.getId() == null) {
+            throw new BusinessRunTimeException(403, "请先登录 ERP");
+        }
+        User fresh = loadUserById(sessionUser.getId());
+        if (fresh == null || fresh.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "ERP 用户无效或已删除");
+        }
+        if (sessionUser.getTenantId() != null && !fresh.getTenantId().equals(sessionUser.getTenantId())) {
+            throw new BusinessRunTimeException(403, "会话租户与 ERP 用户租户不一致");
+        }
+        assertActiveUserAndTenant(fresh, fresh.getTenantId());
+    }
+
+    /**
+     * ERP session confirm for a WeCom-originated draft: require live ACTIVE binding whose
+     * id + binding_version still match the draft row (rejects unbind / rebind generations).
+     */
+    public AierpGatewayService.WecomDraftOwner requireLiveOwnerMatchingDraft(User sessionUser,
+                                                                            Map<String, Object> draftRow) {
+        assertSessionUserLive(sessionUser);
+        if (draftRow == null
+                || draftRow.get("wecom_user_id") == null
+                || draftRow.get("bot_id") == null
+                || draftRow.get("binding_id") == null
+                || draftRow.get("binding_version") == null) {
+            throw new BusinessRunTimeException(400, "该草稿不是企微草稿，请使用原有确认入口");
+        }
+        String botId = String.valueOf(draftRow.get("bot_id"));
+        String wecomUserId = String.valueOf(draftRow.get("wecom_user_id"));
+        Map<String, Object> binding = findActiveBinding(botId, wecomUserId);
+        if (binding == null) {
+            throw new BusinessRunTimeException(403, "企微绑定已解除，无法确认该草稿");
+        }
+        long boundErpUserId = ((Number) binding.get("erp_user_id")).longValue();
+        if (!sessionUser.getId().equals(boundErpUserId)) {
+            throw new BusinessRunTimeException(403, "当前 ERP 会话不是该草稿的生效绑定用户");
+        }
+        long boundTenantId = ((Number) binding.get("tenant_id")).longValue();
+        if (sessionUser.getTenantId() == null || !sessionUser.getTenantId().equals(boundTenantId)) {
+            throw new BusinessRunTimeException(403, "当前租户与草稿绑定租户不一致");
+        }
+        long liveBindingId = ((Number) binding.get("id")).longValue();
+        long draftBindingId = ((Number) draftRow.get("binding_id")).longValue();
+        long liveVersion = binding.get("binding_version") == null
+                ? 0L : ((Number) binding.get("binding_version")).longValue();
+        long draftVersion = ((Number) draftRow.get("binding_version")).longValue();
+        if (liveVersion < 1L || draftVersion < 1L
+                || liveBindingId != draftBindingId
+                || liveVersion != draftVersion) {
+            throw new BusinessRunTimeException(403, "绑定已更新，原企微草稿不可再确认，请重新创建");
+        }
+        String boundAt = String.valueOf(binding.get("bound_at")).replace('T', ' ');
+        if (boundAt.length() > 19) {
+            boundAt = boundAt.substring(0, 19);
+        }
+        return new AierpGatewayService.WecomDraftOwner(
+                CHANNEL, botId, wecomUserId, liveBindingId, liveVersion, boundAt);
     }
 
     /**

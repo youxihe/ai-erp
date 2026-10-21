@@ -746,6 +746,14 @@ public class DepotHeadService {
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public int batchSetStatus(String status, String depotHeadIDs)throws Exception {
+        return batchSetStatusAs(null, status, depotHeadIDs);
+    }
+
+    /**
+     * AIERP-015B: audit/un-audit with optional explicit actor for audit log (no session required when actor set).
+     */
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int batchSetStatusAs(User actor, String status, String depotHeadIDs)throws Exception {
         int result = 0;
         boolean forceApprovalFlag = systemConfigService.getForceApprovalFlag();
         boolean minusStockFlag = systemConfigService.getMinusStockFlag();
@@ -819,9 +827,15 @@ public class DepotHeadService {
             //记录日志
             if(!noList.isEmpty() && ("0".equals(status) || "1".equals(status))) {
                 String statusStr = status.equals("1")?"[审核]":"[反审核]";
-                logService.insertLog("单据",
-                        new StringBuffer(statusStr).append(String.join(", ", noList)).toString(),
-                        ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest());
+                String content = new StringBuffer(statusStr).append(String.join(", ", noList)).toString();
+                if (actor != null && actor.getId() != null) {
+                    logService.insertLogWithUserId(actor.getId(), actor.getTenantId(), "单据", content, null);
+                } else if (RequestContextHolder.getRequestAttributes() != null) {
+                    logService.insertLog("单据", content,
+                            ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest());
+                } else {
+                    throw new BusinessRunTimeException(403, "审核缺少受控操作人，无法写审计日志");
+                }
             }
         }
         return result;
@@ -1217,10 +1231,21 @@ public class DepotHeadService {
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public void addDepotHeadAndDetail(String beanJson, String rows,
                                       HttpServletRequest request) throws Exception {
+        addDepotHeadAndDetailAs(userService.getCurrentUser(), beanJson, rows, request);
+    }
+
+    /**
+     * AIERP-015B: create bill + lines with an explicit ERP actor (no HTTP session / getCurrentUser).
+     * Caller must already authorize the actor. Does not fabricate Redis session.
+     */
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public void addDepotHeadAndDetailAs(User userInfo, String beanJson, String rows,
+                                        HttpServletRequest request) throws Exception {
+        if (userInfo == null || userInfo.getId() == null || userInfo.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份，无法创建单据");
+        }
         /**处理单据主表数据*/
         DepotHead depotHead = JSONObject.parseObject(beanJson, DepotHead.class);
-        //判断用户是否已经登录过，登录过不再处理
-        User userInfo=userService.getCurrentUser();
         //通过redis去校验重复
         checkExistByRedis(userInfo, depotHead);
         //校验单号是否重复
@@ -1241,7 +1266,9 @@ public class DepotHeadService {
                         String.format(ExceptionConstants.DEPOT_HEAD_ACCOUNT_FAILED_MSG));
             }
         }
-        depotHead.setCreator(userInfo==null?null:userInfo.getId());
+        depotHead.setCreator(userInfo.getId());
+        // Explicit tenant — do not rely on X-Access-Token MyBatis tenant plugin for WeCom actor path.
+        depotHead.setTenantId(userInfo.getTenantId());
         depotHead.setCreateTime(new Timestamp(System.currentTimeMillis()));
         if(StringUtil.isEmpty(depotHead.getStatus())) {
             depotHead.setStatus(BusinessConstants.BILLS_STATUS_UN_AUDIT);
@@ -1305,16 +1332,19 @@ public class DepotHeadService {
         if(list!=null) {
             Long headId = list.get(0).getId();
             /*入库和出库处理单据子表信息*/
-            depotItemService.saveDetials(rows,headId, "add", null, request);
+            depotItemService.saveDetials(rows, headId, "add", null, request, userInfo);
             /*更新最终欠款*/
             updateLastDebtByBillId(depotHead.getDebt(), headId);
             /*更新剩余订金*/
             updateLastDepositByNumber(depotHead.getLinkNumber());
         }
         String statusStr = depotHead.getStatus().equals("1")?"[审核]":"";
-        logService.insertLog("单据",
-                new StringBuffer(BusinessConstants.LOG_OPERATION_TYPE_ADD).append(depotHead.getNumber()).append(statusStr).toString(),
-                ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest());
+        String content = new StringBuffer(BusinessConstants.LOG_OPERATION_TYPE_ADD).append(depotHead.getNumber()).append(statusStr).toString();
+        if (request != null && RequestContextHolder.getRequestAttributes() != null) {
+            logService.insertLog("单据", content, request);
+        } else {
+            logService.insertLogWithUserId(userInfo.getId(), userInfo.getTenantId(), "单据", content, null);
+        }
     }
 
     /**

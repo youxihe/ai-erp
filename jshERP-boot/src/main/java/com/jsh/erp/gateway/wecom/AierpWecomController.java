@@ -12,9 +12,9 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * WeCom adapter for AIERP-012A/013/015A.
- * Adapter routes require HMAC; claim requires logged-in ERP session.
- * No WeCom confirm/posting route (015B).
+ * WeCom adapter for AIERP-012A/013/015A/015B.
+ * Adapter routes require HMAC; claim / confirm-ui require logged-in ERP session.
+ * Confirm inbound must carry WECOM_BEFORE_DISPATCH proof (not LLM self-report).
  */
 @RestController
 @RequestMapping("/aierp/v1/wecom")
@@ -30,6 +30,12 @@ public class AierpWecomController {
     private AierpWecomDraftService draftService;
     @Resource
     private AierpWecomExcelService excelService;
+    @Resource
+    private AierpWecomConfirmService confirmService;
+    @Resource
+    private AierpWecomReceiptService receiptService;
+    @Resource
+    private com.jsh.erp.service.UserService userService;
 
     @PostMapping("/binding/issue")
     public BaseResponseInfo issue(@RequestBody String raw, HttpServletRequest request) {
@@ -106,6 +112,35 @@ public class AierpWecomController {
     public BaseResponseInfo draftCancel(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(draftService.draftCancel(parse(raw)));
+    }
+
+    /** Trusted WeCom before_dispatch confirm (HMAC). */
+    @PostMapping("/draft/confirm")
+    public BaseResponseInfo draftConfirm(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(confirmService.confirmFromTrustedInbound(parse(raw)));
+    }
+
+    /** ERP logged-in UI fallback confirm (session). */
+    @PostMapping("/draft/confirm-ui")
+    public BaseResponseInfo draftConfirmUi(@RequestBody JSONObject body, HttpServletRequest request) throws Exception {
+        return ok(confirmService.confirmUi(body, userService.getCurrentUser()));
+    }
+
+    /** Download own receipt PDF (session). */
+    @PostMapping("/receipt/pdf")
+    public void receiptPdf(@RequestBody JSONObject body, HttpServletRequest request,
+                           javax.servlet.http.HttpServletResponse response) throws Exception {
+        com.jsh.erp.datasource.entities.User user = userService.getCurrentUser();
+        if (body == null || body.getString("receiptId") == null) {
+            response.setStatus(400);
+            return;
+        }
+        byte[] pdf = receiptService.loadPdfBytes(user, body.getString("receiptId").trim());
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=\"receipt.pdf\"");
+        response.getOutputStream().write(pdf);
+        response.getOutputStream().flush();
     }
 
     /** AIERP-017A: download xlsx template as base64 (no stock change). */

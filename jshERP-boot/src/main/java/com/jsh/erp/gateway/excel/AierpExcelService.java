@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -44,6 +46,7 @@ public class AierpExcelService {
 
     private static final int MAX_BYTES = 2 * 1024 * 1024;
     private static final int MAX_ROWS = 200;
+    private static final Pattern DEPOT_ID = Pattern.compile("\\d+");
     private static final String[] PURCHASE_HEADERS = {
             "业务单号", "业务日期", "供应商名称", "物料编码", "物料名称", "入库仓库", "入库数量", "单位", "单价(元)", "业务备注"
     };
@@ -79,13 +82,21 @@ public class AierpExcelService {
         if (user == null || user.getTenantId() == null) {
             throw new BusinessRunTimeException(403, "当前会话没有租户身份");
         }
+        if (user.getStatus() == null || user.getStatus().byteValue() != 0) {
+            throw new BusinessRunTimeException(403, "用户已停用，拒绝生成模板");
+        }
         String normalized = scene == null ? "" : scene.trim().toUpperCase(Locale.ROOT);
+        JSONArray fillRows = fill == null ? null : fill.getJSONArray("rows");
+        if (fillRows != null && fillRows.size() > MAX_ROWS) {
+            throw new BusinessRunTimeException(400, "预填行数超过 " + MAX_ROWS);
+        }
+        assertFillAuthorized(user, normalized, fillRows);
         XSSFWorkbook book = new XSSFWorkbook();
         Sheet help = book.createSheet("使用说明");
         text(help, 0, 0, "AI-ERP 演示 Excel。第3行是表头，第4行起是数据。配比为虚构测试数据，不是化学工艺。");
         text(help, 1, 0, "上传只生成预览。库存变化只发生在用户确认之后。物料期初和销售出库仅供下载，不能经本网关确认。");
         if ("PURCHASE".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "02采购入库", PURCHASE_HEADERS, fill == null ? null : fill.getJSONArray("rows"),
+            writeSheet(book, "02采购入库", PURCHASE_HEADERS, fillRows,
                     "PURCHASE".equals(normalized) ? "PURCHASE" : normalized);
         }
         if ("MIX".equals(normalized) || "PACK".equals(normalized)) {
@@ -479,7 +490,93 @@ public class AierpExcelService {
                 Integer.class, depotName, user.getTenantId());
         if (depots == null || depots == 0) {
             errors.add("仓库不存在或不属于当前租户: " + depotName);
+            return;
         }
+        if (!depotAllowedForUser(user, depotName)) {
+            errors.add("无权使用仓库: " + depotName);
+        }
+    }
+
+    /**
+     * Prefill rows for templateAs must pass material/unit/depot UserDepot checks (no inventing).
+     */
+    private void assertFillAuthorized(User user, String scene, JSONArray rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        if ("SALE".equals(scene) || "INITIAL".equals(scene)) {
+            throw new BusinessRunTimeException(400, scene + " 场景不支持预填业务行");
+        }
+        JSONArray errors = new JSONArray();
+        for (int i = 0; i < rows.size(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            if ("MIX".equals(scene)) {
+                String finished = row.getString("finishedCode");
+                if (finished != null && !finished.trim().isEmpty()) {
+                    JSONObject fin = new JSONObject(true);
+                    fin.put("barCode", finished.trim());
+                    fin.put("unit", row.getString("finishedUnit"));
+                    fin.put("depotName", row.getString("depotName") != null ? row.getString("depotName") : "成品仓");
+                    checkMaterial(user, fin, errors);
+                }
+            }
+            if (row.getString("barCode") != null && !row.getString("barCode").trim().isEmpty()) {
+                if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
+                    if (row.getString("organName") == null || row.getString("organName").trim().isEmpty()) {
+                        errors.add("预填采购行缺少供应商 organName");
+                    } else {
+                        assertSupplierExists(user, row.getString("organName").trim(), errors);
+                    }
+                }
+                checkMaterial(user, row, errors);
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new BusinessRunTimeException(403, "预填校验失败: " + errors.getString(0)
+                    + (errors.size() > 1 ? "（共 " + errors.size() + " 项）" : ""));
+        }
+    }
+
+    private void assertSupplierExists(User user, String organName, JSONArray errors) {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jsh_supplier WHERE supplier=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                Integer.class, organName, user.getTenantId());
+        if (n == null || n == 0) {
+            errors.add("供应商不存在或不属于当前租户: " + organName);
+        }
+    }
+
+    private boolean depotAllowedForUser(User user, String depotName) {
+        if (depotName == null || depotName.trim().isEmpty()) {
+            return false;
+        }
+        List<Map<String, Object>> depots = jdbcTemplate.queryForList(
+                "SELECT id FROM jsh_depot WHERE name=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1' LIMIT 1",
+                depotName.trim(), user.getTenantId());
+        if (depots.isEmpty()) {
+            return false;
+        }
+        long depotId = ((Number) depots.get(0).get("id")).longValue();
+        List<Long> allowed = allowedDepotIds(user);
+        return allowed.contains(depotId);
+    }
+
+    private List<Long> allowedDepotIds(User user) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT `value` FROM jsh_user_business WHERE type='UserDepot' AND key_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getString(1), String.valueOf(user.getId()));
+        List<Long> ids = new ArrayList<Long>();
+        if (values.isEmpty() || values.get(0) == null) {
+            return ids;
+        }
+        Matcher matcher = DEPOT_ID.matcher(values.get(0));
+        while (matcher.find()) {
+            ids.add(Long.valueOf(matcher.group()));
+        }
+        return ids;
     }
 
     private JSONObject line(Row row, List<String> headers, DataFormatter formatter, JSONArray errors,

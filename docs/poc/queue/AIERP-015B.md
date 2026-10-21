@@ -1,6 +1,6 @@
 # AIERP-015B · 企业微信可信确认、原生采购入库与业务回执/PDF
 
-- **状态**：RELEASED / next_order #1（依赖 AIERP-015A PR #24 已合并 `1a82abca`）。
+- **状态**：READY_FOR_REVIEW（实现完成，待 ChatGPT Review；勿 Merge）。
 - **分支**：`feat/aierp-015b-trusted-confirm-receipt`（**最新 master**）。
 - **目标**：用户在企微完成采购草稿后，只需本人明确回复“确认采购{草稿号}”或在唯一待确认草稿场景下回复“确认”，服务器独立验证身份/挑战和业务版本，执行真正 jshERP 采购入库审核，返回原生单号、数量/金额、实时库存，并发送业务回执/PDF。
 - **前提**：OpenClaw Windows native `F:\aierp-openclaw` 运行有效，插件 12 工具；不要重装、升级或破坏现有企微 WS。
