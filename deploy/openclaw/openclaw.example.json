@@ -45,7 +45,8 @@
       "erp_report_query",
       "erp_purchase_prepare",
       "erp_draft_status",
-      "erp_draft_cancel"
+      "erp_draft_cancel",
+      "erp_excel_template"
     ]
   },
   "plugins": {

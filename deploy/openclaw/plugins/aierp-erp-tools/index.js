@@ -1,15 +1,18 @@
 /**
- * AIERP-012A/013/015A/015B OpenClaw tool plugin.
+ * AIERP-012A/013/015A/015B/017A OpenClaw tool plugin.
  * Trusts only ctx.requesterSenderId when ctx.messageChannel === "wecom".
- * Confirm: before_dispatch trusted inbound → Java (never LLM erp_draft_confirm tool).
+ * Confirm: before_dispatch trusted inbound → Java (never LLM erp_draft_confirm).
+ * Excel: erp_excel_template (+ optional prefill rows) + inbound xlsx preview (never excel.confirm).
  */
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, createHash } from "node:crypto";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { join, basename } from "node:path";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
 const MIN_SECRET_LEN = 32;
 const BANNED_SECRET_SNIPPETS = ["change-me", "changeme", "example", "placeholder", "aierp-local-wecom-adapter"];
-const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[#＃]?\s*(\d+)\s*$/;
+const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[：:#＃]?\s*(\d+)\s*$/;
 const CONFIRM_SIMPLE = /^\s*确认\s*$/;
 
 function emptyPluginConfigSchema() {
@@ -65,6 +68,22 @@ function botId() {
   const wecom = (process.env.WECOM_BOT_ID || "").trim();
   if (wecom) return wecom;
   return "default";
+}
+
+function excelMediaDir() {
+  const state =
+    process.env.OPENCLAW_STATE_DIR ||
+    join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state");
+  const dir = join(state, "media", "aierp-excel");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeExcelFile(fileName, base64) {
+  const safe = basename(String(fileName || "template.xlsx")).replace(/[^\w.\u4e00-\u9fff-]+/g, "_");
+  const path = join(excelMediaDir(), `${Date.now()}_${safe}`);
+  writeFileSync(path, Buffer.from(base64, "base64"));
+  return path;
 }
 
 async function signedPost(path, bodyObj) {
@@ -595,43 +614,644 @@ function registerErpTools(api) {
       },
     }),
   );
+
+  // AIERP-017A: template download → local MEDIA path (never confirm / never excel.confirm tool)
+  api.registerTool(
+    (ctx) => ({
+      name: "erp_excel_template",
+      description:
+        "按场景生成真实 ERP Excel 并落盘，供企微 MEDIA 发送。scene=PURCHASE|MIX|SERVICE|SALE|INITIAL|PACK。" +
+        "用户要求「填上去/预填」时必须先查物料/往来/历史，再传入 rows（经核实的 barCode/organName/depotName/qty/unit/price 等），禁止编造。" +
+        "SALE/INITIAL 仅模板不可过账。不改变库存。禁止 excel.confirm。",
+      parameters: {
+        type: "object",
+        properties: {
+          scene: {
+            type: "string",
+            description: "PURCHASE（默认）/ MIX / SERVICE / SALE / INITIAL / PACK",
+          },
+          rows: {
+            type: "array",
+            description:
+              "可选预填行。PURCHASE 字段：businessKey,date,organName,barCode,name,depotName,qty,unit,price,remark。" +
+              "须来自已授权查询结果，不得虚构供应商或单价。",
+            items: {
+              type: "object",
+              properties: {
+                businessKey: { type: "string" },
+                date: { type: "string" },
+                organName: { type: "string" },
+                barCode: { type: "string" },
+                name: { type: "string" },
+                depotName: { type: "string" },
+                qty: { type: "string" },
+                unit: { type: "string" },
+                price: { type: "string" },
+                remark: { type: "string" },
+                finishedCode: { type: "string" },
+                finishedName: { type: "string" },
+                finishedQty: { type: "string" },
+                finishedUnit: { type: "string" },
+                serviceName: { type: "string" },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
+      async execute(_id, params) {
+        const wecomUserId = trustedWecomUserId(ctx);
+        if (!wecomUserId) {
+          return toolResult(false, "当前会话没有可信的企业微信发送者身份。", { reason: "NO_TRUSTED_WECOM_SENDER" });
+        }
+        if (isWecomGroupChat(ctx)) {
+          return toolResult(false, "Excel 模板仅支持企微私聊。", { reason: "WECOM_GROUP_NOT_ALLOWED" });
+        }
+        try {
+          const scene = str(params?.scene) || "PURCHASE";
+          const rows = Array.isArray(params?.rows) ? params.rows.slice(0, 200) : undefined;
+          const body = {
+            wecomUserId,
+            botId: botId(),
+            channel: CHANNEL_ID,
+            scene,
+          };
+          if (rows && rows.length) {
+            body.rows = rows.map((r) => ({
+              businessKey: str(r?.businessKey),
+              date: str(r?.date),
+              organName: str(r?.organName),
+              barCode: str(r?.barCode),
+              name: str(r?.name),
+              depotName: str(r?.depotName),
+              qty: str(r?.qty),
+              unit: str(r?.unit),
+              price: str(r?.price),
+              remark: str(r?.remark),
+              finishedCode: str(r?.finishedCode),
+              finishedName: str(r?.finishedName),
+              finishedQty: str(r?.finishedQty),
+              finishedUnit: str(r?.finishedUnit),
+              serviceName: str(r?.serviceName),
+            }));
+          }
+          const data = await signedPost("/aierp/v1/wecom/excel/template", body);
+          const mediaPath = writeExcelFile(data.fileName, data.fileBase64);
+          const mediaLine = `MEDIA: ${mediaPath}`;
+          const prefillNote = rows && rows.length ? `已预填 ${rows.length} 行（请核对后修改再回传）。` : "";
+          const note = data.confirmSupported
+            ? `${prefillNote}请下载核对/修改后，在本对话直接发回 xlsx；系统将仅预览，不会入库、不会批量过账。`
+            : "该场景当前仅提供模板（销售出库/期初不可经本通道预览过账）。";
+          const text = `${data.summary || data.hint}\n${note}\n请在回复中原样附带下一行以便企微发送文件：\n${mediaLine}`;
+          return toolResult(true, text, {
+            tool: "erp_excel_template",
+            scene: data.scene,
+            fileName: data.fileName,
+            mediaPath,
+            mediaDirective: mediaLine,
+            confirmSupported: !!data.confirmSupported,
+            prefilledRows: rows ? rows.length : 0,
+            posted: false,
+            stockUnchanged: true,
+            byteLength: data.byteLength,
+          });
+        } catch (err) {
+          return toolResult(false, String(err?.message || err), { reason: "ERP_ADAPTER_ERROR", tool: "erp_excel_template" });
+        }
+      },
+    }),
+    { name: "erp_excel_template" },
+  );
 }
 
-function registerConfirmHook(api) {
-  // Trusted raw inbound (before LLM). Do NOT register erp_draft_confirm as a model tool.
-  api.on("before_dispatch", async (event, ctx) => {
+/**
+ * Trusted inbound xlsx → ERP preview (no confirm). Mutates event content so the model sees REAL_ERP summary.
+ */
+
+/**
+ * AIERP-017A Round3: reliable Excel ingest via before_dispatch claim + message_received stash.
+ * message_received is OBSERVE (do not rely on mutating event.content for LLM).
+ * inbound_claim only runs for the conversation-owner plugin (WeCom), not us.
+ * Filename is display-only — never a business qty source.
+ */
+
+const MEDIA_DOCUMENT = "<media:document>";
+const CANCEL_EXCEL = /^\s*(取消文件|取消Excel|取消excel|不用文件了|放弃文件|关闭文件流程)\s*$/i;
+const excelByMessage = new Map();
+const excelBySession = new Map();
+const previewDedup = new Map();
+
+function maskSender(id) {
+  const s = String(id || "");
+  if (s.length < 4) return "***";
+  return s.slice(0, 2) + "***";
+}
+
+function hashMsg(id) {
+  if (!id) return "none";
+  return createHash("sha256").update(String(id), "utf8").digest("hex").slice(0, 12);
+}
+
+function redactExcelLog(fields) {
+  try {
+    console.info("[aierp-excel]", JSON.stringify(fields));
+  } catch {
+    // ignore
+  }
+}
+
+function collectXlsxPaths(event, ctx) {
+  const paths = []
+    .concat(event?.mediaPaths || [])
+    .concat(event?.media?.map?.((m) => m?.path) || [])
+    .concat(event?.originalMedia?.map?.((m) => m?.path) || [])
+    .concat(event?.metadata?.mediaPaths || [])
+    .concat(ctx?.mediaPaths || [])
+    .concat(event?.MediaPaths || [])
+    .filter(Boolean)
+    .map((p) => String(p));
+  return paths.filter((p) => p.toLowerCase().endsWith(".xlsx"));
+}
+
+function attachmentCount(event) {
+  return (
+    (Array.isArray(event?.media) ? event.media.length : 0) ||
+    (Array.isArray(event?.mediaPaths) ? event.mediaPaths.length : 0) ||
+    (Array.isArray(event?.MediaPaths) ? event.MediaPaths.length : 0) ||
+    0
+  );
+}
+
+function storeWorkflow(wf) {
+  if (wf.messageId) excelByMessage.set(String(wf.messageId), wf);
+  if (wf.sessionKey) excelBySession.set(String(wf.sessionKey), wf);
+}
+
+function getWorkflow(messageId, sessionKey) {
+  if (messageId && excelByMessage.has(String(messageId))) return excelByMessage.get(String(messageId));
+  if (sessionKey && excelBySession.has(String(sessionKey))) return excelBySession.get(String(sessionKey));
+  return null;
+}
+
+function workflowBlocksPrepare(wf) {
+  if (!wf) return false;
+  return wf.status === "PENDING" || wf.status === "PREVIEWED" || wf.status === "FAILED";
+}
+
+function formatPreviewLines(data) {
+  if (data?.userSummaryZh) return String(data.userSummaryZh);
+  if (data?.hintZh) return String(data.hintZh);
+  const records = Array.isArray(data?.records) ? data.records : [];
+  const lines = [];
+  const errors = [];
+  let billCount = 0;
+  let lineCount = 0;
+  for (const rec of records) {
+    billCount += 1;
+    const sourceRows = Array.isArray(rec?.sourceRows) ? rec.sourceRows : [];
+    lineCount += sourceRows.length || 1;
+    const errs = Array.isArray(rec?.errors) ? rec.errors.filter(Boolean) : [];
+    if (errs.length || rec?.canConfirm === false) {
+      const rowLabel = sourceRows.length ? sourceRows[0] : "?";
+      errors.push(`第${rowLabel}行：${errs.join("；") || "数据有误"}`);
+    }
+  }
+  if (errors.length) {
+    lines.push(`文件已收到，但还有 ${errors.length} 处需要修改：`);
+    for (const e of errors.slice(0, 5)) lines.push(`- ${e}`);
+    lines.push("请改好后重新发回 Excel。库存未变化，也未创建采购单。");
+    return lines.join("\n");
+  }
+  lines.push(`文件已核对：${billCount || records.length} 张业务单 / ${lineCount || records.length} 行明细。`);
+  for (const rec of records.slice(0, 5)) {
+    const norm = rec?.normalized || {};
+    const sceneLabel =
+      rec?.scene === "PURCHASE" ? "采购单" : rec?.scene === "MIX" ? "配制单" : rec?.scene === "SERVICE" ? "服务单" : "业务单";
+    let head = `${sceneLabel} ${rec?.businessKey || "?"}`;
+    if (norm.organName) head += `｜${norm.organName}`;
+    lines.push(head);
+    const purchaseLines = Array.isArray(norm.lines) ? norm.lines : [];
+    for (const ln of purchaseLines.slice(0, 8)) {
+      const qty = ln.qty ?? "?";
+      const unit = ln.unit || "";
+      const price = ln.unitPrice ?? ln.price;
+      let amount = "";
+      if (price != null && price !== "" && qty !== "?") {
+        const n = Number(qty) * Number(price);
+        if (Number.isFinite(n)) amount = `＝${n} 元`;
+      }
+      lines.push(
+        `  ${ln.barCode || ""}${ln.depotName ? "｜" + ln.depotName : ""}｜${qty}${unit}` +
+          (price != null && price !== "" ? ` × ${price} 元${amount}` : ""),
+      );
+    }
+    if (norm.finished) {
+      const f = norm.finished;
+      lines.push(`  成品 ${f.barCode || ""}｜${f.qty || "?"}${f.unit || ""}`);
+    }
+  }
+  lines.push("数据无误，尚未入库。本阶段仅核对；下一阶段会生成待确认采购单后再请您确认。");
+  lines.push("不必重新上传同一文件。若改口头采购，请回复「取消文件」。");
+  return lines.join("\n");
+}
+
+function formatParseFailed(reason) {
+  const map = {
+    FILE_STAGING_PENDING: "文件还在接收中，请稍后再发一次同一份 Excel。",
+    FILE_BYTES_MISSING: "没有收到可用的 Excel 文件，请重新发送 .xlsx。",
+    FILE_TOO_LARGE: "Excel 超过 2MB，请精简后重发。",
+    NO_PREVIEW_ID: "文件未能完成核对，请重新发送 .xlsx。",
+  };
+  return map[reason] || `文件未能完成核对：${reason || "未知原因"}。库存未变化，也未创建采购单。`;
+}
+
+const EXCEL_FOLLOWUP = /^\s*(入库吧|确认入库|按文件|按刚才的?文件|按文件(里面|内容)|继续(入库|处理)|提交入库|生成草稿|按文件处理.*)\s*$/i;
+
+async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, stagingPending }) {
+  const displayName = xlsxPath ? basename(xlsxPath) : "upload.xlsx";
+  const wfBase = {
+    status: "PENDING",
+    messageId: messageId || null,
+    sessionKey: sessionKey || null,
+    wecomUserId,
+    displayName,
+    stagingPending: !!stagingPending,
+    at: Date.now(),
+  };
+  storeWorkflow(wfBase);
+  redactExcelLog({
+    phase: "ingest_start",
+    messageIdHash: hashMsg(messageId),
+    senderMasked: maskSender(wecomUserId),
+    attachmentCount: 1,
+    pathReady: !!(xlsxPath && existsSync(xlsxPath)),
+    stagingPending: !!stagingPending,
+    nameHasXlsx: displayName.toLowerCase().endsWith(".xlsx"),
+  });
+
+  if (stagingPending) {
+    const failed = {
+      ...wfBase,
+      status: "FAILED",
+      reason: "FILE_STAGING_PENDING",
+      replyText: formatParseFailed("FILE_STAGING_PENDING"),
+    };
+    storeWorkflow(failed);
+    await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      status: "FAILED",
+      reason: "FILE_STAGING_PENDING",
+      messageMsgId: messageId || undefined,
+    }).catch(() => {});
+    return failed;
+  }
+
+  if (!xlsxPath || !existsSync(xlsxPath)) {
+    const failed = {
+      ...wfBase,
+      status: "FAILED",
+      reason: "FILE_BYTES_MISSING",
+      replyText: formatParseFailed("FILE_BYTES_MISSING"),
+    };
+    storeWorkflow(failed);
+    await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      status: "FAILED",
+      reason: "FILE_BYTES_MISSING",
+      messageMsgId: messageId || undefined,
+    }).catch(() => {});
+    return failed;
+  }
+
+  if (messageId && previewDedup.has(String(messageId))) {
+    const existing = getWorkflow(messageId, sessionKey);
+    if (existing?.status === "PREVIEWED") return existing;
+  }
+
+  try {
+    const buf = readFileSync(xlsxPath);
+    if (buf.length > 2 * 1024 * 1024) {
+      const failed = {
+        ...wfBase,
+        status: "FAILED",
+        reason: "FILE_TOO_LARGE",
+        replyText: formatParseFailed("FILE_TOO_LARGE"),
+      };
+      storeWorkflow(failed);
+      return failed;
+    }
+    const fileSha256 = createHash("sha256").update(buf).digest("hex");
+    const data = await signedPost("/aierp/v1/wecom/excel/preview", {
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      fileName: displayName,
+      fileBase64: buf.toString("base64"),
+      fileSha256,
+      messageMsgId: messageId || null,
+      openWorkflow: true,
+    });
+    if (!data?.previewId) {
+      const failed = {
+        ...wfBase,
+        status: "FAILED",
+        reason: "NO_PREVIEW_ID",
+        fileSha256,
+        replyText: formatParseFailed("NO_PREVIEW_ID"),
+      };
+      storeWorkflow(failed);
+      redactExcelLog({
+        phase: "parse_failed",
+        messageIdHash: hashMsg(messageId),
+        senderMasked: maskSender(wecomUserId),
+        fileSha256,
+        reason: "NO_PREVIEW_ID",
+      });
+      return failed;
+    }
+    const replyText = formatPreviewLines(data);
+    const ok = {
+      ...wfBase,
+      status: "PREVIEWED",
+      previewId: data.previewId,
+      fileSha256,
+      byteLength: buf.length,
+      replyText,
+      data,
+    };
+    storeWorkflow(ok);
+    if (messageId) previewDedup.set(String(messageId), data.previewId);
+    redactExcelLog({
+      phase: "parse_ok",
+      messageIdHash: hashMsg(messageId),
+      senderMasked: maskSender(wecomUserId),
+      fileSha256,
+      byteLength: buf.length,
+      previewId: data.previewId,
+      recordCount: Array.isArray(data?.records) ? data.records.length : 0,
+    });
+    return ok;
+  } catch (err) {
+    const failed = {
+      ...wfBase,
+      status: "FAILED",
+      reason: "ERP_PREVIEW_ERROR",
+      replyText: formatParseFailed(String(err?.message || err).slice(0, 120)),
+    };
+    storeWorkflow(failed);
+    redactExcelLog({
+      phase: "parse_error",
+      messageIdHash: hashMsg(messageId),
+      senderMasked: maskSender(wecomUserId),
+      reason: String(err?.message || err).slice(0, 160),
+    });
+    return failed;
+  }
+}
+
+async function waitForWorkflow(messageId, sessionKey, ms) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    const wf = getWorkflow(messageId, sessionKey);
+    if (wf && wf.status !== "PENDING") return wf;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return getWorkflow(messageId, sessionKey);
+}
+
+function registerExcelObserveHook(api) {
+  const handler = async (event, ctx) => {
+    try {
+      const channel = String(ctx?.channelId || ctx?.messageChannel || event?.channel || "").toLowerCase();
+      if (channel && channel !== CHANNEL_ID && !channel.includes("wecom")) return;
+      if (event?.isGroup || ctx?.isGroup) return;
+      const stagingPending = !!(event?.mediaStagingPending || event?.metadata?.mediaStagingPending);
+      const paths = collectXlsxPaths(event, ctx);
+      if (!paths.length && !stagingPending) return;
+      const wecomUserId = String(event?.senderId || ctx?.senderId || ctx?.requesterSenderId || "").trim();
+      if (!wecomUserId) {
+        redactExcelLog({ phase: "observe_no_sender", messageIdHash: hashMsg(event?.messageId) });
+        return;
+      }
+      const messageId = event?.messageId || event?.MessageSid || null;
+      const sessionKey = ctx?.sessionKey || event?.sessionKey || null;
+      redactExcelLog({
+        phase: "observe",
+        messageIdHash: hashMsg(messageId),
+        senderMasked: maskSender(wecomUserId),
+        attachmentCount: attachmentCount(event) || paths.length,
+        pathReady: paths.some((p) => existsSync(p)),
+        stagingPending,
+      });
+      await runExcelPreview({
+        wecomUserId,
+        xlsxPath: paths[0] || "",
+        messageId,
+        sessionKey,
+        stagingPending,
+      });
+    } catch (err) {
+      redactExcelLog({ phase: "observe_error", reason: String(err?.message || err).slice(0, 160) });
+    }
+  };
+  try {
+    api.on("message_received", handler, { priority: 100 });
+  } catch {
+    try {
+      api.on("message_received", handler);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function registerConfirmAndExcelDispatchHook(api) {
+  const handler = async (event, ctx) => {
     const channelId = ctx?.channelId || event?.channel;
     if (channelId !== CHANNEL_ID) return;
     const senderId = String(event?.senderId || ctx?.senderId || "").trim();
     if (!senderId) return;
     if (event?.isGroup) return;
     const text = String(event?.content || event?.body || "").trim();
-    if (!isConfirmPhrase(text)) return;
-    try {
-      const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
+    const messageId = event?.messageId || ctx?.messageId || null;
+    const sessionKey = ctx?.sessionKey || event?.sessionKey || null;
+
+    if (CANCEL_EXCEL.test(text)) {
+      const cleared = {
+        status: "CANCELLED",
+        messageId,
+        sessionKey,
         wecomUserId: senderId,
-        botId: botId(),
-        channel: CHANNEL_ID,
-        rawText: text,
-        messageMsgId: event?.messageId || undefined,
-        isGroup: false,
-        eventSource: "WECOM_BEFORE_DISPATCH",
-      });
-      return { handled: true, text: formatConfirm(data) };
-    } catch (err) {
-      return { handled: true, text: `确认未完成：${String(err?.message || err)}` };
+        at: Date.now(),
+        replyText: "已关闭文件流程。现在可以重新口头下采购单。",
+      };
+      storeWorkflow(cleared);
+      try {
+        await signedPost("/aierp/v1/wecom/excel/workflow/cancel", {
+          wecomUserId: senderId,
+          botId: botId(),
+          channel: CHANNEL_ID,
+          messageMsgId: messageId || undefined,
+        });
+      } catch {
+        // ignore
+      }
+      return { handled: true, text: cleared.replyText };
     }
-  });
+
+    if (isConfirmPhrase(text)) {
+      try {
+        const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
+          wecomUserId: senderId,
+          botId: botId(),
+          channel: CHANNEL_ID,
+          rawText: text,
+          messageMsgId: messageId || undefined,
+          isGroup: false,
+          eventSource: "WECOM_BEFORE_DISPATCH",
+        });
+        return { handled: true, text: formatConfirm(data) };
+      } catch (err) {
+        return { handled: true, text: `确认未完成：${String(err?.message || err)}` };
+      }
+    }
+
+    // Durable preview follow-up: user says 入库吧 after session/model reset.
+    if (EXCEL_FOLLOWUP.test(text) && !isConfirmPhrase(text)) {
+      try {
+        const st = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+          wecomUserId: senderId,
+          botId: botId(),
+          channel: CHANNEL_ID,
+        });
+        if (st && st.status === "PREVIEWED" && (st.userSummaryZh || st.previewId)) {
+          const summary = st.userSummaryZh
+            ? String(st.userSummaryZh)
+            : "文件已核对完成，结果仍保留在服务端。";
+          const body =
+            summary +
+            "\n\n已保留刚才的核对结果，不必重新上传。" +
+            "本阶段仅完成核对，尚未生成待确认采购单；下一阶段开通后即可确认入库。" +
+            "若要口头采购，请先回复「取消文件」。";
+          return { handled: true, text: body };
+        }
+        if (st && (st.status === "PENDING" || st.status === "FAILED")) {
+          return {
+            handled: true,
+            text: "刚才的文件还没核对成功。请重新发送 .xlsx，或回复「取消文件」后口头下单。",
+          };
+        }
+      } catch {
+        // fall through
+      }
+      return {
+        handled: true,
+        text: "当前没有可继续的 Excel 核对结果。请先发送填写好的 .xlsx，或直接口头下采购单。",
+      };
+    }
+
+    const paths = collectXlsxPaths(event, ctx);
+    const looksLikeDoc =
+      text === MEDIA_DOCUMENT ||
+      text.includes(MEDIA_DOCUMENT) ||
+      /\.xlsx\b/i.test(text) ||
+      paths.length > 0;
+
+    if (!looksLikeDoc) return;
+
+    let wf = getWorkflow(messageId, sessionKey);
+    if ((!wf || wf.status === "PENDING") && paths.length) {
+      wf = await runExcelPreview({
+        wecomUserId: senderId,
+        xlsxPath: paths[0],
+        messageId,
+        sessionKey,
+        stagingPending: false,
+      });
+    } else if (!wf || wf.status === "PENDING") {
+      wf = (await waitForWorkflow(messageId, sessionKey, 8000)) || wf;
+    }
+
+    if (!wf || wf.status === "PENDING") {
+      redactExcelLog({
+        phase: "dispatch_no_bytes",
+        messageIdHash: hashMsg(messageId),
+        senderMasked: maskSender(senderId),
+        attachmentCount: paths.length,
+        pathReady: false,
+      });
+      return {
+        handled: true,
+        text: formatParseFailed("FILE_BYTES_MISSING"),
+      };
+    }
+
+    return { handled: true, text: wf.replyText || formatPreviewLines(wf.data || {}) };
+  };
+  try {
+    api.on("before_dispatch", handler, { priority: 50 });
+  } catch {
+    api.on("before_dispatch", handler);
+  }
+}
+
+function registerPrepareGate(api) {
+  const handler = async (event, ctx) => {
+    const name = event?.toolName || event?.name || event?.tool || "";
+    if (name !== "erp_purchase_prepare") return;
+    const sessionKey = ctx?.sessionKey || event?.sessionKey || null;
+    const wf = getWorkflow(null, sessionKey);
+    let serverBlocks = false;
+    try {
+      const wecomUserId = trustedWecomUserId(ctx) || String(ctx?.senderId || "").trim();
+      if (wecomUserId) {
+        const st = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+          wecomUserId,
+          botId: botId(),
+          channel: CHANNEL_ID,
+        });
+        if (st && (st.status === "PENDING" || st.status === "PREVIEWED" || st.status === "FAILED")) {
+          serverBlocks = true;
+        }
+      }
+    } catch {
+      // local gate still applies
+    }
+    if (!workflowBlocksPrepare(wf) && !serverBlocks) return;
+    return {
+      block: true,
+      blockReason:
+        "当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建采购草稿。" +
+        "请按已核对的文件继续，或回复「取消文件」后再口头下单。不要确认草稿 #113。",
+    };
+  };
+  try {
+    api.on("before_tool_call", handler, { matcher: ["erp_purchase_prepare"], priority: 100 });
+  } catch {
+    try {
+      api.on("before_tool_call", handler);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
-  description: "WeCom trusted-identity ERP bind + queries + purchase draft + before_dispatch confirm",
+  description:
+    "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm + excel template/preview (no model confirm tools)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);
-    registerConfirmHook(api);
+    registerExcelObserveHook(api);
+    registerConfirmAndExcelDispatchHook(api);
+    registerPrepareGate(api);
   },
 };
 

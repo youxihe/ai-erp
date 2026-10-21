@@ -1,0 +1,12 @@
+﻿{
+    "hasObserveAwait":  true,
+    "hasBeforeDispatchExcelClaim":  true,
+    "stock":  170.7,
+    "at":  "2026-10-21T20:08:49.5336475+08:00",
+    "hasPrepareGate":  true,
+    "noModelDraftConfirm":  true,
+    "noModelExcelConfirm":  true,
+    "doNotConfirmDraft":  113,
+    "excelFlow":  "ALL_PASS 14",
+    "filenameVsCells":  "ALL_PASS 7"
+}

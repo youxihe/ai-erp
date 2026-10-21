@@ -7,13 +7,24 @@ import com.jsh.erp.datasource.entities.User;
 import com.jsh.erp.exception.BusinessRunTimeException;
 import com.jsh.erp.gateway.AierpGatewayService;
 import com.jsh.erp.service.UserService;
+import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.DataValidation;
+import org.apache.poi.ss.usermodel.DataValidationConstraint;
+import org.apache.poi.ss.usermodel.DataValidationHelper;
 import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.util.IOUtils;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
@@ -27,12 +38,17 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -44,6 +60,7 @@ public class AierpExcelService {
 
     private static final int MAX_BYTES = 2 * 1024 * 1024;
     private static final int MAX_ROWS = 200;
+    private static final Pattern DEPOT_ID = Pattern.compile("\\d+");
     private static final String[] PURCHASE_HEADERS = {
             "业务单号", "业务日期", "供应商名称", "物料编码", "物料名称", "入库仓库", "入库数量", "单位", "单价(元)", "业务备注"
     };
@@ -68,27 +85,46 @@ public class AierpExcelService {
     private AierpGatewayService gatewayService;
 
     public byte[] template(String scene, JSONObject fill, HttpServletRequest request) throws Exception {
-        requireUser();
+        return templateAs(requireUser(), scene, fill);
+    }
+
+    /**
+     * AIERP-017A: generate xlsx for an explicit ERP actor (WeCom delegated identity).
+     * Does not post inventory. SALE/INITIAL templates are download-only (cannot confirm).
+     */
+    public byte[] templateAs(User user, String scene, JSONObject fill) throws Exception {
+        if (user == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "当前会话没有租户身份");
+        }
+        if (user.getStatus() == null || user.getStatus().byteValue() != 0) {
+            throw new BusinessRunTimeException(403, "用户已停用，拒绝生成模板");
+        }
         String normalized = scene == null ? "" : scene.trim().toUpperCase(Locale.ROOT);
+        JSONArray fillRows = fill == null ? null : fill.getJSONArray("rows");
+        if (fillRows != null && fillRows.size() > MAX_ROWS) {
+            throw new BusinessRunTimeException(400, "预填行数超过 " + MAX_ROWS);
+        }
+        fillRows = ensureTemplateKeys(normalized, fillRows);
+        assertFillAuthorized(user, normalized, fillRows);
         XSSFWorkbook book = new XSSFWorkbook();
         Sheet help = book.createSheet("使用说明");
-        text(help, 0, 0, "AI-ERP 演示 Excel。第3行是表头，第4行起是数据。配比为虚构测试数据，不是化学工艺。");
-        text(help, 1, 0, "上传只生成预览。库存变化只发生在用户确认之后。物料期初和销售出库仅供下载，不能经本网关确认。");
+        writeHelpSheet(help, normalized);
         if ("PURCHASE".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "02采购入库", PURCHASE_HEADERS, fill == null ? null : fill.getJSONArray("rows"), normalized);
+            writeSheet(book, "02采购入库", PURCHASE_HEADERS, fillRows,
+                    "PURCHASE".equals(normalized) ? "PURCHASE" : normalized, user);
         }
         if ("MIX".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "03药水配制", MIX_HEADERS, fill == null ? null : fill.getJSONArray("rows"), "MIX");
+            writeSheet(book, "03药水配制", MIX_HEADERS, fillRows, "MIX", user);
         }
         if ("SERVICE".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "04服务耗料", SERVICE_HEADERS, fill == null ? null : fill.getJSONArray("rows"), "SERVICE");
+            writeSheet(book, "04服务耗料", SERVICE_HEADERS, fillRows, "SERVICE", user);
         }
         if ("INITIAL".equals(normalized) || "PACK".equals(normalized)) {
-            Sheet sheet = writeSheet(book, "01物料期初", INITIAL_HEADERS, null, "INITIAL");
+            Sheet sheet = writeSheet(book, "01物料期初", INITIAL_HEADERS, null, "INITIAL", user);
             text(sheet, 1, 0, "仅模板，不支持经 AI 网关确认过账");
         }
         if ("SALE".equals(normalized) || "PACK".equals(normalized)) {
-            Sheet sheet = writeSheet(book, "05销售出库", SALE_HEADERS, null, "SALE");
+            Sheet sheet = writeSheet(book, "05销售出库", SALE_HEADERS, null, "SALE", user);
             text(sheet, 1, 0, "仅模板，不支持经 AI 网关确认过账");
         }
         if (book.getNumberOfSheets() == 1) {
@@ -103,14 +139,27 @@ public class AierpExcelService {
         if (file == null || file.isEmpty()) {
             throw new BusinessRunTimeException(400, "请上传 xlsx 文件");
         }
-        if (file.getSize() > MAX_BYTES) {
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        return previewAs(user, file.getBytes(), name, scene);
+    }
+
+    /**
+     * AIERP-017A: preview xlsx bytes for an explicit ERP actor. Never posts / never calls confirm.
+     */
+    public Map<String, Object> previewAs(User user, byte[] raw, String fileName, String scene) throws Exception {
+        if (user == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "当前会话没有租户身份");
+        }
+        if (raw == null || raw.length == 0) {
+            throw new BusinessRunTimeException(400, "请上传 xlsx 文件");
+        }
+        if (raw.length > MAX_BYTES) {
             throw new BusinessRunTimeException(400, "文件超过 2MB");
         }
-        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        String name = fileName == null ? "" : fileName.trim();
         if (!name.toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
             throw new BusinessRunTimeException(400, "只接受 .xlsx，不接受 csv 或 xls");
         }
-        byte[] raw = file.getBytes();
         assertSafeZip(raw);
         ZipSecureFile.setMinInflateRatio(0.01d);
         IOUtils.setByteArrayMaxOverride(MAX_BYTES);
@@ -134,7 +183,7 @@ public class AierpExcelService {
             }
         }
         if (records.isEmpty()) {
-            throw new BusinessRunTimeException(400, "没有识别到采购、配制或服务数据行");
+            throw new BusinessRunTimeException(400, "没有识别到采购、配制或服务数据行（销售出库/期初仅模板，不可预览过账）");
         }
         String previewKey = "pv-" + UUID.randomUUID().toString().replace("-", "");
         JSONObject payload = new JSONObject();
@@ -146,9 +195,133 @@ public class AierpExcelService {
         data.put("previewId", previewKey);
         data.put("status", "PREVIEWED");
         data.put("posted", false);
+        data.put("nature", "REAL_ERP");
+        data.put("stockUnchanged", true);
         data.put("records", records);
         data.put("summary", summary(records));
+        String userSummary = buildUserSummaryZh(records);
+        data.put("userSummaryZh", userSummary);
+        data.put("hintZh", userSummary);
         return data;
+    }
+
+    /** Human-facing WeCom summary: no previewId / canConfirm / scene / row null. */
+    private String buildUserSummaryZh(List<JSONObject> records) {
+        LinkedHashMap<String, JSONObject> bills = new LinkedHashMap<String, JSONObject>();
+        List<String> errors = new ArrayList<String>();
+        int lineCount = 0;
+        for (JSONObject record : records) {
+            String bk = record.getString("businessKey");
+            if (bk == null || bk.isEmpty()) {
+                bk = "(缺单号)";
+            }
+            bills.put(bk, record);
+            JSONArray sourceRows = record.getJSONArray("sourceRows");
+            if (sourceRows != null) {
+                lineCount += sourceRows.size();
+            } else {
+                lineCount++;
+            }
+            if (!record.getBooleanValue("canConfirm")) {
+                String rowLabel = sourceRowLabel(record);
+                JSONArray errs = record.getJSONArray("errors");
+                String detail = joinPlain(errs);
+                errors.add("第" + rowLabel + "行" + (detail.isEmpty() ? "数据有误" : "：" + detail));
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        if (!errors.isEmpty()) {
+            sb.append("文件已收到，但还有 ").append(errors.size()).append(" 处需要修改：\n");
+            for (int i = 0; i < Math.min(errors.size(), 5); i++) {
+                sb.append("- ").append(errors.get(i)).append("\n");
+            }
+            sb.append("请改好后重新发回 Excel。库存未变化，也未创建采购单。");
+            return sb.toString().trim();
+        }
+        sb.append("文件已核对：").append(bills.size()).append(" 张业务单 / ").append(lineCount).append(" 行明细。\n");
+        int shown = 0;
+        for (Map.Entry<String, JSONObject> e : bills.entrySet()) {
+            if (shown >= 5) {
+                sb.append("…其余单据已省略\n");
+                break;
+            }
+            shown++;
+            JSONObject record = e.getValue();
+            JSONObject norm = record.getJSONObject("normalized");
+            String scene = record.getString("scene");
+            String sceneLabel = "PURCHASE".equals(scene) ? "采购单"
+                    : ("MIX".equals(scene) ? "配制单" : ("SERVICE".equals(scene) ? "服务单" : "业务单"));
+            sb.append(sceneLabel).append(" ").append(e.getKey());
+            if (norm != null && norm.getString("organName") != null) {
+                sb.append("｜").append(norm.getString("organName"));
+            }
+            sb.append("\n");
+            if (norm != null && norm.getJSONArray("lines") != null) {
+                JSONArray lines = norm.getJSONArray("lines");
+                for (int i = 0; i < Math.min(lines.size(), 8); i++) {
+                    JSONObject ln = lines.getJSONObject(i);
+                    String qty = ln.getString("qty");
+                    String unit = ln.getString("unit") == null ? "" : ln.getString("unit");
+                    String price = ln.getString("unitPrice");
+                    if (price == null) {
+                        price = ln.getString("price");
+                    }
+                    String amount = "";
+                    try {
+                        if (qty != null && price != null && !price.isEmpty()) {
+                            amount = "＝" + new BigDecimal(qty).multiply(new BigDecimal(price))
+                                    .stripTrailingZeros().toPlainString() + " 元";
+                        }
+                    } catch (Exception ignore) {
+                        amount = "";
+                    }
+                    sb.append("  ").append(ln.getString("barCode") == null ? "" : ln.getString("barCode"));
+                    if (ln.getString("depotName") != null) {
+                        sb.append("｜").append(ln.getString("depotName"));
+                    }
+                    sb.append("｜").append(qty == null ? "?" : qty).append(unit);
+                    if (price != null && !price.isEmpty()) {
+                        sb.append(" × ").append(price).append(" 元").append(amount);
+                    }
+                    sb.append("\n");
+                }
+            }
+            if (norm != null && norm.getJSONObject("finished") != null) {
+                JSONObject f = norm.getJSONObject("finished");
+                sb.append("  成品 ").append(f.getString("barCode")).append("｜")
+                        .append(f.getString("qty")).append(f.getString("unit") == null ? "" : f.getString("unit"))
+                        .append("\n");
+            }
+        }
+        sb.append("数据无误，尚未入库。本阶段仅核对；正式入库将在下一阶段生成待确认采购单后，由您本人确认。");
+        sb.append("不必重新上传同一文件。若改口头采购，请回复「取消文件」。");
+        return sb.toString().trim();
+    }
+
+    private static String sourceRowLabel(JSONObject record) {
+        JSONArray sourceRows = record.getJSONArray("sourceRows");
+        if (sourceRows != null && !sourceRows.isEmpty() && sourceRows.get(0) != null) {
+            return String.valueOf(sourceRows.get(0));
+        }
+        Object rowIndex = record.get("rowIndex");
+        if (rowIndex != null) {
+            return String.valueOf(rowIndex);
+        }
+        return "?";
+    }
+
+    private String joinPlain(JSONArray errors) {
+        if (errors == null || errors.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < errors.size(); i++) {
+            if (i > 0) {
+                sb.append("；");
+            }
+            sb.append(String.valueOf(errors.get(i)));
+        }
+        return sb.toString();
     }
 
     public Map<String, Object> confirm(JSONObject body, HttpServletRequest request) throws Exception {
@@ -413,12 +586,115 @@ public class AierpExcelService {
             errors.add("单位不匹配: " + barCode + " 需要 " + expected + " 实际 " + line.getString("unit"));
         }
         String depotName = line.getString("depotName");
+        if (depotName == null || depotName.trim().isEmpty()) {
+            errors.add("缺少仓库 depotName");
+            return;
+        }
+        depotName = depotName.trim();
         Integer depots = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM jsh_depot WHERE name=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
                 Integer.class, depotName, user.getTenantId());
         if (depots == null || depots == 0) {
             errors.add("仓库不存在或不属于当前租户: " + depotName);
+            return;
         }
+        if (!depotAllowedForUser(user, depotName)) {
+            errors.add("无权使用仓库: " + depotName);
+        }
+    }
+
+    /**
+     * Prefill rows for templateAs must pass material/unit/depot UserDepot checks (no inventing).
+     */
+    private void assertFillAuthorized(User user, String scene, JSONArray rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        if ("SALE".equals(scene) || "INITIAL".equals(scene)) {
+            throw new BusinessRunTimeException(400, scene + " 场景不支持预填业务行");
+        }
+        JSONArray errors = new JSONArray();
+        for (int i = 0; i < rows.size(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            if ("MIX".equals(scene)) {
+                String finished = row.getString("finishedCode");
+                if (finished != null && !finished.trim().isEmpty()) {
+                    JSONObject fin = new JSONObject(true);
+                    fin.put("barCode", finished.trim());
+                    fin.put("unit", row.getString("finishedUnit"));
+                    String finDepot = row.getString("finishedDepotName");
+                    fin.put("depotName", finDepot != null && !finDepot.trim().isEmpty() ? finDepot.trim() : "成品仓");
+                    checkMaterial(user, fin, errors);
+                }
+                if (row.getString("barCode") != null && !row.getString("barCode").trim().isEmpty()) {
+                    JSONObject component = new JSONObject(true);
+                    component.put("barCode", row.getString("barCode").trim());
+                    component.put("unit", row.getString("unit"));
+                    String dep = row.getString("depotName");
+                    component.put("depotName", dep != null && !dep.trim().isEmpty() ? dep.trim() : "原料仓");
+                    checkMaterial(user, component, errors);
+                }
+                continue;
+            }
+            if (row.getString("barCode") != null && !row.getString("barCode").trim().isEmpty()) {
+                if ("PURCHASE".equals(scene) || "PACK".equals(scene) || "SERVICE".equals(scene)) {
+                    if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
+                        if (row.getString("organName") == null || row.getString("organName").trim().isEmpty()) {
+                            errors.add("预填采购行缺少供应商 organName");
+                        } else {
+                            assertSupplierExists(user, row.getString("organName").trim(), errors);
+                        }
+                    }
+                }
+                checkMaterial(user, row, errors);
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new BusinessRunTimeException(403, "预填校验失败: " + errors.getString(0)
+                    + (errors.size() > 1 ? "（共 " + errors.size() + " 项）" : ""));
+        }
+    }
+
+    private void assertSupplierExists(User user, String organName, JSONArray errors) {
+        Integer n = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jsh_supplier WHERE supplier=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                Integer.class, organName, user.getTenantId());
+        if (n == null || n == 0) {
+            errors.add("供应商不存在或不属于当前租户: " + organName);
+        }
+    }
+
+    private boolean depotAllowedForUser(User user, String depotName) {
+        if (depotName == null || depotName.trim().isEmpty()) {
+            return false;
+        }
+        List<Map<String, Object>> depots = jdbcTemplate.queryForList(
+                "SELECT id FROM jsh_depot WHERE name=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1' LIMIT 1",
+                depotName.trim(), user.getTenantId());
+        if (depots.isEmpty()) {
+            return false;
+        }
+        long depotId = ((Number) depots.get(0).get("id")).longValue();
+        List<Long> allowed = allowedDepotIds(user);
+        return allowed.contains(depotId);
+    }
+
+    private List<Long> allowedDepotIds(User user) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT `value` FROM jsh_user_business WHERE type='UserDepot' AND key_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getString(1), String.valueOf(user.getId()));
+        List<Long> ids = new ArrayList<Long>();
+        if (values.isEmpty() || values.get(0) == null) {
+            return ids;
+        }
+        Matcher matcher = DEPOT_ID.matcher(values.get(0));
+        while (matcher.find()) {
+            ids.add(Long.valueOf(matcher.group()));
+        }
+        return ids;
     }
 
     private JSONObject line(Row row, List<String> headers, DataFormatter formatter, JSONArray errors,
@@ -455,7 +731,15 @@ public class AierpExcelService {
         List<String> names = new ArrayList<String>();
         for (int c = 0; c < header.getLastCellNum(); c++) {
             String name = read(header.getCell(c), formatter, new JSONArray());
-            names.add(name == null ? "" : name.replace(" ", ""));
+            if (name == null) {
+                names.add("");
+                continue;
+            }
+            // Keep parser compatible if templates ever add * / （必填） markers.
+            name = name.replace(" ", "").replace("*", "")
+                    .replace("（必填）", "").replace("(必填)", "")
+                    .replace("（选填）", "").replace("(选填)", "");
+            names.add(name);
         }
         return names;
     }
@@ -545,56 +829,274 @@ public class AierpExcelService {
         return null;
     }
 
-    private Sheet writeSheet(XSSFWorkbook book, String name, String[] headers, JSONArray rows, String scene) {
+    private void writeHelpSheet(Sheet help, String scene) {
+        text(help, 0, 0, "AI-ERP 企微业务模板（与 jshERP 原生 .xls 导入格式不同，请用本模板）");
+        text(help, 1, 0, "第3行是表头（勿改列名），第4行起填数据。红色表头=必填，灰色表头=选填。");
+        text(help, 2, 0, "同一「业务单号/配制单号/服务单号」多行 = 同一张单的多条明细；换单号即新单。");
+        text(help, 3, 0, "已预填唯一单号与当天日期，请补齐供应商/物料/数量等；勿编造无权仓库或供应商。");
+        text(help, 4, 0, "不要使用公式或宏。上传后只做核对预览，确认入库前库存不变。");
+        text(help, 5, 0, "示例（请勿当作真实业务粘贴）：采购单号 CG-20261021-DEMO｜原料仓｜RM-A001｜10 L。");
+        text(help, 6, 0, "销售出库/物料期初当前仅提供模板，不能经本流程确认过账。");
+        help.setColumnWidth(0, 18000);
+    }
+
+    private JSONArray ensureTemplateKeys(String scene, JSONArray fillRows) {
+        String today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String prefix = "PURCHASE".equals(scene) || "PACK".equals(scene) ? "CG"
+                : ("MIX".equals(scene) ? "PZ" : ("SERVICE".equals(scene) ? "FW" : "YW"));
+        if (fillRows == null || fillRows.isEmpty()) {
+            if (!"PURCHASE".equals(scene) && !"MIX".equals(scene) && !"SERVICE".equals(scene) && !"PACK".equals(scene)) {
+                return fillRows;
+            }
+            JSONArray starter = new JSONArray();
+            JSONObject row = new JSONObject(true);
+            row.put("businessKey", newBusinessKey(prefix));
+            row.put("date", today);
+            starter.add(row);
+            return starter;
+        }
+        for (int i = 0; i < fillRows.size(); i++) {
+            JSONObject row = fillRows.getJSONObject(i);
+            if (row == null) {
+                continue;
+            }
+            if (row.getString("businessKey") == null || row.getString("businessKey").trim().isEmpty()) {
+                row.put("businessKey", newBusinessKey(prefix));
+            }
+            if (row.getString("date") == null || row.getString("date").trim().isEmpty()) {
+                row.put("date", today);
+            }
+        }
+        return fillRows;
+    }
+
+    private static String newBusinessKey(String prefix) {
+        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 4).toUpperCase(Locale.ROOT);
+        return prefix + "-" + stamp + "-" + rand;
+    }
+
+    private Sheet writeSheet(XSSFWorkbook book, String name, String[] headers, JSONArray rows, String scene, User user) {
         Sheet sheet = book.createSheet(name);
-        text(sheet, 0, 0, name);
-        text(sheet, 1, 0, "第3行表头，第4行开始填写。不要使用公式。");
+        CellStyle titleStyle = book.createCellStyle();
+        Font titleFont = book.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 14);
+        titleStyle.setFont(titleFont);
+
+        CellStyle requiredHead = headStyle(book, true);
+        CellStyle optionalHead = headStyle(book, false);
+        CellStyle guideStyle = book.createCellStyle();
+        Font guideFont = book.createFont();
+        guideFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+        guideStyle.setFont(guideFont);
+
+        Row title = sheet.createRow(0);
+        Cell titleCell = title.createCell(0);
+        titleCell.setCellValue(name);
+        titleCell.setCellStyle(titleStyle);
+
+        Row guide = sheet.createRow(1);
+        Cell guideCell = guide.createCell(0);
+        guideCell.setCellValue(guideText(scene));
+        guideCell.setCellStyle(guideStyle);
+
+        boolean[] required = requiredFlags(scene, headers.length);
         Row head = sheet.createRow(2);
         for (int i = 0; i < headers.length; i++) {
-            text(head, i, headers[i]);
+            Cell cell = head.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(required[i] ? requiredHead : optionalHead);
+            sheet.setColumnWidth(i, columnWidth(headers[i]));
         }
+
         if (rows != null) {
             for (int i = 0; i < rows.size(); i++) {
                 JSONObject row = rows.getJSONObject(i);
                 Row excel = sheet.createRow(3 + i);
-                if ("PURCHASE".equals(scene)) {
-                    text(excel, 0, row.getString("businessKey"));
-                    text(excel, 1, row.getString("date"));
-                    text(excel, 2, row.getString("organName"));
-                    text(excel, 3, row.getString("barCode"));
-                    text(excel, 4, row.getString("name"));
-                    text(excel, 5, row.getString("depotName"));
-                    text(excel, 6, row.getString("qty"));
-                    text(excel, 7, row.getString("unit"));
-                    text(excel, 8, row.getString("price"));
-                    text(excel, 9, row.getString("remark"));
-                } else if ("MIX".equals(scene)) {
-                    text(excel, 0, row.getString("businessKey"));
-                    text(excel, 1, row.getString("date"));
-                    text(excel, 2, row.getString("finishedCode"));
-                    text(excel, 3, row.getString("finishedName"));
-                    text(excel, 4, row.getString("finishedQty"));
-                    text(excel, 5, row.getString("finishedUnit"));
-                    text(excel, 6, row.getString("barCode"));
-                    text(excel, 7, row.getString("name"));
-                    text(excel, 8, row.getString("qty"));
-                    text(excel, 9, row.getString("unit"));
-                    text(excel, 10, row.getString("remark"));
-                } else if ("SERVICE".equals(scene)) {
-                    text(excel, 0, row.getString("businessKey"));
-                    text(excel, 1, row.getString("date"));
-                    text(excel, 2, row.getString("organName"));
-                    text(excel, 3, row.getString("serviceName"));
-                    text(excel, 4, row.getString("barCode"));
-                    text(excel, 5, row.getString("name"));
-                    text(excel, 6, row.getString("qty"));
-                    text(excel, 7, row.getString("unit"));
-                    text(excel, 8, row.getString("depotName"));
-                    text(excel, 9, row.getString("remark"));
-                }
+                fillDataRow(excel, row, scene);
             }
         }
+
+        sheet.createFreezePane(0, 3);
+        sheet.setAutoFilter(new CellRangeAddress(2, Math.max(2, sheet.getLastRowNum()), 0, headers.length - 1));
+        addDropdowns(sheet, scene, headers, user);
         return sheet;
+    }
+
+    private void fillDataRow(Row excel, JSONObject row, String scene) {
+        if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
+            text(excel, 0, row.getString("businessKey"));
+            text(excel, 1, row.getString("date"));
+            text(excel, 2, row.getString("organName"));
+            text(excel, 3, row.getString("barCode"));
+            text(excel, 4, row.getString("name"));
+            text(excel, 5, row.getString("depotName"));
+            text(excel, 6, row.getString("qty"));
+            text(excel, 7, row.getString("unit"));
+            text(excel, 8, row.getString("price"));
+            text(excel, 9, row.getString("remark"));
+        } else if ("MIX".equals(scene)) {
+            text(excel, 0, row.getString("businessKey"));
+            text(excel, 1, row.getString("date"));
+            text(excel, 2, row.getString("finishedCode"));
+            text(excel, 3, row.getString("finishedName"));
+            text(excel, 4, row.getString("finishedQty"));
+            text(excel, 5, row.getString("finishedUnit"));
+            text(excel, 6, row.getString("barCode"));
+            text(excel, 7, row.getString("name"));
+            text(excel, 8, row.getString("qty"));
+            text(excel, 9, row.getString("unit"));
+            text(excel, 10, row.getString("remark"));
+        } else if ("SERVICE".equals(scene)) {
+            text(excel, 0, row.getString("businessKey"));
+            text(excel, 1, row.getString("date"));
+            text(excel, 2, row.getString("organName"));
+            text(excel, 3, row.getString("serviceName"));
+            text(excel, 4, row.getString("barCode"));
+            text(excel, 5, row.getString("name"));
+            text(excel, 6, row.getString("qty"));
+            text(excel, 7, row.getString("unit"));
+            text(excel, 8, row.getString("depotName"));
+            text(excel, 9, row.getString("remark"));
+        }
+    }
+
+    private static String guideText(String scene) {
+        if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
+            return "红色必填：业务单号、业务日期、供应商、物料编码、入库仓库、入库数量、单位。同单号多行=同一张采购单。勿用公式。";
+        }
+        if ("MIX".equals(scene)) {
+            return "红色必填：配制单号、日期、成品编码、产出数量、原料编码、领用数量与单位。配比为演示数据。勿用公式。";
+        }
+        if ("SERVICE".equals(scene)) {
+            return "红色必填：服务单号、服务日期、客户、药水编码、耗用数量、单位、出库仓库。勿用公式。";
+        }
+        return "第3行表头，第4行起填写。红色=必填，灰色=选填。不要使用公式。";
+    }
+
+    private static boolean[] requiredFlags(String scene, int len) {
+        boolean[] flags = new boolean[len];
+        if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
+            // 业务单号 日期 供应商 编码 名称 仓库 数量 单位 单价 备注
+            int[] req = {0, 1, 2, 3, 5, 6, 7};
+            for (int i : req) {
+                if (i < len) {
+                    flags[i] = true;
+                }
+            }
+        } else if ("MIX".equals(scene)) {
+            int[] req = {0, 1, 2, 4, 5, 6, 8, 9};
+            for (int i : req) {
+                if (i < len) {
+                    flags[i] = true;
+                }
+            }
+        } else if ("SERVICE".equals(scene)) {
+            int[] req = {0, 1, 2, 4, 6, 7, 8};
+            for (int i : req) {
+                if (i < len) {
+                    flags[i] = true;
+                }
+            }
+        } else {
+            for (int i = 0; i < len; i++) {
+                flags[i] = true;
+            }
+        }
+        return flags;
+    }
+
+    private CellStyle headStyle(XSSFWorkbook book, boolean required) {
+        CellStyle style = book.createCellStyle();
+        Font font = book.createFont();
+        font.setBold(true);
+        if (required) {
+            font.setColor(IndexedColors.RED.getIndex());
+        } else {
+            font.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+        }
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        return style;
+    }
+
+    private static int columnWidth(String header) {
+        if (header == null) {
+            return 3500;
+        }
+        if (header.contains("备注") || header.contains("名称") || header.contains("供应商") || header.contains("客户")) {
+            return 4500;
+        }
+        if (header.contains("单号") || header.contains("编码")) {
+            return 4200;
+        }
+        return 3400;
+    }
+
+    private void addDropdowns(Sheet sheet, String scene, String[] headers, User user) {
+        DataValidationHelper helper = sheet.getDataValidationHelper();
+        String[] units = new String[]{"L", "kg", "g", "个", "瓶", "箱", "桶"};
+        List<String> depots = listDepotNames(user);
+        for (int i = 0; i < headers.length; i++) {
+            String h = headers[i];
+            if ("单位".equals(h)) {
+                addListValidation(helper, sheet, i, units);
+            } else if (("入库仓库".equals(h) || "出库仓库".equals(h) || "仓库".equals(h)) && !depots.isEmpty()) {
+                addListValidation(helper, sheet, i, depots.toArray(new String[0]));
+            }
+        }
+    }
+
+    private void addListValidation(DataValidationHelper helper, Sheet sheet, int col, String[] values) {
+        if (values == null || values.length == 0) {
+            return;
+        }
+        // Excel list constraint length limit — keep short bounded lists only.
+        int max = Math.min(values.length, 40);
+        String[] clipped = new String[max];
+        System.arraycopy(values, 0, clipped, 0, max);
+        DataValidationConstraint constraint = helper.createExplicitListConstraint(clipped);
+        CellRangeAddressList addr = new CellRangeAddressList(3, 200, col, col);
+        DataValidation validation = helper.createValidation(constraint, addr);
+        validation.setSuppressDropDownArrow(false);
+        validation.setShowErrorBox(true);
+        sheet.addValidationData(validation);
+    }
+
+    private List<String> listDepotNames(User user) {
+        List<String> names = new ArrayList<String>();
+        if (user == null || user.getTenantId() == null) {
+            return names;
+        }
+        try {
+            List<Long> allowed = allowedDepotIds(user);
+            if (allowed.isEmpty()) {
+                return names;
+            }
+            StringBuilder in = new StringBuilder();
+            for (int i = 0; i < allowed.size(); i++) {
+                if (i > 0) {
+                    in.append(",");
+                }
+                in.append(allowed.get(i));
+            }
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT name FROM jsh_depot WHERE tenant_id=? AND id IN (" + in
+                            + ") AND IFNULL(delete_flag,'0')<>'1' ORDER BY name LIMIT 40",
+                    user.getTenantId());
+            for (Map<String, Object> row : rows) {
+                if (row.get("name") != null) {
+                    names.add(String.valueOf(row.get("name")));
+                }
+            }
+        } catch (Exception ignore) {
+            // dropdown is best-effort
+        }
+        return names;
     }
 
     private void text(Sheet sheet, int rowIndex, int col, String value) {

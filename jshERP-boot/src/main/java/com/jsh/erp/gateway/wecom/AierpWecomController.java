@@ -29,6 +29,8 @@ public class AierpWecomController {
     @Resource
     private AierpWecomDraftService draftService;
     @Resource
+    private AierpWecomExcelService excelService;
+    @Resource
     private AierpWecomConfirmService confirmService;
     @Resource
     private AierpWecomReceiptService receiptService;
@@ -139,6 +141,35 @@ public class AierpWecomController {
         response.setHeader("Content-Disposition", "attachment; filename=\"receipt.pdf\"");
         response.getOutputStream().write(pdf);
         response.getOutputStream().flush();
+    }
+
+    /** AIERP-017A: download xlsx template as base64 (no stock change). */
+    @PostMapping("/excel/template")
+    public BaseResponseInfo excelTemplate(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.template(parse(raw)));
+    }
+
+    /**
+     * AIERP-017A: preview uploaded xlsx (base64) under trusted WeCom identity.
+     * Never calls excel.confirm / never posts inventory.
+     */
+    @PostMapping("/excel/preview")
+    public BaseResponseInfo excelPreview(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.preview(parse(raw)));
+    }
+
+    @PostMapping("/excel/workflow/status")
+    public BaseResponseInfo excelWorkflowStatus(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.workflowStatus(parse(raw)));
+    }
+
+    @PostMapping("/excel/workflow/cancel")
+    public BaseResponseInfo excelWorkflowCancel(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.workflowCancel(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {
