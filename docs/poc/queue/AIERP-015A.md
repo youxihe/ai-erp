@@ -1,6 +1,6 @@
 # AIERP-015A · 企微多轮采购信息收集与 ERP 真草稿（不入账）
 
-- **状态**：READY_FOR_REVIEW
+- **状态**：DONE / PR #24 MERGED（`1a82abca`；25/25 本地测试，真人企微草稿 #106 未过账）
 - **开发分支**：`feat/aierp-015a-purchase-dialog-draft`（自最新 `origin/master`；未从 013 派生）
 - **角色**：Cursor-ERP / OpenClaw+Java 适配器 / jshERP PC 小量交互。
 - **设计依据**：`docs/poc/adr/AIERP-014D-conversational-confirmation.md`、`docs/poc/14d-api-contract.md`。
