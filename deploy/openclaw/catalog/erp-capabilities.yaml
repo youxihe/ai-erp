@@ -1,13 +1,13 @@
 # AIERP-019A · ERP 能力目录（文档可见；运行时须服务端 allowlist 注册）
 # 分支 product/aierp-019a-capability-catalog-skills 对齐 Java 源码快照（含 012A/013/015A；015B 能力以 feat/aierp-015b（PR #27）Java 为准；本 docs 分支不合并该代码）
-version: "019a.1"
+version: "019a.2"
 catalogDate: "2026-10-21"
 schemaVersion: 1
 notes:
   - "文档中的 operationId 不等于模型可调用；COMMIT 级永不对 LLM 暴露为 Tool。"
   - "企微路径：HMAC 适配器 + 渠道可信 wecomUserId（OpenClaw ctx.requesterSenderId）。"
   - "会话路径：X-Access-Token 当前 ERP 用户（Demo 工作台 / PC 登录）。"
-  - "015B draft.confirm / receipt.pdf 在 origin/master 已实现；015B confirm/receipt 已在 PR #27 实现；019A 仅文档引用，不改运行态。"
+  - "015B confirm/receipt 以 PR #27（feat/aierp-015b）为准；本 docs 分支不合并其 Java，仅目录与 Skills 引用。"
 
 runtimeRegistration:
   openClawPlugin: deploy/openclaw/plugins/aierp-erp-tools/index.js

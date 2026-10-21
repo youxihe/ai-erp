@@ -34,6 +34,9 @@
 | 27 | **「这个月哪些客户消耗清洗液最多」** | 耗料分析 | `report.query(service_consume_by_customer)` + material 关键字 | 仅授权客户/仓库；不编造 |
 | 28 | **「配制 5 升清洗液，材料不够怎么办」** | 配制缺料 | `material.search` → `stock.query`；无 mix.prepare | 说明缺料与补采购草稿选项；不伪配制过账 |
 | 25 | 「群里帮大家查下库存」 | 群聊 | 拒绝 | WECOM_GROUP_NOT_ALLOWED |
+| 26 | **「按上次采购供应商买 10 升材料」** | 采购+历史供应商 | 同 #6：`bill.search` → `partner.search` → `material.search` → `purchase.prepare` | 供应商取最近采购；草稿未入库 |
+| 27 | **「这个月哪些客户消耗清洗液最多」** | 耗料分析 | `material.search` → `report.query(service_consume_by_customer)` | 仅授权范围；不编造排名 |
+| 28 | **「配制 5 升清洗液，材料不够怎么办」** | 配制缺料 | `material.search` → `stock.query`；无 `mix.prepare` | 说明缺料与可走采购草稿；不伪配制过账 |
 
 ## 重点场景展开
 
