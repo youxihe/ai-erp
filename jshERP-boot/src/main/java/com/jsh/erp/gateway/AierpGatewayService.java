@@ -243,20 +243,33 @@ public class AierpGatewayService {
     }
 
     public Map<String, Object> createDraft(String bizType, JSONObject body, HttpServletRequest request) throws Exception {
-        User user = currentUser();
+        return createDraftAs(currentUser(), bizType, body);
+    }
+
+    /**
+     * Create a gateway DRAFT for an explicit ERP user (WeCom delegated actor).
+     * Does not use HTTP session / RequestContextHolder. Does not post inventory.
+     */
+    public Map<String, Object> createDraftAs(User user, String bizType, JSONObject body) throws Exception {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
         assertFunction(user, functionOf(bizType), BTN_ADD, bizType);
         String key = required(body, "idempotencyKey");
         JSONObject normalized = normalize(bizType, body, user);
         String payload = normalized.toJSONString();
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                "SELECT id, status, payload_json, bill_number, biz_type FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
             if (!payload.equals(String.valueOf(row.get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
-            return draftView(row, true);
+            Map<String, Object> replay = draftView(row, true);
+            replay.put("stockUnchanged", true);
+            replay.put("posted", false);
+            return replay;
         }
         try {
             jdbcTemplate.update(
@@ -264,7 +277,7 @@ public class AierpGatewayService {
                     key, user.getTenantId(), user.getId(), bizType, payload);
         } catch (DuplicateKeyException ex) {
             List<Map<String, Object>> raced = jdbcTemplate.queryForList(
-                    "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                    "SELECT id, status, payload_json, bill_number, biz_type FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                     user.getTenantId(), user.getId(), key);
             if (raced.isEmpty()) {
                 throw ex;
@@ -272,14 +285,81 @@ public class AierpGatewayService {
             if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
-            return draftView(raced.get(0), true);
+            Map<String, Object> replay = draftView(raced.get(0), true);
+            replay.put("stockUnchanged", true);
+            replay.put("posted", false);
+            return replay;
         }
         List<Map<String, Object>> created = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                "SELECT id, status, payload_json, bill_number, biz_type FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
         Map<String, Object> view = draftView(created.get(0), false);
         view.put("stockUnchanged", true);
         view.put("posted", false);
+        view.put("nature", "REAL_ERP");
+        return view;
+    }
+
+    /** Cancel an unposted DRAFT owned by the explicit ERP user. */
+    public Map<String, Object> cancelDraftAs(User user, long draftId) {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, status, bill_number FROM aierp_gateway_draft WHERE id=? AND tenant_id=? AND user_id=?",
+                draftId, user.getTenantId(), user.getId());
+        if (rows.isEmpty()) {
+            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前绑定用户");
+        }
+        Map<String, Object> row = rows.get(0);
+        String status = String.valueOf(row.get("status"));
+        if ("CONFIRMED".equals(status)) {
+            throw new BusinessRunTimeException(409, "草稿已过账，不能取消");
+        }
+        if ("CANCELLED".equals(status)) {
+            Map<String, Object> already = new LinkedHashMap<String, Object>();
+            already.put("draftId", draftId);
+            already.put("status", "CANCELLED");
+            already.put("cancelled", true);
+            already.put("replayed", true);
+            already.put("posted", false);
+            already.put("stockUnchanged", true);
+            already.put("nature", "REAL_ERP");
+            return already;
+        }
+        int n = jdbcTemplate.update(
+                "UPDATE aierp_gateway_draft SET status='CANCELLED' WHERE id=? AND tenant_id=? AND user_id=? AND status='DRAFT'",
+                draftId, user.getTenantId(), user.getId());
+        if (n != 1) {
+            throw new BusinessRunTimeException(409, "草稿状态已变化，无法取消");
+        }
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("draftId", draftId);
+        view.put("status", "CANCELLED");
+        view.put("cancelled", true);
+        view.put("posted", false);
+        view.put("stockUnchanged", true);
+        view.put("nature", "REAL_ERP");
+        return view;
+    }
+
+    /** Read draft owned by explicit ERP user (no session). */
+    public Map<String, Object> draftStatusAs(User user, long draftId) {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, status, payload_json, bill_number, biz_type, create_time FROM aierp_gateway_draft WHERE id=? AND tenant_id=? AND user_id=?",
+                draftId, user.getTenantId(), user.getId());
+        if (rows.isEmpty()) {
+            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前绑定用户");
+        }
+        Map<String, Object> view = draftView(rows.get(0), false);
+        view.put("bizType", rows.get(0).get("biz_type"));
+        view.put("createTime", String.valueOf(rows.get(0).get("create_time")));
+        view.put("posted", "CONFIRMED".equals(String.valueOf(rows.get(0).get("status"))));
+        view.put("stockUnchanged", !"CONFIRMED".equals(String.valueOf(rows.get(0).get("status"))));
+        view.put("nature", "REAL_ERP");
         return view;
     }
 

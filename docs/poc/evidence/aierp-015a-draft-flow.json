@@ -1,0 +1,81 @@
+{
+  "task": "AIERP-015A",
+  "at": "2026-10-20T23:57:48.910Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "passed": 14,
+  "total": 14,
+  "dualUserUat": "NOT_VERIFIED",
+  "confirmToolRegistered": false,
+  "results": [
+    {
+      "name": "unbound_prepare_401",
+      "ok": true,
+      "detail": "{\"code\":401,\"data\":{\"message\":\"尚未绑定 ERP，请先发送「绑定ERP」\"}}"
+    },
+    {
+      "name": "bind_issue",
+      "ok": true,
+      "detail": "{\"codeLen\":8}"
+    },
+    {
+      "name": "bind_claim",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "spoof_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"拒绝客户端伪造身份字段\"}}"
+    },
+    {
+      "name": "purchase_prepare_real_draft",
+      "ok": true,
+      "detail": "{\"draftId\":98,\"status\":\"DRAFT\",\"amount\":200,\"label\":\"待确认、未入库\"}"
+    },
+    {
+      "name": "prepare_idempotent_replay",
+      "ok": true,
+      "detail": "{\"code\":200,\"draftId\":98,\"replayed\":true}"
+    },
+    {
+      "name": "prepare_idempotent_conflict",
+      "ok": true,
+      "detail": "409"
+    },
+    {
+      "name": "draft_status",
+      "ok": true,
+      "detail": "{\"status\":\"DRAFT\",\"label\":\"待确认、未入库\"}"
+    },
+    {
+      "name": "no_confirm_route",
+      "ok": true,
+      "detail": "{\"status\":500}"
+    },
+    {
+      "name": "bad_depot_rejected",
+      "ok": true,
+      "detail": "400"
+    },
+    {
+      "name": "stock_unchanged_after_prepare",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"158.700000\",\"stockAfterPrepare\":\"158.700000\"}"
+    },
+    {
+      "name": "db_draft_unposted",
+      "ok": true,
+      "detail": "DRAFT\tNULL"
+    },
+    {
+      "name": "draft_cancel",
+      "ok": true,
+      "detail": "CANCELLED"
+    },
+    {
+      "name": "stock_unchanged_after_cancel",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"158.700000\",\"stockAfterCancel\":\"158.700000\"}"
+    }
+  ]
+}

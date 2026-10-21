@@ -18,7 +18,7 @@
 | AIERP-012A | **DONE / PR #19** | 可信企微用户绑定 ERP，HMAC/nonce/权限重验，真实库存查询；单用户端到端成功，双用户权限 UAT 待补 |
 | **AIERP-013** | **REVIEW_FIX_REQUIRED / PR #21 · next_order #1** | **19/19 本地通过，跨仓混合单据存在表头整单金额权限泄漏，需一次小修复** |
 | AIERP-014D | **DONE / PR #22** | **可信原始消息确认、草稿挑战、显式 ERP actor 设计已 Review + Merge** |
-| **AIERP-015A** | **RELEASED / next_order #2** | **企微多轮采购信息收集与真实 DRAFT；后续 015B 再开放可信确认** |
+| **AIERP-015A** | **READY_FOR_REVIEW** | **企微多轮采购 → 真实未审核 DRAFT（createDraftAs）；无 confirm 工具；分支 `feat/aierp-015a-purchase-dialog-draft`** |
 | AIERP-015B | PLANNED / after 015A security Review | 企业微信可信确认事件或 ERP 登录确认 → 原生审核过账，严格身份委托 |
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017 | PLANNED | Excel 企微文件接入、业务异常处理；图片/Excel/H5 报表按渠道能力降级 |

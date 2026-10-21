@@ -150,62 +150,82 @@ function formatStock(data) {
   return `ERP 实时库存（账号 ${data.boundErpLoginName || data.loginName}）：\n${lines.join("\n")}${asOf}`;
 }
 
+function str(v) {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+function num(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+  return undefined;
+}
+
+function formatPurchaseDraft(data) {
+  const s = data?.summary || {};
+  const lines = [
+    `采购草稿 #${data?.draftId ?? "?"} · ${data?.statusLabel || data?.status || "DRAFT"}`,
+    `- 物料：${s.materialName || "?"}（${s.barCode || "?"}）`,
+    `- 数量：${s.qty ?? "?"} ${s.unit || ""} → ${s.depotName || "?"}`,
+    `- 供应商：${s.partnerName || "?"}`,
+    s.amount != null ? `- 参考金额：${s.amount}` : null,
+    `- 库存：${s.stockDeltaHint || "确认后才会变化"}`,
+    `- 账号：${data?.boundErpLoginName || "?"}`,
+    data?.hint || "待确认、未入库。当前不能通过对话直接审核过账。",
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
 function registerErpTools(api) {
-  const make =
-    (name, description, path, buildBody, format) => {
-      api.registerTool(
-        (ctx) => ({
-          name,
-          description,
-          parameters: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "物料中文名/编码关键字（仅 stock 使用）" },
-              barCode: { type: "string", description: "物料编码（可选）" },
-              depotName: { type: "string", description: "仓库名称（可选）" },
-            },
-            additionalProperties: false,
-          },
-          async execute(_id, params) {
-            const wecomUserId = trustedWecomUserId(ctx);
-            if (!wecomUserId) {
-              return toolResult(false, "当前会话没有可信的企业微信发送者身份，无法执行 ERP 工具。请在企微私聊中操作。", {
-                reason: "NO_TRUSTED_WECOM_SENDER",
-                messageChannel: ctx?.messageChannel || null,
-              });
-            }
-            if (isWecomGroupChat(ctx)) {
-              return toolResult(false, "ERP 工具仅支持企微私聊，请勿在群聊中查询或绑定。", {
-                reason: "WECOM_GROUP_NOT_ALLOWED",
-                chatType: ctx?.chatType || null,
-              });
-            }
-            // Explicitly ignore any model-supplied identity fields.
-            const safeParams = {
-              query: typeof params?.query === "string" ? params.query : undefined,
-              barCode: typeof params?.barCode === "string" ? params.barCode : undefined,
-              depotName: typeof params?.depotName === "string" ? params.depotName : undefined,
-            };
-            try {
-              const data = await signedPost(path, buildBody(wecomUserId, safeParams));
-              const formatted = format(data);
-              const text = typeof formatted === "string" ? formatted : formatted.text;
-              const extra = typeof formatted === "string" ? {} : formatted.details || {};
-              // Never set details.redacted=true (hides content from the model).
-              return toolResult(true, text, { tool: name, ...extra });
-            } catch (err) {
-              return toolResult(false, String(err?.message || err), { reason: "ERP_ADAPTER_ERROR", tool: name });
-            }
-          },
-        }),
-        { name },
-      );
-    };
+  const make = (name, description, path, paramSchema, buildBody, format) => {
+    api.registerTool(
+      (ctx) => ({
+        name,
+        description,
+        parameters: paramSchema,
+        async execute(_id, params) {
+          const wecomUserId = trustedWecomUserId(ctx);
+          if (!wecomUserId) {
+            return toolResult(false, "当前会话没有可信的企业微信发送者身份，无法执行 ERP 工具。请在企微私聊中操作。", {
+              reason: "NO_TRUSTED_WECOM_SENDER",
+              messageChannel: ctx?.messageChannel || null,
+            });
+          }
+          if (isWecomGroupChat(ctx)) {
+            return toolResult(false, "ERP 工具仅支持企微私聊，请勿在群聊中查询或绑定。", {
+              reason: "WECOM_GROUP_NOT_ALLOWED",
+              chatType: ctx?.chatType || null,
+            });
+          }
+          try {
+            const data = await signedPost(path, buildBody(wecomUserId, params || {}));
+            const formatted = format(data);
+            const text = typeof formatted === "string" ? formatted : formatted.text;
+            const extra = typeof formatted === "string" ? {} : formatted.details || {};
+            return toolResult(true, text, { tool: name, nature: data?.nature || "REAL_ERP", ...extra });
+          } catch (err) {
+            return toolResult(false, String(err?.message || err), { reason: "ERP_ADAPTER_ERROR", tool: name });
+          }
+        },
+      }),
+      { name },
+    );
+  };
+
+  const emptyParams = { type: "object", properties: {}, additionalProperties: false };
+  const stockParams = {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "物料中文名/编码关键字" },
+      barCode: { type: "string", description: "物料编码（可选）" },
+      depotName: { type: "string", description: "仓库名称（可选）" },
+    },
+    additionalProperties: false,
+  };
 
   make(
     "erp_bind_start",
     "为企业微信当前用户签发一次性 ERP 绑定码（5 分钟）。仅私聊。不要索取 ERP 密码。",
     "/aierp/v1/wecom/binding/issue",
+    emptyParams,
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
     (data) => {
       const bindCode = data.bindCode;
@@ -221,6 +241,7 @@ function registerErpTools(api) {
     "erp_binding_status",
     "查询当前企微用户是否已绑定 ERP（仅私聊）。",
     "/aierp/v1/wecom/binding/status",
+    emptyParams,
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
     (data) => {
       const text = data.bound
@@ -241,6 +262,7 @@ function registerErpTools(api) {
     "erp_unbind",
     "解除当前企微用户与 ERP 的绑定（仅私聊）。",
     "/aierp/v1/wecom/binding/unbind",
+    emptyParams,
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
     (data) => ({
       text: data.unbound ? "已解绑 ERP。" : "当前没有有效绑定。",
@@ -252,13 +274,14 @@ function registerErpTools(api) {
     "erp_stock_query",
     "按当前已绑定 ERP 用户权限查询实时库存（仅私聊；物料中文名、编码、仓库、单位、数量）。",
     "/aierp/v1/wecom/stock/query",
+    stockParams,
     (wecomUserId, p) => ({
       wecomUserId,
       botId: botId(),
       channel: CHANNEL_ID,
-      query: p.query,
-      barCode: p.barCode,
-      depotName: p.depotName,
+      query: str(p.query),
+      barCode: str(p.barCode),
+      depotName: str(p.depotName),
     }),
     (data) => ({
       text: formatStock(data),
@@ -270,12 +293,113 @@ function registerErpTools(api) {
       },
     }),
   );
+
+  make(
+    "erp_purchase_prepare",
+    "创建真实未审核采购草稿（不改库存、不审核）。需要物料编码、数量、单位、仓库、供应商与幂等键。缺字段先追问。禁止声称已入库。",
+    "/aierp/v1/wecom/purchase/prepare",
+    {
+      type: "object",
+      properties: {
+        barCode: { type: "string", description: "物料编码，如 RM-A001" },
+        qty: { type: "number", description: "采购数量" },
+        unit: { type: "string", description: "单位，如 L" },
+        depotName: { type: "string", description: "入库仓库，如 原料仓" },
+        organName: { type: "string", description: "供应商名称" },
+        idempotencyKey: { type: "string", description: "幂等键，同一对话同一意图保持稳定" },
+        remark: { type: "string", description: "备注（可选）" },
+      },
+      required: ["barCode", "qty", "unit", "depotName", "organName", "idempotencyKey"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      barCode: str(p.barCode),
+      qty: num(p.qty),
+      unit: str(p.unit),
+      depotName: str(p.depotName),
+      organName: str(p.organName),
+      idempotencyKey: str(p.idempotencyKey),
+      remark: str(p.remark),
+    }),
+    (data) => ({
+      text: formatPurchaseDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: false,
+        stockUnchanged: true,
+        summary: data?.summary || null,
+        replayed: !!data?.replayed,
+      },
+    }),
+  );
+
+  make(
+    "erp_draft_status",
+    "查询当前绑定用户名下采购草稿状态与摘要（只读）。",
+    "/aierp/v1/wecom/draft/status",
+    {
+      type: "object",
+      properties: { draftId: { type: "number", description: "草稿 ID" } },
+      required: ["draftId"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      draftId: num(p.draftId),
+    }),
+    (data) => ({
+      text: formatPurchaseDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: !!data?.posted,
+        stockUnchanged: data?.stockUnchanged !== false,
+        summary: data?.summary || null,
+      },
+    }),
+  );
+
+  make(
+    "erp_draft_cancel",
+    "取消尚未过账的采购草稿。不能取消已确认单据。不改变库存。",
+    "/aierp/v1/wecom/draft/cancel",
+    {
+      type: "object",
+      properties: { draftId: { type: "number", description: "草稿 ID" } },
+      required: ["draftId"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      draftId: num(p.draftId),
+    }),
+    (data) => ({
+      text: data?.hint || `草稿 #${data?.draftId} 已取消，未入库。`,
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || "CANCELLED",
+        cancelled: true,
+        posted: false,
+        stockUnchanged: true,
+      },
+    }),
+  );
 }
 
 const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
-  description: "WeCom trusted-identity ERP bind + read-only stock (DM-only)",
+  description: "WeCom trusted-identity ERP bind, stock, and purchase DRAFT (no confirm)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);

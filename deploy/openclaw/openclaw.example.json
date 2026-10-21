@@ -37,7 +37,10 @@
       "erp_bind_start",
       "erp_binding_status",
       "erp_unbind",
-      "erp_stock_query"
+      "erp_stock_query",
+      "erp_purchase_prepare",
+      "erp_draft_status",
+      "erp_draft_cancel"
     ]
   },
   "plugins": {

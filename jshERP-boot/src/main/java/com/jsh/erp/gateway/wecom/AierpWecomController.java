@@ -23,6 +23,8 @@ public class AierpWecomController {
     private AierpWecomAdapterAuth adapterAuth;
     @Resource
     private AierpWecomBindingService bindingService;
+    @Resource
+    private AierpWecomDraftService draftService;
 
     @PostMapping("/binding/issue")
     public BaseResponseInfo issue(@RequestBody String raw, HttpServletRequest request) {
@@ -51,6 +53,25 @@ public class AierpWecomController {
     public BaseResponseInfo stockQuery(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(bindingService.stockQueryDelegated(parse(raw)));
+    }
+
+    /** AIERP-015A: create unposted purchase DRAFT for bound ERP user. No confirm. */
+    @PostMapping("/purchase/prepare")
+    public BaseResponseInfo purchasePrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(draftService.purchasePrepare(parse(raw)));
+    }
+
+    @PostMapping("/draft/status")
+    public BaseResponseInfo draftStatus(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(draftService.draftStatus(parse(raw)));
+    }
+
+    @PostMapping("/draft/cancel")
+    public BaseResponseInfo draftCancel(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(draftService.draftCancel(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {
