@@ -1,11 +1,14 @@
 /**
- * AIERP-012A/013 OpenClaw tool plugin.
+ * AIERP-012A/013/015A/017A OpenClaw tool plugin.
  * Trusts only ctx.requesterSenderId when ctx.messageChannel === "wecom".
  * Never accepts wecomUserId / tenantId / erpUserId / token from the model.
  * Prefer DM-only: reject when chatType/sessionKey indicates group/channel.
  * 012A: bind + stock. 013: material/partner/bill/report. 015A: purchase DRAFT (no confirm).
+ * 017A: excel template + inbound xlsx preview (never excel.confirm).
  */
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, createHash } from "node:crypto";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { join, basename } from "node:path";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -77,6 +80,22 @@ function erpBase() {
 
 function botId() {
   return (process.env.AIERP_WECOM_BOT_ID || process.env.WECOM_BOT_ID || "default").trim();
+}
+
+function excelMediaDir() {
+  const state =
+    process.env.OPENCLAW_STATE_DIR ||
+    join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state");
+  const dir = join(state, "media", "aierp-excel");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeExcelFile(fileName, base64) {
+  const safe = basename(String(fileName || "template.xlsx")).replace(/[^\w.\u4e00-\u9fff-]+/g, "_");
+  const path = join(excelMediaDir(), `${Date.now()}_${safe}`);
+  writeFileSync(path, Buffer.from(base64, "base64"));
+  return path;
 }
 
 async function signedPost(path, bodyObj) {
@@ -628,15 +647,139 @@ function registerErpTools(api) {
       },
     }),
   );
+
+  // AIERP-017A: template download → local MEDIA path (never confirm)
+  api.registerTool(
+    (ctx) => ({
+      name: "erp_excel_template",
+      description:
+        "按场景生成真实 ERP Excel 模板并落盘，供企微 MEDIA 发送。scene=PURCHASE|MIX|SERVICE|SALE|INITIAL|PACK。SALE/INITIAL 仅模板不可过账。不改变库存。禁止 excel.confirm。",
+      parameters: {
+        type: "object",
+        properties: {
+          scene: {
+            type: "string",
+            description: "PURCHASE（默认）/ MIX / SERVICE / SALE / INITIAL / PACK",
+          },
+        },
+        additionalProperties: false,
+      },
+      async execute(_id, params) {
+        const wecomUserId = trustedWecomUserId(ctx);
+        if (!wecomUserId) {
+          return toolResult(false, "当前会话没有可信的企业微信发送者身份。", { reason: "NO_TRUSTED_WECOM_SENDER" });
+        }
+        if (isWecomGroupChat(ctx)) {
+          return toolResult(false, "Excel 模板仅支持企微私聊。", { reason: "WECOM_GROUP_NOT_ALLOWED" });
+        }
+        try {
+          const scene = str(params?.scene) || "PURCHASE";
+          const data = await signedPost("/aierp/v1/wecom/excel/template", {
+            wecomUserId,
+            botId: botId(),
+            channel: CHANNEL_ID,
+            scene,
+          });
+          const mediaPath = writeExcelFile(data.fileName, data.fileBase64);
+          const mediaLine = `MEDIA: ${mediaPath}`;
+          const note = data.confirmSupported
+            ? "请下载填写后，在本对话直接发回 xlsx；系统将仅预览，不会入库。"
+            : "该场景当前仅提供模板（销售出库/期初不可经本通道预览过账）。";
+          const text = `${data.summary || data.hint}\n${note}\n请在回复中原样附带下一行以便企微发送文件：\n${mediaLine}`;
+          return toolResult(true, text, {
+            tool: "erp_excel_template",
+            scene: data.scene,
+            fileName: data.fileName,
+            mediaPath,
+            mediaDirective: mediaLine,
+            confirmSupported: !!data.confirmSupported,
+            posted: false,
+            stockUnchanged: true,
+            byteLength: data.byteLength,
+          });
+        } catch (err) {
+          return toolResult(false, String(err?.message || err), { reason: "ERP_ADAPTER_ERROR", tool: "erp_excel_template" });
+        }
+      },
+    }),
+    { name: "erp_excel_template" },
+  );
+}
+
+/**
+ * Trusted inbound xlsx → ERP preview (no confirm). Mutates event content so the model sees REAL_ERP summary.
+ */
+function registerExcelInboundHook(api) {
+  const handler = async (event, ctx) => {
+    try {
+      const channel = String(ctx?.channelId || ctx?.messageChannel || event?.channel || "").toLowerCase();
+      if (channel && channel !== CHANNEL_ID && !channel.includes("wecom")) {
+        return;
+      }
+      if (event?.isGroup || ctx?.isGroup) return;
+      const paths = []
+        .concat(event?.mediaPaths || [])
+        .concat(event?.media?.map?.((m) => m.path) || [])
+        .concat(event?.metadata?.mediaPaths || [])
+        .filter(Boolean);
+      const xlsx = paths.find((p) => String(p).toLowerCase().endsWith(".xlsx"));
+      if (!xlsx || !existsSync(xlsx)) return;
+
+      const wecomUserId = String(event?.senderId || ctx?.requesterSenderId || "").trim();
+      if (!wecomUserId) return;
+
+      const buf = readFileSync(xlsx);
+      if (buf.length > 2 * 1024 * 1024) {
+        const msg = "Excel 超过 2MB，请缩小后重发。库存未变化。";
+        if (typeof event.content === "string") event.content = msg;
+        if (event.body != null) event.body = msg;
+        return;
+      }
+      const fileSha256 = createHash("sha256").update(buf).digest("hex");
+      const data = await signedPost("/aierp/v1/wecom/excel/preview", {
+        wecomUserId,
+        botId: botId(),
+        channel: CHANNEL_ID,
+        fileName: basename(xlsx),
+        fileBase64: buf.toString("base64"),
+        fileSha256,
+        messageMsgId: event?.messageId || event?.MessageSid || null,
+      });
+      const text =
+        data?.hintZh ||
+        data?.hint ||
+        `文件已预览（previewId=${data?.previewId}），posted=false，库存未变。`;
+      const wrapped = `<aierp-excel-preview>\n${text}\npreviewId=${data?.previewId}\n</aierp-excel-preview>\n（用户刚发来的 Excel 已由服务端解析；请用以上摘要回复，不要调用 excel.confirm，不要声称已入库。）`;
+      if (typeof event.content === "string") event.content = wrapped;
+      if (event.body != null) event.body = wrapped;
+      if (event.Body != null) event.Body = wrapped;
+    } catch (err) {
+      const msg = `Excel 预览失败：${String(err?.message || err)}。库存未变化。`;
+      if (typeof event?.content === "string") event.content = msg;
+      if (event?.body != null) event.body = msg;
+    }
+  };
+
+  try {
+    api.on("message_received", handler);
+  } catch {
+    // older openclaw
+  }
+  try {
+    api.on("inbound_claim", handler);
+  } catch {
+    // optional
+  }
 }
 
 const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
-  description: "WeCom trusted-identity ERP bind + queries + purchase DRAFT (no confirm)",
+  description: "WeCom trusted-identity ERP bind + queries + purchase DRAFT + excel template/preview (no confirm)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);
+    registerExcelInboundHook(api);
   },
 };
 

@@ -28,6 +28,8 @@ public class AierpWecomController {
     private AierpWecomQueryService queryService;
     @Resource
     private AierpWecomDraftService draftService;
+    @Resource
+    private AierpWecomExcelService excelService;
 
     @PostMapping("/binding/issue")
     public BaseResponseInfo issue(@RequestBody String raw, HttpServletRequest request) {
@@ -104,6 +106,23 @@ public class AierpWecomController {
     public BaseResponseInfo draftCancel(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(draftService.draftCancel(parse(raw)));
+    }
+
+    /** AIERP-017A: download xlsx template as base64 (no stock change). */
+    @PostMapping("/excel/template")
+    public BaseResponseInfo excelTemplate(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.template(parse(raw)));
+    }
+
+    /**
+     * AIERP-017A: preview uploaded xlsx (base64) under trusted WeCom identity.
+     * Never calls excel.confirm / never posts inventory.
+     */
+    @PostMapping("/excel/preview")
+    public BaseResponseInfo excelPreview(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.preview(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {

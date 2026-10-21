@@ -68,14 +68,25 @@ public class AierpExcelService {
     private AierpGatewayService gatewayService;
 
     public byte[] template(String scene, JSONObject fill, HttpServletRequest request) throws Exception {
-        requireUser();
+        return templateAs(requireUser(), scene, fill);
+    }
+
+    /**
+     * AIERP-017A: generate xlsx for an explicit ERP actor (WeCom delegated identity).
+     * Does not post inventory. SALE/INITIAL templates are download-only (cannot confirm).
+     */
+    public byte[] templateAs(User user, String scene, JSONObject fill) throws Exception {
+        if (user == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "当前会话没有租户身份");
+        }
         String normalized = scene == null ? "" : scene.trim().toUpperCase(Locale.ROOT);
         XSSFWorkbook book = new XSSFWorkbook();
         Sheet help = book.createSheet("使用说明");
         text(help, 0, 0, "AI-ERP 演示 Excel。第3行是表头，第4行起是数据。配比为虚构测试数据，不是化学工艺。");
         text(help, 1, 0, "上传只生成预览。库存变化只发生在用户确认之后。物料期初和销售出库仅供下载，不能经本网关确认。");
         if ("PURCHASE".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "02采购入库", PURCHASE_HEADERS, fill == null ? null : fill.getJSONArray("rows"), normalized);
+            writeSheet(book, "02采购入库", PURCHASE_HEADERS, fill == null ? null : fill.getJSONArray("rows"),
+                    "PURCHASE".equals(normalized) ? "PURCHASE" : normalized);
         }
         if ("MIX".equals(normalized) || "PACK".equals(normalized)) {
             writeSheet(book, "03药水配制", MIX_HEADERS, fill == null ? null : fill.getJSONArray("rows"), "MIX");
@@ -103,14 +114,27 @@ public class AierpExcelService {
         if (file == null || file.isEmpty()) {
             throw new BusinessRunTimeException(400, "请上传 xlsx 文件");
         }
-        if (file.getSize() > MAX_BYTES) {
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        return previewAs(user, file.getBytes(), name, scene);
+    }
+
+    /**
+     * AIERP-017A: preview xlsx bytes for an explicit ERP actor. Never posts / never calls confirm.
+     */
+    public Map<String, Object> previewAs(User user, byte[] raw, String fileName, String scene) throws Exception {
+        if (user == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "当前会话没有租户身份");
+        }
+        if (raw == null || raw.length == 0) {
+            throw new BusinessRunTimeException(400, "请上传 xlsx 文件");
+        }
+        if (raw.length > MAX_BYTES) {
             throw new BusinessRunTimeException(400, "文件超过 2MB");
         }
-        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        String name = fileName == null ? "" : fileName.trim();
         if (!name.toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
             throw new BusinessRunTimeException(400, "只接受 .xlsx，不接受 csv 或 xls");
         }
-        byte[] raw = file.getBytes();
         assertSafeZip(raw);
         ZipSecureFile.setMinInflateRatio(0.01d);
         IOUtils.setByteArrayMaxOverride(MAX_BYTES);
@@ -134,7 +158,7 @@ public class AierpExcelService {
             }
         }
         if (records.isEmpty()) {
-            throw new BusinessRunTimeException(400, "没有识别到采购、配制或服务数据行");
+            throw new BusinessRunTimeException(400, "没有识别到采购、配制或服务数据行（销售出库/期初仅模板，不可预览过账）");
         }
         String previewKey = "pv-" + UUID.randomUUID().toString().replace("-", "");
         JSONObject payload = new JSONObject();
@@ -146,9 +170,46 @@ public class AierpExcelService {
         data.put("previewId", previewKey);
         data.put("status", "PREVIEWED");
         data.put("posted", false);
+        data.put("nature", "REAL_ERP");
+        data.put("stockUnchanged", true);
         data.put("records", records);
         data.put("summary", summary(records));
+        data.put("hintZh", buildPreviewHint(records));
         return data;
+    }
+
+    private String buildPreviewHint(List<JSONObject> records) {
+        Map<String, Integer> byScene = new LinkedHashMap<String, Integer>();
+        Map<String, Integer> bills = new LinkedHashMap<String, Integer>();
+        int okRows = 0;
+        int badRows = 0;
+        List<String> errors = new ArrayList<String>();
+        for (JSONObject record : records) {
+            String scene = String.valueOf(record.getString("scene"));
+            byScene.put(scene, byScene.containsKey(scene) ? byScene.get(scene) + 1 : 1);
+            String bk = record.getString("businessKey");
+            if (bk != null && !bk.isEmpty()) {
+                bills.put(bk, bills.containsKey(bk) ? bills.get(bk) + 1 : 1);
+            }
+            if (record.getBooleanValue("canConfirm")) {
+                okRows++;
+            } else {
+                badRows++;
+                if (errors.size() < 5) {
+                    JSONArray errs = record.getJSONArray("errors");
+                    errors.add("行" + record.get("rowIndex") + ": " + join(errs));
+                }
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("批量文件已解析（仅预览，库存与已审核单据未变化）。");
+        sb.append("业务单约 ").append(bills.size()).append(" 张，明细 ").append(records.size()).append(" 行；");
+        sb.append("可后续草稿候选 ").append(okRows).append(" 行，有问题 ").append(badRows).append(" 行。");
+        if (!errors.isEmpty()) {
+            sb.append(" 错误示例：").append(String.join("；", errors));
+        }
+        sb.append(" 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。");
+        return sb.toString();
     }
 
     public Map<String, Object> confirm(JSONObject body, HttpServletRequest request) throws Exception {

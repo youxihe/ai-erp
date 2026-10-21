@@ -1,0 +1,79 @@
+{
+  "suite": "aierp-017a-excel-preview-flow",
+  "at": "2026-10-21T08:31:28.598Z",
+  "wecomFixture": "aierp017***",
+  "results": [
+    {
+      "name": "fixture_bind",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "template_purchase",
+      "ok": true,
+      "detail": "{\"code\":200,\"fileName\":\"采购入库模板.xlsx\",\"confirmSupported\":true,\"bytes\":4189}"
+    },
+    {
+      "name": "template_mix",
+      "ok": true,
+      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\",\"confirmSupported\":true,\"bytes\":4187}"
+    },
+    {
+      "name": "template_service",
+      "ok": true,
+      "detail": "{\"code\":200,\"fileName\":\"服务耗料模板.xlsx\",\"confirmSupported\":true,\"bytes\":4183}"
+    },
+    {
+      "name": "template_sale",
+      "ok": true,
+      "detail": "{\"code\":200,\"fileName\":\"销售出库模板（仅模板不可过账）.xlsx\",\"confirmSupported\":false,\"bytes\":4209}"
+    },
+    {
+      "name": "sale_template_only",
+      "ok": true,
+      "detail": "false"
+    },
+    {
+      "name": "template_purchase_filled",
+      "ok": true,
+      "detail": "{\"bytes\":4319}"
+    },
+    {
+      "name": "preview_purchase_ok",
+      "ok": true,
+      "detail": "{\"previewId\":\"pv-04a3722b843641aea2137178377f4227\",\"summary\":{\"records\":1,\"confirmable\":1,\"posted\":false,\"stockUnchanged\":true},\"hintZh\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\",\"records\":1}"
+    },
+    {
+      "name": "preview_mix_ok",
+      "ok": true,
+      "detail": "{\"code\":200,\"previewId\":\"pv-4ccf6973bdbe4e8884772920c4de6721\",\"hint\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\"}"
+    },
+    {
+      "name": "preview_service_ok",
+      "ok": true,
+      "detail": "{\"code\":200,\"previewId\":\"pv-961d9ecece3143ebaa21737d92184b88\"}"
+    },
+    {
+      "name": "sale_preview_not_supported",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":{\"message\":\"没有识别到采购、配制或服务数据行（销售出库/期初仅模板，不可预览过账）\"}}"
+    },
+    {
+      "name": "stock_unchanged",
+      "ok": true,
+      "detail": "{\"stockBefore\":170.7,\"stockAfter\":170.7}"
+    },
+    {
+      "name": "audited_bills_unchanged",
+      "ok": true,
+      "detail": "{\"auditedBefore\":\"80\",\"auditedAfter\":\"80\"}"
+    },
+    {
+      "name": "wecom_excel_confirm_absent",
+      "ok": true,
+      "detail": "{\"status\":500}"
+    }
+  ],
+  "pass": 14,
+  "fail": 0
+}
