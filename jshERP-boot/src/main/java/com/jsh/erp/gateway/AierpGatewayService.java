@@ -24,6 +24,9 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -39,6 +42,9 @@ import java.util.regex.Pattern;
 public class AierpGatewayService {
 
     private static final Pattern DEPOT_ID = Pattern.compile("\\[(\\d+)\\]");
+    private static final Pattern CONFIRM_PURCHASE = Pattern.compile(
+            "^\\s*确认\\s*采购\\s*[#＃]?\\s*(\\d+)\\s*$");
+    private static final Pattern CONFIRM_SIMPLE = Pattern.compile("^\\s*确认\\s*$");
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final long FUN_STOCK = 246L;
     private static final long FUN_PURCHASE = 33L;
@@ -46,6 +52,8 @@ public class AierpGatewayService {
     private static final long FUN_SERVICE = 202L;
     private static final String BTN_ADD = "1";
     private static final String BTN_AUDIT = "7";
+    private static final long CHALLENGE_TTL_SEC = 420L;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     static final String LOCK_PROBE_REMARK = "AIERP-003 lock-probe";
 
     @Resource
@@ -253,7 +261,7 @@ public class AierpGatewayService {
 
     /**
      * Create a gateway DRAFT for an explicit ERP user (WeCom delegated actor).
-     * When wecomOwner is set, draft is bound to that WeCom sender + binding generation (bound_at).
+     * When wecomOwner is set, draft is bound to that WeCom sender + binding_version generation.
      * Does not use HTTP session / RequestContextHolder. Does not post inventory.
      */
     public Map<String, Object> createDraftAs(User user, String bizType, JSONObject body, WecomDraftOwner wecomOwner) throws Exception {
@@ -264,8 +272,10 @@ public class AierpGatewayService {
         String key = required(body, "idempotencyKey");
         JSONObject normalized = normalize(bizType, body, user);
         String payload = normalized.toJSONString();
+        String payloadHash = sha256Hex(payload);
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, "
+                        + "binding_bound_at, binding_version, draft_version, payload_hash "
                         + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
         if (!existing.isEmpty()) {
@@ -274,26 +284,33 @@ public class AierpGatewayService {
             if (!payload.equals(String.valueOf(row.get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
-            return draftFlags(draftView(row, true), row);
+            Map<String, Object> replay = draftFlags(draftView(row, true), row);
+            if (wecomOwner != null && "DRAFT".equals(String.valueOf(row.get("status")))) {
+                attachOrRefreshChallenge(user, wecomOwner, row, payloadHash, replay);
+            }
+            return replay;
         }
         try {
             if (wecomOwner == null) {
                 jdbcTemplate.update(
-                        "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, payload_json, create_time) "
-                                + "VALUES (?,?,?,?, 'DRAFT', ?, NOW())",
-                        key, user.getTenantId(), user.getId(), bizType, payload);
+                        "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, draft_version, "
+                                + "payload_json, payload_hash, create_time) VALUES (?,?,?,?, 'DRAFT', 1, ?, ?, NOW())",
+                        key, user.getTenantId(), user.getId(), bizType, payload, payloadHash);
             } else {
                 jdbcTemplate.update(
-                        "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, channel, bot_id, wecom_user_id, binding_id, binding_bound_at, biz_type, status, payload_json, create_time) "
-                                + "VALUES (?,?,?,?,?,?,?,?,?, 'DRAFT', ?, NOW())",
+                        "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, channel, bot_id, wecom_user_id, "
+                                + "binding_id, binding_bound_at, binding_version, biz_type, status, draft_version, "
+                                + "payload_json, payload_hash, create_time) "
+                                + "VALUES (?,?,?,?,?,?,?,?,?,?, 'DRAFT', 1, ?, ?, NOW())",
                         key, user.getTenantId(), user.getId(),
                         wecomOwner.channel, wecomOwner.botId, wecomOwner.wecomUserId,
-                        wecomOwner.bindingId, wecomOwner.bindingBoundAt,
-                        bizType, payload);
+                        wecomOwner.bindingId, wecomOwner.bindingBoundAt, wecomOwner.bindingVersion,
+                        bizType, payload, payloadHash);
             }
         } catch (DuplicateKeyException ex) {
             List<Map<String, Object>> raced = jdbcTemplate.queryForList(
-                    "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                    "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, "
+                            + "binding_bound_at, binding_version, draft_version, payload_hash "
                             + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                     user.getTenantId(), user.getId(), key);
             if (raced.isEmpty()) {
@@ -303,14 +320,22 @@ public class AierpGatewayService {
             if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
-            return draftFlags(draftView(raced.get(0), true), raced.get(0));
+            Map<String, Object> racedView = draftFlags(draftView(raced.get(0), true), raced.get(0));
+            if (wecomOwner != null && "DRAFT".equals(String.valueOf(raced.get(0).get("status")))) {
+                attachOrRefreshChallenge(user, wecomOwner, raced.get(0), payloadHash, racedView);
+            }
+            return racedView;
         }
         List<Map<String, Object>> created = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, "
+                        + "binding_bound_at, binding_version, draft_version, payload_hash "
                         + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
         Map<String, Object> view = draftFlags(draftView(created.get(0), false), created.get(0));
         view.put("nature", "REAL_ERP");
+        if (wecomOwner != null) {
+            attachOrRefreshChallenge(user, wecomOwner, created.get(0), payloadHash, view);
+        }
         return view;
     }
 
@@ -336,11 +361,15 @@ public class AierpGatewayService {
             return already;
         }
         int n = jdbcTemplate.update(
-                "UPDATE aierp_gateway_draft SET status='CANCELLED' WHERE id=? AND tenant_id=? AND user_id=? AND status='DRAFT'",
+                "UPDATE aierp_gateway_draft SET status='CANCELLED' WHERE id=? AND tenant_id=? AND user_id=? "
+                        + "AND status IN ('DRAFT','AWAITING_CONFIRM')",
                 draftId, user.getTenantId(), user.getId());
         if (n != 1) {
             throw new BusinessRunTimeException(409, "草稿状态已变化，无法取消");
         }
+        jdbcTemplate.update(
+                "UPDATE aierp_gateway_confirm_challenge SET status='CANCELLED' WHERE draft_id=? AND status='PENDING'",
+                draftId);
         Map<String, Object> view = new LinkedHashMap<String, Object>();
         view.put("draftId", draftId);
         view.put("status", "CANCELLED");
@@ -374,7 +403,9 @@ public class AierpGatewayService {
 
     private Map<String, Object> requireOwnedDraftRow(User user, long draftId, WecomDraftOwner wecomOwner) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number, biz_type, create_time, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                "SELECT id, status, payload_json, bill_number, depot_head_id, biz_type, create_time, confirm_time, "
+                        + "channel, bot_id, wecom_user_id, binding_id, binding_bound_at, binding_version, "
+                        + "draft_version, payload_hash "
                         + "FROM aierp_gateway_draft WHERE id=? AND tenant_id=? AND user_id=?",
                 draftId, user.getTenantId(), user.getId());
         if (rows.isEmpty()) {
@@ -389,9 +420,8 @@ public class AierpGatewayService {
         if (wecomOwner == null) {
             return;
         }
-        // WeCom callers must only see drafts created for their exact sender + binding generation.
-        if (row.get("wecom_user_id") == null || row.get("bot_id") == null || row.get("binding_id") == null
-                || row.get("binding_bound_at") == null) {
+        // WeCom callers must only see drafts created for their exact sender + binding_version generation.
+        if (row.get("wecom_user_id") == null || row.get("bot_id") == null || row.get("binding_id") == null) {
             throw new BusinessRunTimeException(403, "该草稿不属于当前企微绑定会话");
         }
         if (!wecomOwner.wecomUserId.equals(String.valueOf(row.get("wecom_user_id")))
@@ -399,15 +429,12 @@ public class AierpGatewayService {
                 || wecomOwner.bindingId != ((Number) row.get("binding_id")).longValue()) {
             throw new BusinessRunTimeException(403, "无权访问其他企微身份的草稿");
         }
-        String rowBoundAt = String.valueOf(row.get("binding_bound_at")).replace('T', ' ');
-        if (rowBoundAt.length() > 19) {
-            rowBoundAt = rowBoundAt.substring(0, 19);
+        long rowVersion = row.get("binding_version") == null ? 0L : ((Number) row.get("binding_version")).longValue();
+        if (rowVersion < 1L) {
+            // Legacy 015A drafts only have bound_at; reject if current generation advanced past legacy.
+            throw new BusinessRunTimeException(403, "绑定已更新，原企微草稿不可再访问，请重新创建");
         }
-        String curBoundAt = wecomOwner.bindingBoundAt;
-        if (curBoundAt != null && curBoundAt.length() > 19) {
-            curBoundAt = curBoundAt.substring(0, 19);
-        }
-        if (curBoundAt == null || !rowBoundAt.startsWith(curBoundAt.substring(0, Math.min(19, curBoundAt.length())))) {
+        if (wecomOwner.bindingVersion != rowVersion) {
             throw new BusinessRunTimeException(403, "绑定已更新，原企微草稿不可再访问，请重新创建");
         }
     }
@@ -426,14 +453,32 @@ public class AierpGatewayService {
         public final String botId;
         public final String wecomUserId;
         public final long bindingId;
+        public final long bindingVersion;
         public final String bindingBoundAt;
 
-        public WecomDraftOwner(String channel, String botId, String wecomUserId, long bindingId, String bindingBoundAt) {
+        public WecomDraftOwner(String channel, String botId, String wecomUserId, long bindingId,
+                               long bindingVersion, String bindingBoundAt) {
             this.channel = channel;
             this.botId = botId;
             this.wecomUserId = wecomUserId;
             this.bindingId = bindingId;
+            this.bindingVersion = bindingVersion;
             this.bindingBoundAt = bindingBoundAt;
+        }
+    }
+
+    /** Proof from a trusted WeCom inbound event (before_dispatch), never from LLM tool args alone. */
+    public static final class ConfirmEventProof {
+        public final String rawText;
+        public final String messageMsgId;
+        public final boolean groupChat;
+        public final String source; // WECOM_BEFORE_DISPATCH | ERP_SESSION_UI
+
+        public ConfirmEventProof(String rawText, String messageMsgId, boolean groupChat, String source) {
+            this.rawText = rawText;
+            this.messageMsgId = messageMsgId;
+            this.groupChat = groupChat;
+            this.source = source;
         }
     }
 
@@ -472,20 +517,139 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(404, "草稿不存在或不属于当前用户");
         }
         Map<String, Object> row = locked.get(0);
+        return confirmLockedRowAs(user, row, request);
+    }
+
+    /**
+     * AIERP-015B: confirm a WeCom-owned draft with trusted inbound proof (or ERP session UI).
+     * Uses explicit actor for native post — no fabricated Redis session.
+     */
+    public Map<String, Object> confirmAs(User user, WecomDraftOwner owner, long draftId,
+                                         ConfirmEventProof proof) throws Exception {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
+        if (owner == null) {
+            throw new BusinessRunTimeException(403, "缺少企微草稿所有权");
+        }
+        if (proof == null || proof.rawText == null || proof.rawText.trim().isEmpty()) {
+            throw new BusinessRunTimeException(400, "缺少可信确认原文");
+        }
+        if (proof.groupChat) {
+            throw new BusinessRunTimeException(403, "禁止在群聊中确认采购");
+        }
+        if (!"WECOM_BEFORE_DISPATCH".equals(proof.source) && !"ERP_SESSION_UI".equals(proof.source)) {
+            throw new BusinessRunTimeException(403, "确认来源不可信");
+        }
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                TransactionTemplate tx = new TransactionTemplate(transactionManager);
+                return tx.execute(status -> {
+                    try {
+                        return confirmAsInTx(user, owner, draftId, proof);
+                    } catch (RuntimeException ex) {
+                        throw ex;
+                    } catch (Exception ex) {
+                        throw new BusinessRunTimeException(500, ex.getMessage());
+                    }
+                });
+            } catch (RuntimeException ex) {
+                last = ex;
+                if (attempt < 3 && isDeadlock(ex)) {
+                    continue;
+                }
+                throw ex;
+            }
+        }
+        throw last == null ? new BusinessRunTimeException(500, "库存锁重试失败") : last;
+    }
+
+    private Map<String, Object> confirmAsInTx(User user, WecomDraftOwner owner, long draftId,
+                                              ConfirmEventProof proof) throws Exception {
+        // Message-id idempotency: same WeCom event must not double-post.
+        if (proof.messageMsgId != null && !proof.messageMsgId.trim().isEmpty()) {
+            List<Map<String, Object>> byMsg = jdbcTemplate.queryForList(
+                    "SELECT draft_id, status FROM aierp_gateway_confirm_challenge WHERE consume_message_id=? LIMIT 1",
+                    proof.messageMsgId.trim());
+            if (!byMsg.isEmpty() && "CONSUMED".equals(String.valueOf(byMsg.get(0).get("status")))) {
+                long priorDraft = ((Number) byMsg.get(0).get("draft_id")).longValue();
+                Map<String, Object> prior = requireOwnedDraftRow(user, priorDraft, owner);
+                if ("CONFIRMED".equals(String.valueOf(prior.get("status")))) {
+                    Map<String, Object> replay = confirmView(prior, user, true);
+                    replay.put("posted", true);
+                    replay.put("stockUnchanged", true);
+                    replay.put("nature", "REAL_ERP");
+                    return replay;
+                }
+            }
+        }
+
+        List<Map<String, Object>> locked = jdbcTemplate.queryForList(
+                "SELECT id, status, biz_type, payload_json, bill_number, depot_head_id, channel, bot_id, wecom_user_id, "
+                        + "binding_id, binding_bound_at, binding_version, draft_version, payload_hash "
+                        + "FROM aierp_gateway_draft WHERE id=? AND tenant_id=? AND user_id=? FOR UPDATE",
+                draftId, user.getTenantId(), user.getId());
+        if (locked.isEmpty()) {
+            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前绑定用户");
+        }
+        Map<String, Object> row = locked.get(0);
+        assertWecomOwnerMatches(row, owner);
+
+        if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
+            Map<String, Object> replay = confirmView(row, user, true);
+            replay.put("posted", true);
+            replay.put("stockUnchanged", true);
+            replay.put("nature", "REAL_ERP");
+            return replay;
+        }
+        if ("CANCELLED".equals(String.valueOf(row.get("status")))) {
+            throw new BusinessRunTimeException(409, "草稿已取消，不能确认");
+        }
+        if (!"DRAFT".equals(String.valueOf(row.get("status")))
+                && !"AWAITING_CONFIRM".equals(String.valueOf(row.get("status")))) {
+            throw new BusinessRunTimeException(409, "草稿状态不可确认: " + row.get("status"));
+        }
+
+        ParsedConfirmIntent intent = parseConfirmIntent(proof.rawText.trim());
+        if (!intent.confirm) {
+            throw new BusinessRunTimeException(400, "不是有效的确认指令，请回复「确认采购" + draftId + "」");
+        }
+        if (intent.draftId != null && intent.draftId.longValue() != draftId) {
+            throw new BusinessRunTimeException(400, "确认的草稿号与请求不一致");
+        }
+        if (intent.draftId == null) {
+            int awaiting = countAwaitingOwnedDrafts(user, owner);
+            if (awaiting != 1) {
+                throw new BusinessRunTimeException(400,
+                        "存在多个待确认草稿，请回复「确认采购" + draftId + "」指定草稿号");
+            }
+        }
+
+        consumeChallengeOrThrow(user, owner, row, proof);
+
+        return confirmLockedRowAs(user, row, null);
+    }
+
+    private Map<String, Object> confirmLockedRowAs(User user, Map<String, Object> row,
+                                                   HttpServletRequest request) throws Exception {
         String bizType = String.valueOf(row.get("biz_type"));
         assertFunction(user, functionOf(bizType), BTN_AUDIT, bizType);
         if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
-            return confirmView(row, user, true);
+            Map<String, Object> replay = confirmView(row, user, true);
+            replay.put("posted", true);
+            replay.put("stockUnchanged", true);
+            replay.put("nature", "REAL_ERP");
+            return replay;
         }
         JSONObject payload = JSON.parseObject(String.valueOf(row.get("payload_json")));
         reassertAccess(user, payload, bizType);
         reassertParties(user, payload, bizType);
         List<String> stockLocks = lockStockKeys(user, payload, bizType);
         assertOutboundStock(user, bizType, payload, stockLocks);
-        JSONObject repost = payload;
         String number = "GW-" + bizType + "-" + ((Number) row.get("id")).longValue();
-        Map<String, BigDecimal> before = snapshot(repost, bizType);
-        Long headId = postNativeBill(bizType, number, repost, request);
+        Map<String, BigDecimal> before = snapshot(payload, bizType);
+        Long headId = postNativeBillAs(user, bizType, number, payload);
         jdbcTemplate.update(
                 "UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number=?, depot_head_id=?, confirm_time=NOW() WHERE id=?",
                 number, headId, ((Number) row.get("id")).longValue());
@@ -495,8 +659,42 @@ public class AierpGatewayService {
         Map<String, Object> view = confirmView(row, user, false);
         view.put("stockLocks", stockLocks);
         view.put("stockBefore", before);
-        view.put("stockAfter", snapshot(repost, bizType));
+        view.put("stockAfter", snapshot(payload, bizType));
+        view.put("posted", true);
+        view.put("stockUnchanged", false);
+        view.put("nature", "REAL_ERP");
+        view.put("confirmTime", TS.format(LocalDateTime.now()));
         return view;
+    }
+
+    /** Resolve draftId from trusted confirm text for the owner (null draftId ⇒ single awaiting). */
+    public long resolveConfirmDraftId(User user, WecomDraftOwner owner, String rawText) {
+        ParsedConfirmIntent intent = parseConfirmIntent(rawText == null ? "" : rawText.trim());
+        if (!intent.confirm) {
+            throw new BusinessRunTimeException(400, "不是有效的确认指令");
+        }
+        if (intent.draftId != null) {
+            return intent.draftId;
+        }
+        List<Map<String, Object>> rows = listAwaitingOwnedDrafts(user, owner);
+        if (rows.size() != 1) {
+            throw new BusinessRunTimeException(400, "存在多个或没有待确认草稿，请回复「确认采购{草稿号}」");
+        }
+        return ((Number) rows.get(0).get("id")).longValue();
+    }
+
+    public List<Map<String, Object>> listAwaitingOwnedDrafts(User user, WecomDraftOwner owner) {
+        return jdbcTemplate.queryForList(
+                "SELECT id, status, biz_type, create_time FROM aierp_gateway_draft "
+                        + "WHERE tenant_id=? AND user_id=? AND channel=? AND bot_id=? AND wecom_user_id=? "
+                        + "AND binding_id=? AND binding_version=? AND status IN ('DRAFT','AWAITING_CONFIRM') "
+                        + "ORDER BY id ASC",
+                user.getTenantId(), user.getId(), owner.channel, owner.botId, owner.wecomUserId,
+                owner.bindingId, owner.bindingVersion);
+    }
+
+    private int countAwaitingOwnedDrafts(User user, WecomDraftOwner owner) {
+        return listAwaitingOwnedDrafts(user, owner).size();
     }
 
     public Map<String, Object> summary(HttpServletRequest request) throws Exception {
@@ -542,6 +740,16 @@ public class AierpGatewayService {
     }
 
     private Long postNativeBill(String bizType, String number, JSONObject payload, HttpServletRequest request) throws Exception {
+        return postNativeBillAs(currentUser(), bizType, number, payload);
+    }
+
+    /**
+     * Native create + audit with explicit actor. No getCurrentUser / fabricated session.
+     */
+    private Long postNativeBillAs(User actor, String bizType, String number, JSONObject payload) throws Exception {
+        if (actor == null || actor.getId() == null || actor.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份，无法过账");
+        }
         JSONObject info = new JSONObject();
         info.put("operTime", LocalDateTime.now().format(TS));
         info.put("number", number);
@@ -586,14 +794,26 @@ public class AierpGatewayService {
         } else {
             throw new BusinessRunTimeException(400, "未知业务类型");
         }
-        depotHeadService.addDepotHeadAndDetail(info.toJSONString(), rows.toJSONString(), request);
-        Long headId = requireOwnUnapprovedHead(userService.getCurrentUser(), number);
-        depotHeadService.batchSetStatus("1", String.valueOf(headId));
+        depotHeadService.addDepotHeadAndDetailAs(actor, info.toJSONString(), rows.toJSONString(), null);
+        Long headId = requireOwnUnapprovedHead(actor, number);
+        // Verify creator is the bound actor before audit.
+        List<Map<String, Object>> created = jdbcTemplate.queryForList(
+                "SELECT id, creator, tenant_id, status FROM jsh_depot_head WHERE id=? AND number=? AND IFNULL(delete_flag,'0')<>'1'",
+                headId, number);
+        if (created.size() != 1
+                || !actor.getId().equals(((Number) created.get(0).get("creator")).longValue())
+                || !actor.getTenantId().equals(((Number) created.get(0).get("tenant_id")).longValue())) {
+            throw new BusinessRunTimeException(500, "原生单据创建人/租户与绑定用户不一致，拒绝审核");
+        }
+        depotHeadService.batchSetStatusAs(actor, "1", String.valueOf(headId));
         List<Map<String, Object>> audited = jdbcTemplate.queryForList(
-                "SELECT id, tenant_id, status FROM jsh_depot_head WHERE id=? AND number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
-                headId, number, userService.getCurrentUser().getTenantId());
+                "SELECT id, tenant_id, status, creator FROM jsh_depot_head WHERE id=? AND number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                headId, number, actor.getTenantId());
         if (audited.size() != 1 || !"1".equals(String.valueOf(audited.get(0).get("status")))) {
             throw new BusinessRunTimeException(500, "审核后单据不属于当前租户或状态异常: " + number);
+        }
+        if (!actor.getId().equals(((Number) audited.get(0).get("creator")).longValue())) {
+            throw new BusinessRunTimeException(500, "审核后单据创建人与绑定用户不一致: " + number);
         }
         return headId;
     }
@@ -1086,6 +1306,7 @@ public class AierpGatewayService {
 
     private Map<String, Object> confirmView(Map<String, Object> row, User user, boolean replayed) throws Exception {
         Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("draftId", row.get("id"));
         view.put("status", row.get("status"));
         view.put("replayed", replayed);
         view.put("billNumber", row.get("bill_number"));
@@ -1093,11 +1314,28 @@ public class AierpGatewayService {
         view.put("loginName", user.getLoginName());
         if (row.get("bill_number") != null) {
             List<Map<String, Object>> heads = jdbcTemplate.queryForList(
-                    "SELECT number, type, sub_type, status, organ_id FROM jsh_depot_head WHERE number=? AND tenant_id=?",
+                    "SELECT number, type, sub_type, status, organ_id, creator, oper_time FROM jsh_depot_head WHERE number=? AND tenant_id=?",
                     row.get("bill_number"), user.getTenantId());
             view.put("nativeBill", heads.isEmpty() ? null : heads.get(0));
         }
         return view;
+    }
+
+    /** Session-owned draft row (ERP UI). Caller must still re-check live WeCom binding before confirm. */
+    public Map<String, Object> loadOwnedDraftRow(User sessionUser, long draftId) {
+        return requireOwnedDraftRow(sessionUser, draftId, null);
+    }
+
+    /**
+     * @deprecated Use {@link com.jsh.erp.gateway.wecom.AierpWecomConfirmService#confirmUi} which
+     * re-validates live ACTIVE binding + binding_version before {@link #confirmAs}.
+     */
+    @Deprecated
+    public Map<String, Object> confirmUiAs(User sessionUser, long draftId) throws Exception {
+        Map<String, Object> row = loadOwnedDraftRow(sessionUser, draftId);
+        throw new BusinessRunTimeException(400,
+                "请通过 confirmUi 确认企微草稿（须重验 ACTIVE 绑定与 binding_version）; draftId=" + draftId
+                        + (row.get("binding_version") == null ? "" : " v" + row.get("binding_version")));
     }
 
     private User currentUser() throws Exception {
@@ -1131,6 +1369,134 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(400, "物料不存在: " + barCode);
         }
         return ext.getCommodityUnit();
+    }
+
+    private void attachOrRefreshChallenge(User user, WecomDraftOwner owner, Map<String, Object> draftRow,
+                                          String payloadHash, Map<String, Object> view) {
+        long draftId = ((Number) draftRow.get("id")).longValue();
+        int draftVersion = draftRow.get("draft_version") == null ? 1 : ((Number) draftRow.get("draft_version")).intValue();
+        String phrase = "确认采购" + draftId;
+        // Expire prior pending challenges for this draft.
+        jdbcTemplate.update(
+                "UPDATE aierp_gateway_confirm_challenge SET status='SUPERSEDED' WHERE draft_id=? AND status='PENDING'",
+                draftId);
+        String challengeId = randomToken(16);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime exp = now.plusSeconds(CHALLENGE_TTL_SEC);
+        jdbcTemplate.update(
+                "INSERT INTO aierp_gateway_confirm_challenge (challenge_id, channel, bot_id, wecom_user_id, tenant_id, "
+                        + "erp_user_id, binding_id, binding_version, draft_id, draft_version, payload_hash, "
+                        + "expected_phrase, status, expires_at, created_at) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'PENDING', ?, ?)",
+                challengeId, owner.channel, owner.botId, owner.wecomUserId, user.getTenantId(), user.getId(),
+                owner.bindingId, owner.bindingVersion, draftId, draftVersion, payloadHash, phrase,
+                TS.format(exp), TS.format(now));
+        jdbcTemplate.update(
+                "UPDATE aierp_gateway_draft SET status='AWAITING_CONFIRM', payload_hash=? WHERE id=? AND status IN ('DRAFT','AWAITING_CONFIRM')",
+                payloadHash, draftId);
+        view.put("status", "AWAITING_CONFIRM");
+        view.put("draftVersion", draftVersion);
+        Map<String, Object> challenge = new LinkedHashMap<String, Object>();
+        challenge.put("expiresInSec", CHALLENGE_TTL_SEC);
+        challenge.put("phrase", phrase);
+        challenge.put("hint", "回复「" + phrase + "」提交入库；若仅有一个待确认草稿也可回复「确认」。");
+        view.put("challenge", challenge);
+        view.put("hint", "待确认、未入库。请回复「" + phrase + "」完成审核入库。");
+    }
+
+    private void consumeChallengeOrThrow(User user, WecomDraftOwner owner, Map<String, Object> draftRow,
+                                         ConfirmEventProof proof) {
+        long draftId = ((Number) draftRow.get("id")).longValue();
+        int draftVersion = draftRow.get("draft_version") == null ? 1 : ((Number) draftRow.get("draft_version")).intValue();
+        String payloadHash = draftRow.get("payload_hash") == null
+                ? sha256Hex(String.valueOf(draftRow.get("payload_json")))
+                : String.valueOf(draftRow.get("payload_hash"));
+        List<Map<String, Object>> challenges = jdbcTemplate.queryForList(
+                "SELECT id, challenge_id, payload_hash, draft_version, expected_phrase, expires_at, status "
+                        + "FROM aierp_gateway_confirm_challenge WHERE draft_id=? AND channel=? AND bot_id=? "
+                        + "AND wecom_user_id=? AND binding_version=? AND erp_user_id=? AND tenant_id=? "
+                        + "AND status='PENDING' ORDER BY id DESC FOR UPDATE",
+                draftId, owner.channel, owner.botId, owner.wecomUserId, owner.bindingVersion,
+                user.getId(), user.getTenantId());
+        if (challenges.isEmpty()) {
+            throw new BusinessRunTimeException(409, "没有有效的确认挑战，请重新创建草稿");
+        }
+        Map<String, Object> ch = challenges.get(0);
+        LocalDateTime exp = LocalDateTime.parse(String.valueOf(ch.get("expires_at")).replace(' ', 'T').substring(0, 19));
+        if (LocalDateTime.now().isAfter(exp)) {
+            jdbcTemplate.update("UPDATE aierp_gateway_confirm_challenge SET status='EXPIRED' WHERE id=?", ch.get("id"));
+            throw new BusinessRunTimeException(410, "确认已过期，请重新创建采购草稿");
+        }
+        int chVersion = ((Number) ch.get("draft_version")).intValue();
+        if (chVersion != draftVersion) {
+            throw new BusinessRunTimeException(409, "草稿版本已变化，请重新确认");
+        }
+        if (!payloadHash.equals(String.valueOf(ch.get("payload_hash")))) {
+            throw new BusinessRunTimeException(409, "草稿内容已变化，请重新确认");
+        }
+        String expected = String.valueOf(ch.get("expected_phrase"));
+        ParsedConfirmIntent intent = parseConfirmIntent(proof.rawText.trim());
+        if (!intent.confirm) {
+            throw new BusinessRunTimeException(400, "确认原文不匹配，请回复「" + expected + "」");
+        }
+        if (intent.draftId != null && intent.draftId.longValue() != draftId) {
+            throw new BusinessRunTimeException(400, "确认草稿号不匹配");
+        }
+        String msgId = proof.messageMsgId == null ? null : proof.messageMsgId.trim();
+        int n = jdbcTemplate.update(
+                "UPDATE aierp_gateway_confirm_challenge SET status='CONSUMED', consumed_at=NOW(), consume_message_id=? "
+                        + "WHERE id=? AND status='PENDING'",
+                msgId, ch.get("id"));
+        if (n != 1) {
+            throw new BusinessRunTimeException(409, "确认挑战已被消费，请勿重复提交");
+        }
+    }
+
+    private static ParsedConfirmIntent parseConfirmIntent(String text) {
+        ParsedConfirmIntent out = new ParsedConfirmIntent();
+        if (text == null) {
+            return out;
+        }
+        Matcher m = CONFIRM_PURCHASE.matcher(text);
+        if (m.matches()) {
+            out.confirm = true;
+            out.draftId = Long.parseLong(m.group(1));
+            return out;
+        }
+        if (CONFIRM_SIMPLE.matcher(text).matches()) {
+            out.confirm = true;
+            return out;
+        }
+        return out;
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] dig = md.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(dig.length * 2);
+            for (byte b : dig) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception ex) {
+            throw new BusinessRunTimeException(500, "哈希失败");
+        }
+    }
+
+    private static String randomToken(int bytes) {
+        byte[] buf = new byte[bytes];
+        SECURE_RANDOM.nextBytes(buf);
+        StringBuilder sb = new StringBuilder(bytes * 2);
+        for (byte b : buf) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    private static final class ParsedConfirmIntent {
+        private boolean confirm;
+        private Long draftId;
     }
 
     private static class ResolvedLine {

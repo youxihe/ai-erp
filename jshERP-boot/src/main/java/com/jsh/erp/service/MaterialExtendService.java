@@ -252,7 +252,15 @@ public class MaterialExtendService {
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public int updateMaterialExtend(MaterialExtend materialExtend) throws Exception{
-        User user = userService.getCurrentUser();
+        return updateMaterialExtend(materialExtend, userService.getCurrentUser());
+    }
+
+    /** AIERP-015B: update with explicit actor (no HTTP session). */
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int updateMaterialExtend(MaterialExtend materialExtend, User user) throws Exception{
+        if (user == null || user.getLoginName() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户，无法更新物料扩展");
+        }
         materialExtend.setUpdateTime(System.currentTimeMillis());
         materialExtend.setUpdateSerial(user.getLoginName());
         int res =0;

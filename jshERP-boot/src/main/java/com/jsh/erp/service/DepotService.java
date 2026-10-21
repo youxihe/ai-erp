@@ -296,14 +296,20 @@ public class DepotService {
      * @throws Exception
      */
     public List<Long> parseDepotListByArr(String[] depotIdArr) throws Exception {
+        return parseDepotListByArr(depotIdArr, null);
+    }
+
+    /**
+     * AIERP-015B: when actor is set and depotIdArr is null, use actor's authorized depots (no session).
+     */
+    public List<Long> parseDepotListByArr(String[] depotIdArr, User actor) throws Exception {
         List<Long> depotList = new ArrayList<>();
         if(depotIdArr !=null) {
             for (int i = 0; i < depotIdArr.length; i++) {
                 depotList.add(Long.parseLong(depotIdArr[i]));
             }
         } else {
-            //未选择仓库时默认为当前用户有权限的仓库
-            JSONArray depotArr = findDepotByCurrentUser();
+            JSONArray depotArr = actor != null ? findDepotByUser(actor) : findDepotByCurrentUser();
             for(Object obj: depotArr) {
                 JSONObject object = JSONObject.parseObject(obj.toString());
                 depotList.add(object.getLong("id"));
@@ -313,9 +319,17 @@ public class DepotService {
     }
 
     public JSONArray findDepotByCurrentUser() throws Exception {
+        return findDepotByUser(userService.getCurrentUser());
+    }
+
+    /** Explicit-user depot list for AIERP actor path (no HTTP session). */
+    public JSONArray findDepotByUser(User user) throws Exception {
+        if (user == null || user.getId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户，无法解析仓库权限");
+        }
         JSONArray arr = new JSONArray();
         String type = "UserDepot";
-        Long userId = userService.getCurrentUser().getId();
+        Long userId = user.getId();
         List<Depot> dataList = findUserDepot();
         //开始拼接json数据
         if (null != dataList) {

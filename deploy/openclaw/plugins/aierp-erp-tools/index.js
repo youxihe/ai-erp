@@ -1,9 +1,7 @@
 /**
- * AIERP-012A/013 OpenClaw tool plugin.
+ * AIERP-012A/013/015A/015B OpenClaw tool plugin.
  * Trusts only ctx.requesterSenderId when ctx.messageChannel === "wecom".
- * Never accepts wecomUserId / tenantId / erpUserId / token from the model.
- * Prefer DM-only: reject when chatType/sessionKey indicates group/channel.
- * 012A: bind + stock. 013: material/partner/bill/report. 015A: purchase DRAFT (no confirm).
+ * Confirm: before_dispatch trusted inbound → Java (never LLM erp_draft_confirm tool).
  */
 import { createHmac, randomBytes } from "node:crypto";
 
@@ -11,6 +9,8 @@ const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
 const MIN_SECRET_LEN = 32;
 const BANNED_SECRET_SNIPPETS = ["change-me", "changeme", "example", "placeholder", "aierp-local-wecom-adapter"];
+const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[#＃]?\s*(\d+)\s*$/;
+const CONFIRM_SIMPLE = /^\s*确认\s*$/;
 
 function emptyPluginConfigSchema() {
   return {
@@ -21,32 +21,20 @@ function emptyPluginConfigSchema() {
 }
 
 function trustedWecomUserId(ctx) {
-  if (ctx?.messageChannel !== CHANNEL_ID) {
-    return null;
-  }
+  if (ctx?.messageChannel !== CHANNEL_ID) return null;
   const id = ctx.requesterSenderId?.trim();
   return id || null;
 }
 
 function isWecomGroupChat(ctx) {
-  const candidates = [
-    ctx?.chatType,
-    ctx?.deliveryContext?.chatType,
-    ctx?.deliveryContext?.target?.chatType,
-  ]
+  const candidates = [ctx?.chatType, ctx?.deliveryContext?.chatType, ctx?.deliveryContext?.target?.chatType]
     .filter((v) => v != null)
     .map((v) => String(v).toLowerCase());
   for (const ct of candidates) {
     if (ct === "group" || ct === "channel") return true;
     if (ct === "direct" || ct === "dm" || ct === "single" || ct === "private") return false;
   }
-  const hay = [
-    ctx?.sessionKey,
-    ctx?.nativeChannelId,
-    ctx?.deliveryContext?.to,
-    ctx?.groupId,
-    ctx?.groupChannel,
-  ]
+  const hay = [ctx?.sessionKey, ctx?.nativeChannelId, ctx?.deliveryContext?.to, ctx?.groupId, ctx?.groupChannel]
     .filter((v) => v != null)
     .map((v) => String(v).toLowerCase())
     .join("|");
@@ -56,12 +44,8 @@ function isWecomGroupChat(ctx) {
 
 function adapterSecret() {
   const secret = (process.env.AIERP_WECOM_ADAPTER_SECRET || "").trim();
-  if (!secret) {
-    throw new Error("AIERP_WECOM_ADAPTER_SECRET missing in OpenClaw environment");
-  }
-  if (secret.length < MIN_SECRET_LEN) {
-    throw new Error(`AIERP_WECOM_ADAPTER_SECRET too short (min ${MIN_SECRET_LEN})`);
-  }
+  if (!secret) throw new Error("AIERP_WECOM_ADAPTER_SECRET missing in OpenClaw environment");
+  if (secret.length < MIN_SECRET_LEN) throw new Error(`AIERP_WECOM_ADAPTER_SECRET too short (min ${MIN_SECRET_LEN})`);
   const lower = secret.toLowerCase();
   for (const banned of BANNED_SECRET_SNIPPETS) {
     if (lower.includes(banned) || lower === "secret" || lower === "password" || lower === "default") {
@@ -76,7 +60,11 @@ function erpBase() {
 }
 
 function botId() {
-  return (process.env.AIERP_WECOM_BOT_ID || process.env.WECOM_BOT_ID || "default").trim();
+  const aierp = (process.env.AIERP_WECOM_BOT_ID || "").trim();
+  if (aierp && aierp !== "default") return aierp;
+  const wecom = (process.env.WECOM_BOT_ID || "").trim();
+  if (wecom) return wecom;
+  return "default";
 }
 
 async function signedPost(path, bodyObj) {
@@ -116,10 +104,6 @@ async function signedPost(path, bodyObj) {
   return json.data;
 }
 
-/**
- * OpenClaw's extractToolPayload prefers `details` over `content[].text`.
- * Always mirror the user-visible string into details.summary (and structured fields).
- */
 function toolResult(ok, text, details) {
   return {
     content: [{ type: "text", text }],
@@ -142,6 +126,11 @@ function num(v) {
   return undefined;
 }
 
+function isConfirmPhrase(text) {
+  const t = String(text || "").trim();
+  return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t);
+}
+
 function formatStock(data) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   if (!rows.length) {
@@ -162,8 +151,7 @@ function formatMaterial(data) {
     (r) =>
       `- ${r.materialName}（${r.barCode}）单位 ${r.unit || "?"}，分类 ${r.categoryName || "?"}，${r.enabled ? "启用" : "停用"}`,
   );
-  const head = data.ambiguous ? "找到多个候选，请用编码确认：\n" : "物料：\n";
-  return head + lines.join("\n");
+  return (data.ambiguous ? "找到多个候选，请用编码确认：\n" : "物料：\n") + lines.join("\n");
 }
 
 function formatPartner(data) {
@@ -189,7 +177,7 @@ function formatBillDetail(data) {
   const head = `${b.billNumber || "?"} ${b.billTypeLabel || ""} ${b.statusLabel || ""} ${b.operTime || ""}${
     b.partnerName ? " · " + b.partnerName : ""
   } 金额 ${b.totalAmount ?? "?"}`;
-  if (!lines.length) return head + "\n（无可见明细行）";
+  if (!lines.length) return head + "\n（无可视明细行）";
   const body = lines.map(
     (r) =>
       `- ${r.materialName}（${r.barCode}）@ ${r.depotName}：${r.qty} ${r.unit || ""} 单价 ${r.unitPrice ?? "-"}`,
@@ -198,9 +186,7 @@ function formatBillDetail(data) {
 }
 
 function formatReport(data) {
-  if (data?.hint && (!data.rowCount || data.rowCount === 0)) {
-    return data.hint;
-  }
+  if (data?.hint && (!data.rowCount || data.rowCount === 0)) return data.hint;
   const label = data?.reportLabel || data?.report || "经营摘要";
   const range = `${data?.fromDate || "?"}~${data?.toDate || "?"}`;
   if (data?.report === "purchase_in_summary" && data?.totals) {
@@ -210,14 +196,14 @@ function formatReport(data) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   if (!rows.length) return data?.hint || `${label}：暂无数据。`;
   const lines = rows.map(
-    (r) =>
-      `- ${r.partnerName || "合计"}：单据 ${r.billCount}，数量 ${r.totalQty}，金额 ${r.totalAmount}`,
+    (r) => `- ${r.partnerName || "合计"}：单据 ${r.billCount}，数量 ${r.totalQty}，金额 ${r.totalAmount}`,
   );
   return `${label}（${range}）：\n${lines.join("\n")}\n数据来自 ERP，非模型估算。`;
 }
 
 function formatPurchaseDraft(data) {
   const s = data?.summary || {};
+  const ch = data?.challenge || {};
   const lines = [
     `采购草稿 #${data?.draftId ?? "?"} · ${data?.statusLabel || data?.status || "DRAFT"}`,
     `- 物料：${s.materialName || "?"}（${s.barCode || "?"}）`,
@@ -226,9 +212,17 @@ function formatPurchaseDraft(data) {
     s.amount != null ? `- 参考金额：${s.amount}` : null,
     `- 库存：${s.stockDeltaHint || "确认后才会变化"}`,
     `- 账号：${data?.boundErpLoginName || "?"}`,
-    data?.hint || "待确认、未入库。当前不能通过对话直接审核过账。",
+    data?.hint || ch.hint || `待确认、未入库。请回复「确认采购${data?.draftId ?? "?"}」。`,
   ].filter(Boolean);
   return lines.join("\n");
+}
+
+function formatConfirm(data) {
+  if (data?.receiptText) return String(data.receiptText);
+  if (data?.hint) return String(data.hint);
+  const before = data?.stockBefore ? JSON.stringify(data.stockBefore) : "?";
+  const after = data?.stockAfter ? JSON.stringify(data.stockAfter) : "?";
+  return `采购入库已完成（已审核）\n原生单号：${data?.billNumber || "?"}\n库存：${before} → ${after}`;
 }
 
 function registerErpTools(api) {
@@ -283,14 +277,10 @@ function registerErpTools(api) {
     "/aierp/v1/wecom/binding/issue",
     { type: "object", properties: {}, additionalProperties: false },
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
-    (data) => {
-      const bindCode = data.bindCode;
-      const expiresInSec = data.expiresInSec ?? 300;
-      return {
-        text: `绑定码：${bindCode}\n有效期 ${expiresInSec} 秒。请打开已登录的 ERP 工作台「绑定企业微信」输入该码。勿把 ERP 密码发到聊天。`,
-        details: { bindCode, expiresInSec, nature: "REAL_ERP" },
-      };
-    },
+    (data) => ({
+      text: `绑定码：${data.bindCode}\n有效期 ${data.expiresInSec ?? 300} 秒。请打开已登录的 ERP 工作台「绑定企业微信」输入该码。勿把 ERP 密码发到聊天。`,
+      details: { bindCode: data.bindCode, expiresInSec: data.expiresInSec ?? 300, nature: "REAL_ERP" },
+    }),
   );
 
   make(
@@ -299,19 +289,12 @@ function registerErpTools(api) {
     "/aierp/v1/wecom/binding/status",
     { type: "object", properties: {}, additionalProperties: false },
     (wecomUserId) => ({ wecomUserId, botId: botId(), channel: CHANNEL_ID }),
-    (data) => {
-      const text = data.bound
+    (data) => ({
+      text: data.bound
         ? `已绑定 ERP 账号 ${data.erpLoginName}（租户 ${data.tenantId}）。`
-        : data.hint || "尚未绑定 ERP。";
-      return {
-        text,
-        details: {
-          bound: !!data.bound,
-          erpLoginName: data.erpLoginName || null,
-          tenantId: data.tenantId ?? null,
-        },
-      };
-    },
+        : data.hint || "尚未绑定 ERP。",
+      details: { bound: !!data.bound, erpLoginName: data.erpLoginName || null, tenantId: data.tenantId ?? null },
+    }),
   );
 
   make(
@@ -373,11 +356,7 @@ function registerErpTools(api) {
     }),
     (data) => ({
       text: formatMaterial(data),
-      details: {
-        rowCount: data?.rowCount ?? 0,
-        ambiguous: !!data?.ambiguous,
-        rows: data?.rows || [],
-      },
+      details: { rowCount: data?.rowCount ?? 0, ambiguous: !!data?.ambiguous, rows: data?.rows || [] },
     }),
   );
 
@@ -405,11 +384,7 @@ function registerErpTools(api) {
     }),
     (data) => ({
       text: formatPartner(data),
-      details: {
-        partnerType: data?.partnerType || null,
-        rowCount: data?.rowCount ?? 0,
-        rows: data?.rows || [],
-      },
+      details: { partnerType: data?.partnerType || null, rowCount: data?.rowCount ?? 0, rows: data?.rows || [] },
     }),
   );
 
@@ -463,9 +438,7 @@ function registerErpTools(api) {
     "/aierp/v1/wecom/bill/detail",
     {
       type: "object",
-      properties: {
-        billNumber: { type: "string", description: "原生单据编号，如 GW-PURCHASE-94" },
-      },
+      properties: { billNumber: { type: "string", description: "原生单据编号，如 GW-PURCHASE-94" } },
       required: ["billNumber"],
       additionalProperties: false,
     },
@@ -477,11 +450,7 @@ function registerErpTools(api) {
     }),
     (data) => ({
       text: formatBillDetail(data),
-      details: {
-        bill: data?.bill || null,
-        lineCount: data?.lineCount ?? 0,
-        lines: data?.lines || [],
-      },
+      details: { bill: data?.bill || null, lineCount: data?.lineCount ?? 0, lines: data?.lines || [] },
     }),
   );
 
@@ -492,10 +461,7 @@ function registerErpTools(api) {
     {
       type: "object",
       properties: {
-        report: {
-          type: "string",
-          description: "purchase_in_summary | service_consume_by_customer",
-        },
+        report: { type: "string", description: "purchase_in_summary | service_consume_by_customer" },
         fromDate: { type: "string", description: "yyyy-MM-dd" },
         toDate: { type: "string", description: "yyyy-MM-dd" },
         days: { type: "number", description: "近 N 天，默认 7" },
@@ -530,7 +496,7 @@ function registerErpTools(api) {
 
   make(
     "erp_purchase_prepare",
-    "创建真实未审核采购草稿（不改库存、不审核）。需要物料编码、数量、单位、仓库、供应商与幂等键。缺字段先追问。禁止声称已入库。",
+    "创建真实未审核采购草稿（不改库存、不审核）。需要物料编码、数量、单位、仓库、供应商与幂等键。缺字段先追问。禁止声称已入库。确认请用户回复「确认采购{草稿号}」。",
     "/aierp/v1/wecom/purchase/prepare",
     {
       type: "object",
@@ -567,6 +533,7 @@ function registerErpTools(api) {
         posted: !!data?.posted,
         stockUnchanged: data?.stockUnchanged !== false,
         summary: data?.summary || null,
+        challenge: data?.challenge || null,
         replayed: !!data?.replayed,
       },
     }),
@@ -630,13 +597,41 @@ function registerErpTools(api) {
   );
 }
 
+function registerConfirmHook(api) {
+  // Trusted raw inbound (before LLM). Do NOT register erp_draft_confirm as a model tool.
+  api.on("before_dispatch", async (event, ctx) => {
+    const channelId = ctx?.channelId || event?.channel;
+    if (channelId !== CHANNEL_ID) return;
+    const senderId = String(event?.senderId || ctx?.senderId || "").trim();
+    if (!senderId) return;
+    if (event?.isGroup) return;
+    const text = String(event?.content || event?.body || "").trim();
+    if (!isConfirmPhrase(text)) return;
+    try {
+      const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
+        wecomUserId: senderId,
+        botId: botId(),
+        channel: CHANNEL_ID,
+        rawText: text,
+        messageMsgId: event?.messageId || undefined,
+        isGroup: false,
+        eventSource: "WECOM_BEFORE_DISPATCH",
+      });
+      return { handled: true, text: formatConfirm(data) };
+    } catch (err) {
+      return { handled: true, text: `确认未完成：${String(err?.message || err)}` };
+    }
+  });
+}
+
 const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
-  description: "WeCom trusted-identity ERP bind + queries + purchase DRAFT (no confirm)",
+  description: "WeCom trusted-identity ERP bind + queries + purchase draft + before_dispatch confirm",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);
+    registerConfirmHook(api);
   },
 };
 

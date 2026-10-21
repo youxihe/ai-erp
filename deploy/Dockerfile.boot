@@ -11,7 +11,13 @@ RUN mvn -B -DskipTests -Dmaven.compiler.skip=false package \
 
 FROM eclipse-temurin:8-jre
 WORKDIR /app
-RUN mkdir -p /opt/tmp/tomcat /opt/jshERP/upload /opt/jshERP/export /app/data/tomcat /app/data/upload /app/data/export
+# Chinese fonts for AIERP-015B purchase receipt PDF (A4). Not bundled in Git.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-wqy-microhei fontconfig \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /opt/tmp/tomcat /opt/jshERP/upload /opt/jshERP/export /opt/jshERP/receipts \
+    /app/data/tomcat /app/data/upload /app/data/export
 COPY --from=build /src/app.jar /app/app.jar
 EXPOSE 9999
 ENV SPRING_PROFILES_ACTIVE=local \

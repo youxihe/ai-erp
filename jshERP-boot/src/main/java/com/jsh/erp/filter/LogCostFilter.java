@@ -22,7 +22,7 @@ import java.io.IOException;
                               "/jshERP-boot/aierp/v1/wecom/bill/search#/jshERP-boot/aierp/v1/wecom/bill/detail#" +
                               "/jshERP-boot/aierp/v1/wecom/report/query#" +
                               "/jshERP-boot/aierp/v1/wecom/purchase/prepare#/jshERP-boot/aierp/v1/wecom/draft/status#" +
-                              "/jshERP-boot/aierp/v1/wecom/draft/cancel")})
+                              "/jshERP-boot/aierp/v1/wecom/draft/cancel#/jshERP-boot/aierp/v1/wecom/draft/confirm")})
 public class LogCostFilter implements Filter {
 
     private static final String FILTER_PATH = "filterPath";
