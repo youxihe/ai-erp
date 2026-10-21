@@ -1,6 +1,6 @@
 # AIERP-017A · 企业微信 Excel 模板发送 / 文件回收 / 解析预览（客户 Demo 第一棒）
 
-- **状态**：REVIEW_FIX_REQUIRED / PR #30（真人已验证真正 PREVIEWED；仍需修复模型参数门禁旁路、模板必填字段与精简回复、服务端预览接续）。
+- **状态**：DONE / PR #30 MERGED（`25d4c98f`；真人企微 Excel 文件解析成功，10/10 + 14/14 非过账检查，模板和 Redis 预览接续已收口）。
 - **开发分支**：`feat/aierp-017a-wecom-xlsx-inbound-preview`，只处理 AI-ERP。
 - **优先级**：P0 客户 Demo；**本棒绝对不批量审核、入库、出库，也不修改库存**。
 - **当前复用**：`AierpExcelController` 的 `GET /aierp/v1/excel/template?scene=`、`POST /preview`，`AierpExcelService` 支持真实 XLSX `PURCHASE/MIX/SERVICE` 解析预览，上传上限 2MB/200 行；`INITIAL/SALE` 目前是仅模板、不可确认，请在企微明确标注，而不是宣称支持批量销售出库。
