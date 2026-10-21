@@ -1,6 +1,6 @@
 # AIERP-017A · 企业微信 Excel 模板发送 / 文件回收 / 解析预览（客户 Demo 第一棒）
 
-- **状态**：RELEASED / next_order #2；015B #27 授权 Review Fix push 后可独立从最新 master 开工；与 019A docs-only 可并行。
+- **状态**：REVIEW_FIX_REQUIRED / PR #30（真实文件 UAT 中未解析 XLSX 即从文件名猜 100L 创建未审核 #113；P0，不能合并）。
 - **开发分支**：`feat/aierp-017a-wecom-xlsx-inbound-preview`，只处理 AI-ERP。
 - **优先级**：P0 客户 Demo；**本棒绝对不批量审核、入库、出库，也不修改库存**。
 - **当前复用**：`AierpExcelController` 的 `GET /aierp/v1/excel/template?scene=`、`POST /preview`，`AierpExcelService` 支持真实 XLSX `PURCHASE/MIX/SERVICE` 解析预览，上传上限 2MB/200 行；`INITIAL/SALE` 目前是仅模板、不可确认，请在企微明确标注，而不是宣称支持批量销售出库。
@@ -25,3 +25,7 @@
 - 可复现无过账 `xlsx` 来回和预览测试脚本 + 企微真实文件收发证据，含版本、文件 ID 脱敏、哈希及前后库存校验。
 - 同步 repo 插件/MD 脱敏模板，备份 F: 实际插件和 `openclaw.json`，不清除会话。
 - Push `READY_FOR_REVIEW`、HEAD/证据/仍缺的真人文件 UAT；Cursor 不自行 Merge。
+
+## ChatGPT 2026-10-21 18:58 真人 UAT 挂起门槛
+
+用户上传带 `---100L---` 的 XLSX 后，插件并未生成 ERP preview，模型竟以文件名猜测单元格数量并调用普通采购草稿工具创建 #113。必须按照 GitHub PR #30 最新 Review 评论从真实可信入站文件字节解析；OpenClaw `message_received` 仅观察、不可靠修改模型输入，`inbound_claim` 仅在 own conversation binding 才可执行。解析失败的同一文件流程不得创建任何源于文件的业务草稿。验收必须上传**文件名100L但单元格20L** 的 XLSX、能得到 PREVIEWED/previewId/实际20L；不入库、不创建草稿。#113 不可自动确认。\n

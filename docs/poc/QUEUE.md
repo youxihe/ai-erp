@@ -19,13 +19,13 @@
 | AIERP-013 | **DONE / PR #21** | 物料、客户供应商、单据明细、经营查询；跨仓混合单据权限修复通过，23/23 PASS |
 | AIERP-014D | **DONE / PR #22** | **可信原始消息确认、草稿挑战、显式 ERP actor 设计已 Review + Merge** |
 | AIERP-015A | **DONE / PR #24** | 企业微信真实生成采购 DRAFT #106，12 工具集成；25/25 本地测试，未入库 |
-| **AIERP-015B** | **REVIEW_FIX_REQUIRED / PR #27 · next_order #1** | **已验证企微采购 #111 原生过账及文字回执；修复 UI fallback 旧绑定确认和 PDF 下载撤权后权限** |
-| **AIERP-019A** | **RELEASED / next_order #3 (docs-only / parallel)** | **ERP 受控 API 能力目录/OpenAPI 子集、OpenClaw SOP Skills、通用工具方案设计** |
+| AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
+| AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | PLANNED / after 015B | 企微 PDF 附件发送实测、回执再次领取、确认指令标点兼容 |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
-| **AIERP-017A** | **RELEASED / next_order #2 (CODE)** | **企微 Excel 模板文件发送、用户回传 XLSX、ERP 无过账预览** |
+| **AIERP-017A** | **REVIEW_FIX_REQUIRED / PR #30 · next_order #1** | **真实企微 XLSX 回传未进入 ERP 预览；Agent 从文件名猜出100L并建 #113，须解决真实附件解析和 file-to-draft 数据来源闸门** |
 | AIERP-017B | PLANNED / after 017A | **采购入库、配制生产、服务耗料出库批量 DRAFT；销售出库接口差异补齐** |
 | AIERP-017C | PLANNED / after 017B + 015B | **批次可信确认 → 原生多单过账 → XLSX/PDF 回执发送** |
 | AIERP-017 | SUPERSEDED by 017A–017C | Excel 批量业务成为客户 Demo 核心，不是普通文件功能 |
@@ -33,6 +33,15 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-21 18:58 · 真人 Excel UAT 失败（立即修复 017A，阻断 017B/017C）
+
+- **AIERP-015B / PR #27 已 DONE**：ChatGPT Review 并合并 `c94e192c`。用户真人企微 `确认采购111` → 原生 `GW-PURCHASE-111`，库存 160.7→170.7 L；authz fix 18/18，不能重跑历史草稿。
+- **AIERP-019A / PR #31 已 DONE**：能力目录和业务 SOP 设计完成（`6a447f13`），并不代表运行时已安装动态 API Tool。
+- **AIERP-017A / PR #30 REVIEW_FIX_REQUIRED**：用户企微返回改名 `采购入库模板---100L---….xlsx`，**没有真实 Excel PREVIEWED**；模型却依据文件名“100L”创建未审核采购草稿 **#113**。禁止过账 #113，除非未来经过真实数据核对、用户明确重新发起独立业务；默认提醒用户取消该错误来源草稿。
+- **高优先级技术原因**：当前 Excel 入站插件用 `message_received`（OpenClaw 官方规范 OBSERVE，不能保证修改 event.content 生效）、`inbound_claim`（仅被所属 core conversation binding 插件调用）；真实附件未获本插件可靠解析。务必查 F: 当前实际安装的 WeCom 插件、完整 file/media 事件和 staging 状态；使用可信入站、可见文件字节的 pre-LLM handler / Channel 自有文件 adapter，**不允许 filename 猜测数据**。无解析时返回清晰 `FILE_PARSE_FAILED`，并在服务端阻止与该文件相关的任何新草稿生成。
+- 017A 只做模板发送 + 真实文件解析预览，不得绕过 017B/017C 直接批量过账。**只有企微真实附件字节 → ERP 实际 previewId / 单元格数据 → 用户预览成功且库存不变才可 MERGE PR #30**。用户文件名带“---100L---”不得影响 Excel 内容解析。
+- **Cursor**：原分支 `feat/aierp-017a-wecom-xlsx-inbound-preview` 按 PR #30 最新 ChatGPT Review #3 修复，更新 master 后保留 015B before_dispatch 采购确认及 13 Tools；不自行 Merge、不重装 F:、不触发 #113 的原生审核。017B/C、019B 仍 PLANNED。
 
 ## 2026-10-21 · Excel 批量业务提升为客户 Demo P0（含出库与生产）
 
