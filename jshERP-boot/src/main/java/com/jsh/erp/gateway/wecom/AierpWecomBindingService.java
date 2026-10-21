@@ -169,22 +169,7 @@ public class AierpWecomBindingService {
     }
 
     public Map<String, Object> stockQueryDelegated(JSONObject body) throws Exception {
-        String wecomUserId = requiredTrusted(body, "wecomUserId");
-        String botId = firstNonEmpty(body.getString("botId"), defaultBotId, "default");
-        // Reject spoof fields if model somehow included them — we never use them.
-        if (body.containsKey("erpUserId") || body.containsKey("tenantId") || body.containsKey("token")
-                || body.containsKey("X-Access-Token") || body.containsKey("accessToken")) {
-            throw new BusinessRunTimeException(400, "拒绝客户端伪造身份字段");
-        }
-        Map<String, Object> binding = findActiveBinding(botId, wecomUserId);
-        if (binding == null) {
-            throw new BusinessRunTimeException(401, "尚未绑定 ERP，请先发送「绑定ERP」");
-        }
-        long erpUserId = ((Number) binding.get("erp_user_id")).longValue();
-        long boundTenantId = ((Number) binding.get("tenant_id")).longValue();
-        // Do NOT use userService.getUser(id): it requires an HTTP session and returns null for adapter calls.
-        User user = loadUserById(erpUserId);
-        assertActiveUserAndTenant(user, boundTenantId);
+        User user = resolveBoundActiveUser(body);
         JSONObject query = new JSONObject();
         if (body.getString("barCode") != null) {
             query.put("barCode", body.getString("barCode"));
@@ -202,6 +187,28 @@ public class AierpWecomBindingService {
         result.put("boundErpLoginName", user.getLoginName());
         result.put("asOf", TS.format(LocalDateTime.now()));
         return result;
+    }
+
+    /**
+     * Resolve WeCom trusted identity → active ERP user. Rejects spoofed identity fields.
+     * Shared by stock + AIERP-013 read-only business queries.
+     */
+    public User resolveBoundActiveUser(JSONObject body) throws Exception {
+        String wecomUserId = requiredTrusted(body, "wecomUserId");
+        String botId = firstNonEmpty(body.getString("botId"), defaultBotId, "default");
+        if (body.containsKey("erpUserId") || body.containsKey("tenantId") || body.containsKey("token")
+                || body.containsKey("X-Access-Token") || body.containsKey("accessToken")) {
+            throw new BusinessRunTimeException(400, "拒绝客户端伪造身份字段");
+        }
+        Map<String, Object> binding = findActiveBinding(botId, wecomUserId);
+        if (binding == null) {
+            throw new BusinessRunTimeException(401, "尚未绑定 ERP，请先发送「绑定ERP」");
+        }
+        long erpUserId = ((Number) binding.get("erp_user_id")).longValue();
+        long boundTenantId = ((Number) binding.get("tenant_id")).longValue();
+        User user = loadUserById(erpUserId);
+        assertActiveUserAndTenant(user, boundTenantId);
+        return user;
     }
 
     private Map<String, Object> findActiveBinding(String botId, String wecomUserId) {

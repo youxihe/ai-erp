@@ -12,7 +12,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * WeCom adapter + PC claim endpoints for AIERP-012A.
+ * WeCom adapter + PC claim endpoints for AIERP-012A/013.
  * Adapter routes require HMAC; claim requires logged-in ERP session.
  */
 @RestController
@@ -23,6 +23,8 @@ public class AierpWecomController {
     private AierpWecomAdapterAuth adapterAuth;
     @Resource
     private AierpWecomBindingService bindingService;
+    @Resource
+    private AierpWecomQueryService queryService;
 
     @PostMapping("/binding/issue")
     public BaseResponseInfo issue(@RequestBody String raw, HttpServletRequest request) {
@@ -51,6 +53,36 @@ public class AierpWecomController {
     public BaseResponseInfo stockQuery(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(bindingService.stockQueryDelegated(parse(raw)));
+    }
+
+    @PostMapping("/material/search")
+    public BaseResponseInfo materialSearch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.materialSearch(parse(raw)));
+    }
+
+    @PostMapping("/partner/search")
+    public BaseResponseInfo partnerSearch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.partnerSearch(parse(raw)));
+    }
+
+    @PostMapping("/bill/search")
+    public BaseResponseInfo billSearch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.billSearch(parse(raw)));
+    }
+
+    @PostMapping("/bill/detail")
+    public BaseResponseInfo billDetail(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.billDetail(parse(raw)));
+    }
+
+    @PostMapping("/report/query")
+    public BaseResponseInfo reportQuery(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.reportQuery(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {

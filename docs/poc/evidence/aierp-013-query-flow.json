@@ -1,0 +1,127 @@
+{
+  "task": "AIERP-013",
+  "reviewFix": "mixed-depot-full-authorization",
+  "at": "2026-10-20T23:45:56.449Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "wecomUserIdMasked": "ai***",
+  "passed": 23,
+  "total": 23,
+  "dualUserUat": "NOT_VERIFIED",
+  "results": [
+    {
+      "name": "unbound_material_401",
+      "ok": true,
+      "detail": "{\"code\":401,\"message\":\"尚未绑定 ERP，请先发送「绑定ERP」\",\"depots\":[]}"
+    },
+    {
+      "name": "bind_issue",
+      "ok": true,
+      "detail": "{\"code\":200,\"depots\":[]}"
+    },
+    {
+      "name": "bind_claim",
+      "ok": true,
+      "detail": "{\"code\":200,\"depots\":[]}"
+    },
+    {
+      "name": "spoof_identity_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"message\":\"拒绝客户端伪造身份字段\",\"depots\":[]}"
+    },
+    {
+      "name": "material_search",
+      "ok": true,
+      "detail": "{\"code\":200,\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[\"RM-A001\"]}"
+    },
+    {
+      "name": "partner_supplier",
+      "ok": true,
+      "detail": "{\"code\":200,\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "partner_customer",
+      "ok": true,
+      "detail": "{\"code\":200,\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "partner_bad_type",
+      "ok": true,
+      "detail": "{\"code\":400,\"message\":\"partnerType 仅支持 supplier|customer\",\"depots\":[]}"
+    },
+    {
+      "name": "bill_search_purchase",
+      "ok": true,
+      "detail": "{\"code\":200,\"billNumber\":\"SMOKE-PI-20261020040952\",\"billType\":\"purchase\",\"rowCount\":20,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "bill_search_mix_full_depots",
+      "ok": true,
+      "detail": "{\"code\":200,\"billNumber\":\"GW-MIX-95\",\"billType\":\"mix\",\"rowCount\":14,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "bill_search_service",
+      "ok": true,
+      "detail": "{\"code\":200,\"billNumber\":\"GW-SERVICE-96\",\"billType\":\"service\",\"rowCount\":10,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "bill_detail_purchase",
+      "ok": true,
+      "detail": "{\"code\":200,\"billNumber\":\"GW-PURCHASE-94\",\"billType\":\"purchase\",\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[\"原料仓\"]}"
+    },
+    {
+      "name": "bill_detail_mix_full_depots",
+      "ok": true,
+      "detail": "{\"code\":200,\"billNumber\":\"GW-MIX-95\",\"billType\":\"mix\",\"rowCount\":4,\"nature\":\"REAL_ERP\",\"depots\":[\"成品仓\",\"原料仓\",\"原料仓\"]}"
+    },
+    {
+      "name": "bill_detail_missing",
+      "ok": true,
+      "detail": "{\"code\":404,\"message\":\"单据不存在或不属于当前租户\",\"depots\":[]}"
+    },
+    {
+      "name": "bill_range_reject",
+      "ok": true,
+      "detail": "{\"code\":400,\"message\":\"查询日期跨度不能超过 90 天\",\"depots\":[]}"
+    },
+    {
+      "name": "report_purchase_summary",
+      "ok": true,
+      "detail": "{\"code\":200,\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "report_service_by_customer",
+      "ok": true,
+      "detail": "{\"code\":200,\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+    },
+    {
+      "name": "report_unsupported",
+      "ok": true,
+      "detail": "{\"code\":400,\"message\":\"不支持的报表类型: fake_ledger（支持 purchase_in_summary / service_consume_by_customer）\",\"depots\":[]}"
+    },
+    {
+      "name": "stock_compat",
+      "ok": true,
+      "detail": "{\"code\":200,\"depots\":[\"原料仓\"]}"
+    },
+    {
+      "name": "mixed_depot_mix_hidden_from_raw_only",
+      "ok": true,
+      "detail": "{\"code\":200,\"rowCount\":0,\"depots\":[]}"
+    },
+    {
+      "name": "mixed_depot_mix_detail_forbidden",
+      "ok": true,
+      "detail": "{\"code\":403,\"message\":\"当前用户无权查看该单据（含未授权仓库明细，拒绝对整单表头与金额）\",\"depots\":[]}"
+    },
+    {
+      "name": "raw_only_still_sees_purchase",
+      "ok": true,
+      "detail": "{\"code\":200,\"billNumber\":\"GW-PURCHASE-94\",\"billType\":\"purchase\",\"rowCount\":1,\"nature\":\"REAL_ERP\",\"depots\":[\"原料仓\"]}"
+    },
+    {
+      "name": "unbind",
+      "ok": true,
+      "detail": "{\"code\":200,\"depots\":[]}"
+    }
+  ]
+}
