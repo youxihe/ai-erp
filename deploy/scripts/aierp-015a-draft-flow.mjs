@@ -237,7 +237,105 @@ async function main() {
   const stockAfterCancel = stockOf("RM-A001", 14);
   note("stock_unchanged_after_cancel", stockBefore === stockAfterCancel, { stockBefore, stockAfterCancel });
 
+  // --- Review Fix: WeCom ownership + posted replay ---
+  // Primary WECOM is still ACTIVE here (unbind happens later).
+  const WECOM_B = `${WECOM}-b`;
+  const idBodyB = (extra = {}) => ({ wecomUserId: WECOM_B, botId: BOT, channel: "wecom", ...extra });
+
+  const issueB = await signedPost("/aierp/v1/wecom/binding/issue", idBodyB());
+  const codeB = issueB.json?.data?.bindCode;
+  const claimedB = await claim(token, codeB);
+  note("second_wecom_same_erp_bind", claimedB?.code === 200 || claimedB?.data?.status === "ACTIVE", claimedB?.data?.status);
+
+  const keyA2 = `w:${WECOM.slice(-8)}:own-a:${Date.now().toString(36)}`;
+  const prepA = await signedPost("/aierp/v1/wecom/purchase/prepare", idBody({
+    barCode: "RM-A001", qty: 3, unit: "L", depotName: "原料仓", organName: "华东化工",
+    idempotencyKey: keyA2, remark: "owner-isolation",
+  }));
+  const draftA = prepA.json?.data?.draftId;
+  note("owner_a_prepare", prepA.json?.code === 200 && !!draftA, {
+    draftId: draftA,
+    code: prepA.json?.code,
+    msg: prepA.json?.data?.message || prepA.json?.message || prepA.raw || null,
+  });
+
+  {
+    const r = await signedPost("/aierp/v1/wecom/draft/status", idBodyB({ draftId: draftA }));
+    note(
+      "owner_b_cannot_status_a",
+      r.json?.code === 403 || r.json?.code === 404 || /无权|不属于|不可/.test(JSON.stringify(r.json)),
+      { code: r.json?.code },
+    );
+  }
+  {
+    const r = await signedPost("/aierp/v1/wecom/draft/cancel", idBodyB({ draftId: draftA }));
+    note(
+      "owner_b_cannot_cancel_a",
+      r.json?.code === 403 || r.json?.code === 404 || /无权|不属于|不可/.test(JSON.stringify(r.json)),
+      { code: r.json?.code },
+    );
+  }
+
+  // Rebind primary WeCom → new bound_at generation; old draft must be inaccessible.
+  const unb = await signedPost("/aierp/v1/wecom/binding/unbind", idBody());
+  note("unbind_before_rebind", unb.json?.code === 200 || !!unb.json?.data?.unbound, unb.json?.data);
+  const issueA3 = await signedPost("/aierp/v1/wecom/binding/issue", idBody());
+  const claimedA3 = await claim(token, issueA3.json?.data?.bindCode);
+  note("rebind_new_generation", claimedA3?.code === 200 || claimedA3?.data?.status === "ACTIVE", claimedA3?.data?.status);
+  {
+    const r = await signedPost("/aierp/v1/wecom/draft/status", idBody({ draftId: draftA }));
+    note(
+      "rebind_denies_old_draft",
+      r.json?.code === 403 || /绑定已更新|不可再访问|不属于/.test(JSON.stringify(r.json)),
+      { code: r.json?.code, msg: r.json?.data || r.json?.message },
+    );
+  }
+
+  // Posted flag: mark a fresh draft CONFIRMED in DB, idempotent prepare replay must report posted=true.
+  const keyPosted = `w:${WECOM.slice(-8)}:post:${Date.now().toString(36)}`;
+  const prepPosted = await signedPost("/aierp/v1/wecom/purchase/prepare", idBody({
+    barCode: "RM-A001", qty: 2, unit: "L", depotName: "原料仓", organName: "华东化工",
+    idempotencyKey: keyPosted, remark: "posted-flag-test",
+  }));
+  const draftPosted = prepPosted.json?.data?.draftId;
+  note("posted_flag_seed_draft", prepPosted.json?.code === 200 && !!draftPosted, {
+    draftId: draftPosted,
+    code: prepPosted.json?.code,
+    msg: prepPosted.json?.data?.message || null,
+    keyLen: keyPosted.length,
+  });
+  if (draftPosted) {
+    mysql(`UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number='TEST-POSTED-FLAG' WHERE id=${draftPosted}`);
+    const replayPosted = await signedPost("/aierp/v1/wecom/purchase/prepare", idBody({
+      barCode: "RM-A001", qty: 2, unit: "L", depotName: "原料仓", organName: "华东化工",
+      idempotencyKey: keyPosted, remark: "posted-flag-test",
+    }));
+    note(
+      "idempotent_confirmed_posted_true",
+      replayPosted.json?.code === 200 &&
+        replayPosted.json.data?.draftId === draftPosted &&
+        replayPosted.json.data?.replayed === true &&
+        replayPosted.json.data?.posted === true &&
+        replayPosted.json.data?.stockUnchanged === false,
+      {
+        posted: replayPosted.json?.data?.posted,
+        stockUnchanged: replayPosted.json?.data?.stockUnchanged,
+        status: replayPosted.json?.data?.status,
+      },
+    );
+    const st = await signedPost("/aierp/v1/wecom/draft/status", idBody({ draftId: draftPosted }));
+    note(
+      "status_confirmed_posted_true",
+      st.json?.code === 200 && st.json.data?.posted === true && st.json.data?.stockUnchanged === false,
+      { posted: st.json?.data?.posted, status: st.json?.data?.status },
+    );
+  }
+
+  const stockFinal = stockOf("RM-A001", 14);
+  note("stock_still_unchanged_end", stockBefore === stockFinal, { stockBefore, stockFinal });
+
   await signedPost("/aierp/v1/wecom/binding/unbind", idBody());
+  await signedPost("/aierp/v1/wecom/binding/unbind", idBodyB());
 
   const passed = results.filter((x) => x.ok).length;
   const out = {
@@ -246,7 +344,7 @@ async function main() {
     base: BASE,
     passed,
     total: results.length,
-    dualUserUat: "NOT_VERIFIED",
+    dualUserUat: "SIMULATED_TWO_WECOM_SAME_ERP",
     confirmToolRegistered: false,
     results,
   };

@@ -1,0 +1,34 @@
+{
+  "task": "AIERP-015A-REVIEW-FIX-WECOM-SID-UAT",
+  "at": "2026-10-21T02:59:36.549Z",
+  "wecomUserMasked": "sid***",
+  "erpLogin": "jsh",
+  "partnerRowCount": 1,
+  "materialRows": [
+    {
+      "barCode": "RM-A001",
+      "name": "表面活性剂"
+    }
+  ],
+  "billRowCount": 5,
+  "draftId": 105,
+  "status": "DRAFT",
+  "statusLabel": "待确认、未入库",
+  "posted": false,
+  "summary": {
+    "partnerName": "华东化工",
+    "materialName": "表面活性剂",
+    "barCode": "RM-A001",
+    "qty": 10,
+    "unit": "L",
+    "depotName": "原料仓",
+    "unitPrice": 20,
+    "amount": 200,
+    "stockDeltaHint": "+10 @ 原料仓（仅确认后生效）"
+  },
+  "stockBefore": "158.700000",
+  "stockAfterPrepare": "158.700000",
+  "stockAfterCancel": "158.700000",
+  "cancelled": "CANCELLED",
+  "ok": true
+}

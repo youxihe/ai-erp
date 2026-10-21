@@ -15,10 +15,13 @@ import java.util.Map;
 
 /**
  * AIERP-015A: WeCom delegated purchase DRAFT create/status/cancel.
- * No confirm / posting. Actor is always the bound ERP user from HMAC-trusted wecomUserId.
+ * Ownership = trusted wecomUserId + botId + binding id + bound_at generation.
+ * No confirm / posting.
  */
 @Service
 public class AierpWecomDraftService {
+
+    private static final String CHANNEL = "wecom";
 
     @Resource
     private AierpWecomBindingService bindingService;
@@ -26,32 +29,42 @@ public class AierpWecomDraftService {
     private AierpGatewayService gatewayService;
 
     public Map<String, Object> purchasePrepare(JSONObject body) throws Exception {
-        User user = bindingService.resolveBoundActiveUser(body);
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
         JSONObject draftBody = buildPurchaseBody(body);
-        Map<String, Object> created = gatewayService.createDraftAs(user, "PURCHASE", draftBody);
-        return enrichPurchaseView(user, created);
+        Map<String, Object> created = gatewayService.createDraftAs(ctx.user, "PURCHASE", draftBody, owner);
+        return enrichPurchaseView(ctx.user, created);
     }
 
     public Map<String, Object> draftStatus(JSONObject body) throws Exception {
-        User user = bindingService.resolveBoundActiveUser(body);
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
         long draftId = requireDraftId(body);
-        Map<String, Object> status = gatewayService.draftStatusAs(user, draftId);
+        Map<String, Object> status = gatewayService.draftStatusAs(ctx.user, draftId, toOwner(ctx));
         if ("PURCHASE".equals(String.valueOf(status.get("bizType")))) {
-            return enrichPurchaseView(user, status);
+            return enrichPurchaseView(ctx.user, status);
         }
-        status.put("boundErpLoginName", user.getLoginName());
+        status.put("boundErpLoginName", ctx.user.getLoginName());
         status.put("statusLabel", statusLabel(String.valueOf(status.get("status"))));
         return status;
     }
 
     public Map<String, Object> draftCancel(JSONObject body) throws Exception {
-        User user = bindingService.resolveBoundActiveUser(body);
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
         long draftId = requireDraftId(body);
-        Map<String, Object> cancelled = gatewayService.cancelDraftAs(user, draftId);
-        cancelled.put("boundErpLoginName", user.getLoginName());
+        Map<String, Object> cancelled = gatewayService.cancelDraftAs(ctx.user, draftId, toOwner(ctx));
+        cancelled.put("boundErpLoginName", ctx.user.getLoginName());
         cancelled.put("statusLabel", "已取消");
         cancelled.put("hint", "草稿已取消，未入库、库存未变化。");
         return cancelled;
+    }
+
+    private static AierpGatewayService.WecomDraftOwner toOwner(AierpWecomBindingService.BoundContext ctx) {
+        long bindingId = ((Number) ctx.binding.get("id")).longValue();
+        String boundAt = String.valueOf(ctx.binding.get("bound_at")).replace('T', ' ');
+        if (boundAt.length() > 19) {
+            boundAt = boundAt.substring(0, 19);
+        }
+        return new AierpGatewayService.WecomDraftOwner(CHANNEL, ctx.botId, ctx.wecomUserId, bindingId, boundAt);
     }
 
     private JSONObject buildPurchaseBody(JSONObject body) {
@@ -103,9 +116,15 @@ public class AierpWecomDraftService {
         data.put("boundErpLoginName", user.getLoginName());
         data.put("tenantId", user.getTenantId());
         data.put("nature", "REAL_ERP");
-        data.put("posted", false);
-        data.put("stockUnchanged", true);
         String status = String.valueOf(created.get("status"));
+        boolean confirmed = "CONFIRMED".equals(status);
+        // Do not override accurate posted/stockUnchanged from gateway for CONFIRMED replays.
+        if (created.get("posted") == null) {
+            data.put("posted", confirmed);
+        }
+        if (created.get("stockUnchanged") == null) {
+            data.put("stockUnchanged", !confirmed);
+        }
         data.put("statusLabel", statusLabel(status));
         Object payloadObj = created.get("payload");
         JSONObject payload = payloadObj instanceof JSONObject
@@ -129,11 +148,15 @@ public class AierpWecomDraftService {
                 }
                 summary.put("unitPrice", unitPrice);
                 summary.put("amount", amount);
-                summary.put("stockDeltaHint", "+" + line.get("operNumber") + " @ " + line.getString("depotName") + "（仅确认后生效）");
+                summary.put("stockDeltaHint", confirmed
+                        ? "已过账"
+                        : ("+" + line.get("operNumber") + " @ " + line.getString("depotName") + "（仅确认后生效）"));
             }
         }
         data.put("summary", summary);
-        data.put("hint", "待确认、未入库。库存尚未变化。正式过账属后续可信确认阶段，当前无法通过对话直接审核。");
+        if (!confirmed) {
+            data.put("hint", "待确认、未入库。库存尚未变化。正式过账属后续可信确认阶段，当前无法通过对话直接审核。");
+        }
         return data;
     }
 

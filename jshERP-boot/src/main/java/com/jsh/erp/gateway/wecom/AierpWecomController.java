@@ -12,8 +12,9 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * WeCom adapter + PC claim endpoints for AIERP-012A.
+ * WeCom adapter for AIERP-012A/013/015A.
  * Adapter routes require HMAC; claim requires logged-in ERP session.
+ * No WeCom confirm/posting route (015B).
  */
 @RestController
 @RequestMapping("/aierp/v1/wecom")
@@ -23,6 +24,8 @@ public class AierpWecomController {
     private AierpWecomAdapterAuth adapterAuth;
     @Resource
     private AierpWecomBindingService bindingService;
+    @Resource
+    private AierpWecomQueryService queryService;
     @Resource
     private AierpWecomDraftService draftService;
 
@@ -55,7 +58,36 @@ public class AierpWecomController {
         return ok(bindingService.stockQueryDelegated(parse(raw)));
     }
 
-    /** AIERP-015A: create unposted purchase DRAFT for bound ERP user. No confirm. */
+    @PostMapping("/material/search")
+    public BaseResponseInfo materialSearch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.materialSearch(parse(raw)));
+    }
+
+    @PostMapping("/partner/search")
+    public BaseResponseInfo partnerSearch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.partnerSearch(parse(raw)));
+    }
+
+    @PostMapping("/bill/search")
+    public BaseResponseInfo billSearch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.billSearch(parse(raw)));
+    }
+
+    @PostMapping("/bill/detail")
+    public BaseResponseInfo billDetail(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.billDetail(parse(raw)));
+    }
+
+    @PostMapping("/report/query")
+    public BaseResponseInfo reportQuery(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(queryService.reportQuery(parse(raw)));
+    }
+
     @PostMapping("/purchase/prepare")
     public BaseResponseInfo purchasePrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);

@@ -1,26 +1,18 @@
-# AI-ERP Cursor Agent · 2026-10-21 Next tasks
+# AI-ERP Cursor Agent · PR #24 最小 Review Fix
 
-仓库严格限定 `youxihe/ai-erp`。正式 OpenClaw 是 Windows native `F:\aierp-openclaw`，不重新安装、不升级、不修改其它项目。企微 + DeepSeek + 绑定 ERP 真库存已可用。
+只操作 `youxihe/ai-erp`。当前 OpenClaw 为 `F:\aierp-openclaw` Windows native，严禁重装/升级，也不可碰 HR 项目。
 
-## #1：AIERP-013 PR #21 必须先修复的 P0
+**当前重要事实**：
+- PR #21 AIERP-013 **已合并**（`8251b7e`）：4 个既有 ERP 工具 + 5 个只读业务查询工具，混合仓金额跨仓权限 23/23 通过。
+- PR #22 014D **已合并**，可信确认协议已冻结；**015B 未 RELEASED**。
+- PR #24 AIERP-015A（`e441e4d1`）**REVIEW_FIX_REQUIRED**：Java 明确的 `createDraftAs(boundUser)`、真实数据库 DRAFT、库存不变 14/14 本地 PASS；但企微实测说当前 Session 不含 `erp_purchase_prepare`，从旧 master 开发的插件配置丢失 013 五个查询工具。
 
-阅读 https://github.com/youxihe/ai-erp/pull/21 最新 ChatGPT Review 评论。当前 `feat/aierp-013-business-query-tools` 的跨仓混合单据存在 **只要有一条有权明细即可拿到整张单据 `total_price` 与供应商/客户表头信息** 的漏洞。
+**立即操作**：
+1. 读 PR #24 ChatGPT Review 评论，原分支 `feat/aierp-015a-purchase-dialog-draft` 同步最新 `origin/master`，谨慎合并 013 和 015A 两侧 OpenClaw 源码、配置、workspace 指令，**全量 12 个指定 Tool**；不覆盖本控制面 `013 DONE`、`014D DONE`、`015A REVIEW_FIX_REQUIRED`。
+2. 草稿状态/取消必须严格限定可信 `channel + botId + wecomUserId + binding epoch` 所有权，不仅检查 ERP tenant/user；同 ERP 登录的另一个企微用户不可猜草稿 ID 读取/取消。加合成双身份/换绑 fixture；不修改真实库存。
+3. `createDraftAs` 幂等 replay 已处于 CONFIRMED/CANCELLED 状态时不能伪称 `posted=false/stockUnchanged=true`；结果须以真实状态为准或明确拒绝。
+4. F: 运行时先备份插件、`openclaw.json`、`AGENTS.md` 再更新，验证 Gateway 实际注册并开放 12 个工具；新/刷新企微对话实际能调用 `erp_partner_search` 和 `erp_purchase_prepare`（不是只看 HTTP 200）。
+5. 用户“沿用之前那家供应商”要先用实际授权 ERP 采购历史核实；无法证明时列候选或追问，不能靠 LLM 记忆填充。
+6. 无过账证据、新 HEAD、最小企微实际 DRAFT 截图 → `REVIEW_FIX_PUSHED`，由 ChatGPT 决定合并，Cursor **不自行 Merge**。
 
-在原分支最小修复：只允许查询**所有有效明细仓库均授权**的整张单据（列表与详情），新增跨仓双权限用户/合成 fixture 隔离用例；同租户之外完全不能读取。其它混合单位统计和“出库/其它”严格服务口径是 P1，先记技术债别拖延。
-
-重新跑无过账脚本，Push `REVIEW_FIX_PUSHED`，反馈 HEAD/证据；不自行 Merge。
-
-## #2：AIERP-015A（正式 RELEASED，可接力开始）
-
-待 #21 修复分支 Push 后，从当时最新 `origin/master` 建新的 `feat/aierp-015a-purchase-dialog-draft`；可以先做隔离的产品对话和服务端草稿，**不要从未合并的 013 分支派生**，也不要复制 013 未 Review 的功能代码。优先等 013 merge 后再进行完整查询工具联调。
-
-阅读 `docs/poc/queue/AIERP-015A.md`、`docs/poc/adr/AIERP-014D-conversational-confirmation.md` 和 `docs/poc/14d-api-contract.md`。
-
-交付：企微对话提取采购物料/数量/单位/仓库/供应商 → 真实 ERP 匹配与追问 → 经可信绑定 ERP 用户**生成未审核、库存不变的真实 DRAFT** → 返回中文摘要、草稿号、修改/取消/过期提示。严格禁止虚构 HTTP session、ThreadLocal/RequestContextHolder 或共享管理员 Token；如果原生 createDraft 无法安全委托，先完成对话编排并报告受控身份缺口，不得标真实 DRAFT PASS。
-
-**不开发**模型可调用的确认工具、不调用 `draft.confirm`、不新增原生过账，等待 015B Review/Release。短期可以展示本机已登录 ERP 页面作为未来确认路径，但不可宣称企微已入库。
-
-提交真实证据、无过账测试与 `READY_FOR_REVIEW`，Cursor 仍不自行 Merge。
-
-## 安全/运维
-不将 HMAC 密钥、企微确认挑战码、聊天记录、ERP 账号密码放到 Git；更新 F: 真实配置前备份并提供脱敏差异。双真实企微身份/低权限 ERP UAT 仍 `NOT_VERIFIED`，在多用户正式试用前必须完成。
+**安全闸门**：无 `erp_draft_confirm`，不造假 Session/管理员 Token；015B 依赖 015A 通过后才可单独 Release。双真实用户仓库权限 UAT 仍 NOT_VERIFIED。

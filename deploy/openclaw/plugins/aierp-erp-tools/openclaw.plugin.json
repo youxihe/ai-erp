@@ -1,7 +1,7 @@
 {
   "id": "aierp-erp-tools",
   "name": "AIERP ERP Tools",
-  "description": "Read-only ERP bind + stock tools using WeCom trusted sender identity",
+  "description": "WeCom trusted-identity ERP bind + queries + purchase DRAFT (no confirm)",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -12,7 +12,15 @@
       "erp_bind_start",
       "erp_binding_status",
       "erp_unbind",
-      "erp_stock_query"
+      "erp_stock_query",
+      "erp_material_search",
+      "erp_partner_search",
+      "erp_bill_search",
+      "erp_bill_detail",
+      "erp_report_query",
+      "erp_purchase_prepare",
+      "erp_draft_status",
+      "erp_draft_cancel"
     ]
   }
 }
