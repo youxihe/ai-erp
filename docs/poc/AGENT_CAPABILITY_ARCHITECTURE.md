@@ -29,6 +29,8 @@
 | `erp_receipt` | 查询已审核单据及归属自己的回执、PDF 状态 | Java 实时重验账单、权限、会话绑定版本；不接任意文件路径 |
 | **可信确认通道（非 Tool）** | 用户在企微本人发送原始消息/点击真正卡片或 ERP 已登录页面确认 | 可信消息身份与草稿、挑战、版本及 payload hash 一致，一次性原生过账 |
 
+多行/多单 Excel 需定义 `erp_file_template`、`erp_file_preview`、`erp_batch_prepare`、`erp_batch_receipt` 作为能力目录上的受控操作（或专用非通用媒体 adapter）；用户上传的 XLSX 只是数据，不得被 Agent 当作操作指令。销售/出库与生产必须有各自明确的 sideEffectLevel 与 ERP 原生单据语义。
+
 建议核心接口：`POST /aierp/v1/agent/discover`、`POST /aierp/v1/agent/query`、`POST /aierp/v1/agent/prepare`、`POST /aierp/v1/agent/receipt`；这只是候选，**不得让 Java 接收任意 URL/path/method 或 raw SQL**，也不得代替既有 012A HMAC 和 015B 可信确认。
 
 ## 操作分类及审核矩阵
@@ -44,6 +46,7 @@
 
 ## 独立实施与兼容策略
 
+- **017A–017C 客户 Demo P0**：优先用现有 ExcelService 构建受控文件双向传输、无过账批量预览、批量未审核草稿与可信批次确认；不能把已有直接过账 `excel.confirm` 开给模型。优先支持采购入库、MIX 组装配制/生产、SERVICE 客户耗料出库；SALE 销售出库目前仅模板，需补 ERP 原生受控写入再开放。见 `docs/poc/EXCEL_BATCH_DEMO_ACCEPTANCE.md`。
 - **019A：docs-only** 盘点现有 12 Tool 和 Java API，整理经过审查的 `operationId` JSON/YAML + Schema/权限模型，先写采购/库存/配制/服务耗料/分析的 SKILL.md 草稿和对话验证矩阵。无实际运行插件改动。
 - **019B：runtime MVP** 先做 `erp_discover` + `erp_query` **只读**，对标 013 五个查询 Tool 的真实结果、权限与性能，验证“之前那家供应商”之类多步自主编排。保留旧 12 Tool 作为兼容基线；不直接废弃。通过后再开放通用 `erp_prepare`，仅无入账草稿。
 - **015C** 单独处理企微 PDF 送达/回执重取与确认语句标点容错，不改变原生业务事务。
