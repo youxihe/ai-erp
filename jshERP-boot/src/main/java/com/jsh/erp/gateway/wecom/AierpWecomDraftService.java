@@ -27,9 +27,15 @@ public class AierpWecomDraftService {
     private AierpWecomBindingService bindingService;
     @Resource
     private AierpGatewayService gatewayService;
+    @Resource
+    private AierpWecomExcelService excelService;
 
     public Map<String, Object> purchasePrepare(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        // 017A: block inventing "Excel drafts" from filename/chat while a file workflow is open.
+        if (body == null || !body.getBooleanValue("excelWorkflowCancel")) {
+            excelService.assertNoOpenFileWorkflow(ctx);
+        }
         AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
         JSONObject draftBody = buildPurchaseBody(body);
         Map<String, Object> created = gatewayService.createDraftAs(ctx.user, "PURCHASE", draftBody, owner);

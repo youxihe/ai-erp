@@ -1,6 +1,6 @@
 {
   "suite": "aierp-017a-excel-preview-flow",
-  "at": "2026-10-21T09:49:47.280Z",
+  "at": "2026-10-21T12:08:32.139Z",
   "wecomFixture": "aierp017***",
   "results": [
     {
@@ -11,22 +11,22 @@
     {
       "name": "template_purchase",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"采购入库模板.xlsx\",\"confirmSupported\":true,\"bytes\":4189}"
+      "detail": "{\"code\":200,\"fileName\":\"采购入库模板.xlsx\",\"confirmSupported\":true,\"bytes\":4188}"
     },
     {
       "name": "template_mix",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\",\"confirmSupported\":true,\"bytes\":4187}"
+      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\",\"confirmSupported\":true,\"bytes\":4186}"
     },
     {
       "name": "template_service",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"服务耗料模板.xlsx\",\"confirmSupported\":true,\"bytes\":4183}"
+      "detail": "{\"code\":200,\"fileName\":\"服务耗料模板.xlsx\",\"confirmSupported\":true,\"bytes\":4182}"
     },
     {
       "name": "template_sale",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"销售出库模板（仅模板不可过账）.xlsx\",\"confirmSupported\":false,\"bytes\":4210}"
+      "detail": "{\"code\":200,\"fileName\":\"销售出库模板（仅模板不可过账）.xlsx\",\"confirmSupported\":false,\"bytes\":4209}"
     },
     {
       "name": "sale_template_only",
@@ -41,17 +41,17 @@
     {
       "name": "preview_purchase_ok",
       "ok": true,
-      "detail": "{\"previewId\":\"pv-1801b90de1024d6ab5accf2efccdb24a\",\"summary\":{\"records\":1,\"confirmable\":1,\"posted\":false,\"stockUnchanged\":true},\"hintZh\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\",\"records\":1}"
+      "detail": "{\"previewId\":\"pv-12cadcca3e18413b9624c851fe7df570\",\"summary\":{\"records\":1,\"confirmable\":1,\"posted\":false,\"stockUnchanged\":true},\"hintZh\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\",\"records\":1}"
     },
     {
       "name": "preview_mix_ok",
       "ok": true,
-      "detail": "{\"code\":200,\"previewId\":\"pv-30071ec0cd954504bbf23f894b6bcaf5\",\"hint\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\"}"
+      "detail": "{\"code\":200,\"previewId\":\"pv-865bf18522db4cb48e0c98b2b43d7b71\",\"hint\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\"}"
     },
     {
       "name": "preview_service_ok",
       "ok": true,
-      "detail": "{\"code\":200,\"previewId\":\"pv-21c2663a03444fce8dec41b0fdb18ab4\"}"
+      "detail": "{\"code\":200,\"previewId\":\"pv-4c8f6936714547b3952efb008eb00ca2\"}"
     },
     {
       "name": "sale_preview_not_supported",

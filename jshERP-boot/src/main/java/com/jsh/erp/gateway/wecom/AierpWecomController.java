@@ -160,6 +160,18 @@ public class AierpWecomController {
         return ok(excelService.preview(parse(raw)));
     }
 
+    @PostMapping("/excel/workflow/status")
+    public BaseResponseInfo excelWorkflowStatus(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.workflowStatus(parse(raw)));
+    }
+
+    @PostMapping("/excel/workflow/cancel")
+    public BaseResponseInfo excelWorkflowCancel(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.workflowCancel(parse(raw)));
+    }
+
     private static JSONObject parse(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
             return new JSONObject();

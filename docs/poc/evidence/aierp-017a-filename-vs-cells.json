@@ -1,0 +1,47 @@
+{
+  "suite": "aierp-017a-filename-vs-cells",
+  "at": "2026-10-21T12:08:30.788Z",
+  "trickyName": "采购入库模板---100L---.xlsx",
+  "previewId": "pv-e26ebd495e9c4e3c98ce9fe466beede9",
+  "results": [
+    {
+      "name": "template_20L_cells",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "preview_qty_from_cells_20_not_filename_100",
+      "ok": true,
+      "detail": "{\"previewId\":\"pv-e26ebd495e9c4e3c98ce9fe466beede9\",\"has20\":true,\"has100Cell\":false,\"qtySource\":\"XLSX_CELLS\"}"
+    },
+    {
+      "name": "workflow_blocks_prepare",
+      "ok": true,
+      "detail": "{\"fileSha256\":\"6f732ec1f316956b64a7156898ca5acebc21a20ce646480c4b404ed81ff0cb28\",\"erpUserId\":63,\"wecomUserIdMasked\":\"fn***\",\"tenantId\":63,\"previewId\":\"pv-e26ebd495e9c4e3c98ce9fe466beede9\",\"messageMsgId\":\"msg-1792584510407\",\"bindingVersion\":1,\"status\":\"PREVIEWED\",\"updatedAt\":1792584510490,\"blocksPurchasePrepare\":true}"
+    },
+    {
+      "name": "prepare_blocked_while_workflow_open",
+      "ok": true,
+      "detail": "{\"code\":409,\"msg\":\"Excel 文件流程未关闭（status=PREVIEWED）。017A 仅预览，禁止用文件名/口头猜测创建采购草稿。请先完成 PREVIEWED 回复或调用 excel/workflow/cancel。勿确认 #113。\"}"
+    },
+    {
+      "name": "workflow_cancel",
+      "ok": true,
+      "detail": "{\"status\":\"CANCELLED\",\"blocksPurchasePrepare\":false,\"hint\":\"Excel 文件流程已关闭，可重新口头采购。\"}"
+    },
+    {
+      "name": "stock_unchanged",
+      "ok": true,
+      "detail": "{\"stockBefore\":170.7,\"stockAfter\":170.7}"
+    },
+    {
+      "name": "no_new_draft_from_blocked_prepare",
+      "ok": true,
+      "detail": "{\"draftsBefore\":0,\"draftsAfter\":0}"
+    }
+  ],
+  "pass": 7,
+  "fail": 0,
+  "LIVE_WECOM_FILE_PREVIEW": "PENDING_USER_DM",
+  "note": "Do not confirm draft #113. Filename ---100L--- must not become qty."
+}
