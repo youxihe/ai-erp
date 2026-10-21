@@ -16,9 +16,9 @@
 | AIERP-010 | PLANNED | 首页库存按仓库分组、名称与编码并显；非阻断小任务 |
 | AIERP-011 | **DONE / PR #17** | Windows native（F:）、DeepSeek 真实回复、企微 WS；启动/运维 Review Fix 已通过 |
 | AIERP-012A | **DONE / PR #19** | 可信企微用户绑定 ERP，HMAC/nonce/权限重验，真实库存查询；单用户端到端成功，双用户权限 UAT 待补 |
-| **AIERP-013** | **REVIEW_FIX_PUSHED / PR #21** | **跨仓混合单据整单表头金额泄漏已按「全部明细仓均授权」收紧；待 ChatGPT 再审** |
+| AIERP-013 | **DONE / PR #21** | 物料、客户供应商、单据明细、经营查询；跨仓混合单据权限修复通过，23/23 PASS |
 | AIERP-014D | **DONE / PR #22** | **可信原始消息确认、草稿挑战、显式 ERP actor 设计已 Review + Merge** |
-| **AIERP-015A** | **RELEASED / next_order #2** | **企微多轮采购信息收集与真实 DRAFT；后续 015B 再开放可信确认** |
+| **AIERP-015A** | **REVIEW_FIX_REQUIRED / PR #24 · next_order #1** | 采购 DRAFT 后端 14/14 PASS；待合并 013+015A 工具、验证企微真实调用和草稿按企微身份隔离 |
 | AIERP-015B | PLANNED / after 015A security Review | 企业微信可信确认事件或 ERP 登录确认 → 原生审核过账，严格身份委托 |
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017 | PLANNED | Excel 企微文件接入、业务异常处理；图片/Excel/H5 报表按渠道能力降级 |
@@ -30,9 +30,9 @@
 ## 2026-10-21 新阶段：从库存问答到业务流程 Agent
 
 **当前队列与开工顺序**：
-1. **AIERP-013 / PR #21**：混合仓库单据表头整单金额泄漏已按 Review 最小方案修复；Push `REVIEW_FIX_PUSHED`，由 ChatGPT Review/merge。本地断言 ≠ 双用户仓库 UAT。
+1. **AIERP-013 / PR #21 已 DONE**：已合入 master，Query Tool 包含物料、供应商/客户、单据、汇总。服务器侧按有权仓库整单可见性保护金额，23/23 PASS，双真人身份 UAT 未完成。
 2. **AIERP-014D / PR #22 已 DONE**：可信确认设计已获 Review。
-3. **AIERP-015A 已 RELEASED**：013 修复分支 Push 后可独立实现采购槽位/DRAFT；基于最新 master 独立分支。**禁止模型可调用的 confirm 工具**。015B 仍为 PLANNED。
+3. **AIERP-015A / PR #24 REVIEW_FIX_REQUIRED**：后端显式绑定 ERP 用户 DRAFT 14/14 PASS，但独立旧分支的 OpenClaw plugin/alsoAllow 仅含 4 基础+3 草稿工具，遗漏已合并 013 的 5 个查询工具；用户实际企微会话报告 prepare 尚未加载。先将原 #24 分支 rebase 最新 master、合并为 **12 个工具**，确保 F: 真实 Agent 现用会话可见和调用，并修复草稿 WeCom sender/binding version 隔离。确认不属此阶段，015B 仍 PLANNED。
 4. Cursor 不自行 Merge / 不主动释放 015B/016/017。
 
 详细见 `docs/poc/queue/AIERP-015A.md` 及已合并 ADR `docs/poc/adr/AIERP-014D-conversational-confirmation.md`。
