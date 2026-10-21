@@ -1,0 +1,112 @@
+{
+  "at": "2026-10-21T05:14:48.346Z",
+  "results": [
+    {
+      "name": "find_binding",
+      "ok": true,
+      "detail": {
+        "wecomUserIdMasked": "si***",
+        "erpUserId": "63",
+        "bindingVersion": "1",
+        "botId": "aib8ZNDXJ9jrokrIdKVFI3924mpY59TqETG"
+      }
+    },
+    {
+      "name": "reject_llm_self_report",
+      "ok": true,
+      "detail": {
+        "code": 403,
+        "data": {
+          "message": "确认事件来源必须是 WECOM_BEFORE_DISPATCH"
+        }
+      }
+    },
+    {
+      "name": "reject_group_confirm",
+      "ok": true,
+      "detail": {
+        "code": 403,
+        "data": {
+          "message": "禁止在群聊中确认采购"
+        }
+      }
+    },
+    {
+      "name": "reject_unknown_wecom",
+      "ok": true,
+      "detail": {
+        "code": 401,
+        "data": {
+          "message": "尚未绑定 ERP，请先发送「绑定ERP」"
+        }
+      }
+    },
+    {
+      "name": "prepare_test_draft",
+      "ok": true,
+      "detail": {
+        "draftId": 110,
+        "status": "AWAITING_CONFIRM",
+        "phrase": "确认采购110"
+      }
+    },
+    {
+      "name": "stock_before",
+      "ok": true,
+      "detail": {
+        "barCode": "RM-A001",
+        "materialName": "表面活性剂",
+        "depotId": 14,
+        "depotName": "原料仓",
+        "unit": "L",
+        "currentStock": 159.7,
+        "tenantId": 63,
+        "loginName": "jsh",
+        "rows": [
+          {
+            "barCode": "RM-A001",
+            "materialName": "表面活性剂",
+            "depotId": 14,
+            "depotName": "原料仓",
+            "unit": "L",
+            "currentStock": 159.7
+          }
+        ],
+        "boundErpLoginName": "jsh",
+        "asOf": "2026-10-21 05:14:47"
+      }
+    },
+    {
+      "name": "confirm_once",
+      "ok": true,
+      "detail": {
+        "billNumber": "GW-PURCHASE-110",
+        "depotHeadId": 365,
+        "stockBefore": {
+          "RM-A001@原料仓": 159.7
+        },
+        "stockAfter": {
+          "RM-A001@原料仓": 160.7
+        },
+        "receiptId": "eacdf25b3be37b657bba02f8ba802d68",
+        "pdfStatus": "PDF_GENERATED"
+      }
+    },
+    {
+      "name": "confirm_replay_idempotent",
+      "ok": true,
+      "detail": {
+        "billNumber": "GW-PURCHASE-110",
+        "replayed": true
+      }
+    },
+    {
+      "name": "native_audited_bill",
+      "ok": true,
+      "detail": "GW-PURCHASE-110\t1\t63\t63"
+    }
+  ],
+  "testDraftId": 110,
+  "billNumber": "GW-PURCHASE-110",
+  "note": "Did not confirm pre-existing user drafts (#106 etc). WeCom PDF client open still needs human UAT."
+}

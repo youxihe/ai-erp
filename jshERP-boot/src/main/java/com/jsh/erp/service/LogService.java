@@ -161,7 +161,8 @@ public class LogService {
                 Log log = new Log();
                 log.setUserId(userId);
                 log.setOperation(moduleName);
-                log.setClientIp(getLocalIp(request));
+                // AIERP-015B: actor path may have no HTTP session; never NPE on null request.
+                log.setClientIp(request == null ? "aierp-actor" : getLocalIp(request));
                 log.setCreateTime(new Date());
                 Byte status = 0;
                 log.setStatus(status);

@@ -114,16 +114,26 @@ public class AierpWecomBindingService {
             List<Map<String, Object>> existing = jdbcTemplate.queryForList(
                     "SELECT id FROM aierp_wecom_binding WHERE channel=? AND bot_id=? AND wecom_user_id=?",
                     CHANNEL, botId, wecomUserId);
+            long bindingVersion;
             if (existing.isEmpty()) {
                 jdbcTemplate.update(
-                        "INSERT INTO aierp_wecom_binding (channel, bot_id, wecom_user_id, tenant_id, erp_user_id, erp_login_name, status, bound_at, updated_at) VALUES (?,?,?,?,?,?, 'ACTIVE', ?, ?)",
+                        "INSERT INTO aierp_wecom_binding (channel, bot_id, wecom_user_id, tenant_id, erp_user_id, erp_login_name, status, binding_version, bound_at, updated_at) VALUES (?,?,?,?,?,?, 'ACTIVE', 1, ?, ?)",
                         CHANNEL, botId, wecomUserId, user.getTenantId(), user.getId(), user.getLoginName(),
                         TS.format(now), TS.format(now));
+                bindingVersion = 1L;
             } else {
+                // Monotonic generation: same-second rebind must get a new version.
                 jdbcTemplate.update(
-                        "UPDATE aierp_wecom_binding SET tenant_id=?, erp_user_id=?, erp_login_name=?, status='ACTIVE', bound_at=?, unbound_at=NULL, updated_at=? WHERE channel=? AND bot_id=? AND wecom_user_id=?",
+                        "UPDATE aierp_wecom_binding SET tenant_id=?, erp_user_id=?, erp_login_name=?, status='ACTIVE', "
+                                + "binding_version=IFNULL(binding_version,0)+1, bound_at=?, unbound_at=NULL, updated_at=? "
+                                + "WHERE channel=? AND bot_id=? AND wecom_user_id=?",
                         user.getTenantId(), user.getId(), user.getLoginName(), TS.format(now), TS.format(now),
                         CHANNEL, botId, wecomUserId);
+                List<Map<String, Object>> verRows = jdbcTemplate.queryForList(
+                        "SELECT binding_version FROM aierp_wecom_binding WHERE channel=? AND bot_id=? AND wecom_user_id=?",
+                        CHANNEL, botId, wecomUserId);
+                bindingVersion = verRows.isEmpty() || verRows.get(0).get("binding_version") == null
+                        ? 1L : ((Number) verRows.get(0).get("binding_version")).longValue();
             }
             Map<String, Object> data = new LinkedHashMap<String, Object>();
             data.put("status", "ACTIVE");
@@ -131,6 +141,7 @@ public class AierpWecomBindingService {
             data.put("erpLoginName", user.getLoginName());
             data.put("tenantId", user.getTenantId());
             data.put("boundAt", TS.format(now));
+            data.put("bindingVersion", bindingVersion);
             return data;
         });
     }
@@ -152,6 +163,9 @@ public class AierpWecomBindingService {
         data.put("tenantId", binding.get("tenant_id"));
         data.put("wecomUserIdMasked", mask(wecomUserId));
         data.put("boundAt", String.valueOf(binding.get("bound_at")));
+        if (binding.get("binding_version") != null) {
+            data.put("bindingVersion", ((Number) binding.get("binding_version")).longValue());
+        }
         return data;
     }
 

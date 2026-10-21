@@ -1,7 +1,7 @@
 {
   "id": "aierp-erp-tools",
   "name": "AIERP ERP Tools",
-  "description": "WeCom trusted-identity ERP bind + queries + purchase DRAFT (no confirm)",
+  "description": "WeCom trusted-identity ERP bind + queries + purchase draft + before_dispatch confirm",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
