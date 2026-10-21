@@ -25,8 +25,8 @@
 | AIERP-015C | PLANNED / after 015B | 企微 PDF 附件发送实测、回执再次领取、确认指令标点兼容 |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
-| **AIERP-017A** | **REVIEW_FIX_REQUIRED / PR #30 · next_order #1** | **真人 XLSX PREVIEWED 成功（100L / 华东化工 / 1张单），待去除 prepare 门禁模型参数旁路、优化美观必填模板及业务对话** |
-| **AIERP-017B1** | **RELEASED / next_order #2 (gated)** | **单张采购 Excel 有效预览 → 服务端真正未审核 DRAFT → 企微本人确认原生入库；待 #30 Review/Merge 后才部署** |
+| AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
+| **AIERP-017B1** | **RELEASED / next_order #1 (CODE)** | **企微 Excel 预览 → 安全绑定真实采购草稿 → 用户一次本人确认原生入库 → 文本回执；最高客户 Demo P0** |
 | AIERP-017B | PLANNED / after 017A | **采购入库、配制生产、服务耗料出库批量 DRAFT；销售出库接口差异补齐** |
 | AIERP-017C | PLANNED / after 017B + 015B | **批次可信确认 → 原生多单过账 → XLSX/PDF 回执发送** |
 | AIERP-017 | SUPERSEDED by 017A–017C | Excel 批量业务成为客户 Demo 核心，不是普通文件功能 |
@@ -34,6 +34,15 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-22 07:12 · 017A 已 DONE，017B1 立即开工
+
+- **PR #30 已重新开放、最终 Review 并合并**：`25d4c98f`。真实企微成功解析 XLSX；模板标记必填/选填、预填唯一业务单号与日期；`excelWorkflowCancel=true` 模型参数绕过已删除；Redis 保存最新预览摘要，禁止从文件名猜数量建草稿。ChatGPT 另补换绑后旧预览不可读的 actor/tenant/bindingVersion 校验，此补丁尚需 Cursor 本机无过账回归。
+- **客户 2026-10-22 07:09–07:10 真实 Demo**：成功预览一张业务单 `CG-20261021-230716-ACC9`、RM-A001 **80 L**、华东化工、原料仓、20 元/L、合计 **1600 元**；用户随后“按照这个进行实际入库”“确认”“确认采购CG-…”均未过账，机器人又误拿此前口头 20 L / 400 元建单方案。**Excel 业务单号 CG-... 与真实 ERP draftId（数字）不同**，不能混用；主导业务数据必须取 XLSX 真实预览中的 **80 L**，不能回退旧会话的 20 L。
+- **017B1 正式 RELEASED**，从最新 master 独立 `feat/aierp-017b1-verified-xlsx-purchase-confirm`。这次只做一张采购单（可多行）：真实 XLSX → 后端唯一、合法的最新预览 → 服务端自动生成真实未审核 DRAFT → 企微展示 **80 L / 1600 元 + 数字草稿号** → 客户仅回复一次 `确认采购{draftId}` → 复用已经验证的 015B 本人原始消息/原生事务入库 → 返回已审核单号、库存变化与回执。**用户无需先“取消文件”、重新传 Excel、再口头复述信息。**
+- **P0 保护**：文件解析结果只从存储的 `aierp_excel_preview.payload_json` 获取，不由模型用文件名/历史口头需求猜；可信 sender/bot/ERP actor/tenant/binding_generation/fileSHA/版本与当前角色/仓库复检；同文件/消息重试不重复建草稿；重传修订失效旧挑战；业务单号不是数字 draftId；历史错误来源草稿 #113 绝不自动确认。正式过账继续必须真实企微用户授权，且不开放 `excel.confirm` 模型工具。
+- **本地运行态 F: 单实例**：本机当前是否已同步 GitHub 017A 最新补丁，需要 Cursor 验证并跑无过账测试；ChatGPT 仅完成 GitHub 审查与合并，不宣称本机脚本已再次运行。
+- **次序**：017B1 客户 Demo 一单闭环 → 017B 采购多单 / MIX 生产 / SERVICE 耗料 / SALE 出库 → 017C 可信批次确认与业务回执；019B 动态工具 runtime 仍后置。禁止把该阶段拆成新的长方案研究。
 
 ## 2026-10-21 20:48 · 实测 Excel 已成功解析；核心阻断转为“预览 → 草稿 → 确认”
 
