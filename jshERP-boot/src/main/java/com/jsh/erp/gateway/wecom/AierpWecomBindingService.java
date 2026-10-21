@@ -191,9 +191,14 @@ public class AierpWecomBindingService {
 
     /**
      * Resolve WeCom trusted identity → active ERP user. Rejects spoofed identity fields.
-     * Shared by stock + AIERP-013 read-only business queries.
+     * Shared by stock (012A), queries (013), and drafts (015A). No HTTP session.
      */
     public User resolveBoundActiveUser(JSONObject body) throws Exception {
+        return resolveBoundContext(body).user;
+    }
+
+    /** Binding row + ERP user for WeCom draft ownership checks. */
+    public BoundContext resolveBoundContext(JSONObject body) throws Exception {
         String wecomUserId = requiredTrusted(body, "wecomUserId");
         String botId = firstNonEmpty(body.getString("botId"), defaultBotId, "default");
         if (body.containsKey("erpUserId") || body.containsKey("tenantId") || body.containsKey("token")
@@ -208,7 +213,19 @@ public class AierpWecomBindingService {
         long boundTenantId = ((Number) binding.get("tenant_id")).longValue();
         User user = loadUserById(erpUserId);
         assertActiveUserAndTenant(user, boundTenantId);
-        return user;
+        BoundContext ctx = new BoundContext();
+        ctx.user = user;
+        ctx.binding = binding;
+        ctx.wecomUserId = wecomUserId;
+        ctx.botId = botId;
+        return ctx;
+    }
+
+    public static final class BoundContext {
+        public User user;
+        public Map<String, Object> binding;
+        public String wecomUserId;
+        public String botId;
     }
 
     private Map<String, Object> findActiveBinding(String botId, String wecomUserId) {

@@ -42,7 +42,10 @@
       "erp_partner_search",
       "erp_bill_search",
       "erp_bill_detail",
-      "erp_report_query"
+      "erp_report_query",
+      "erp_purchase_prepare",
+      "erp_draft_status",
+      "erp_draft_cancel"
     ]
   },
   "plugins": {

@@ -243,44 +243,198 @@ public class AierpGatewayService {
     }
 
     public Map<String, Object> createDraft(String bizType, JSONObject body, HttpServletRequest request) throws Exception {
-        User user = currentUser();
+        return createDraftAs(currentUser(), bizType, body, null);
+    }
+
+    /** Session-free draft create for an explicit ERP user (optional WeCom channel owner). */
+    public Map<String, Object> createDraftAs(User user, String bizType, JSONObject body) throws Exception {
+        return createDraftAs(user, bizType, body, null);
+    }
+
+    /**
+     * Create a gateway DRAFT for an explicit ERP user (WeCom delegated actor).
+     * When wecomOwner is set, draft is bound to that WeCom sender + binding generation (bound_at).
+     * Does not use HTTP session / RequestContextHolder. Does not post inventory.
+     */
+    public Map<String, Object> createDraftAs(User user, String bizType, JSONObject body, WecomDraftOwner wecomOwner) throws Exception {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
         assertFunction(user, functionOf(bizType), BTN_ADD, bizType);
         String key = required(body, "idempotencyKey");
         JSONObject normalized = normalize(bizType, body, user);
         String payload = normalized.toJSONString();
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                        + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
+            assertWecomOwnerMatches(row, wecomOwner);
             if (!payload.equals(String.valueOf(row.get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
-            return draftView(row, true);
+            return draftFlags(draftView(row, true), row);
         }
         try {
-            jdbcTemplate.update(
-                    "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, payload_json, create_time) VALUES (?,?,?,?, 'DRAFT', ?, NOW())",
-                    key, user.getTenantId(), user.getId(), bizType, payload);
+            if (wecomOwner == null) {
+                jdbcTemplate.update(
+                        "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, biz_type, status, payload_json, create_time) "
+                                + "VALUES (?,?,?,?, 'DRAFT', ?, NOW())",
+                        key, user.getTenantId(), user.getId(), bizType, payload);
+            } else {
+                jdbcTemplate.update(
+                        "INSERT INTO aierp_gateway_draft (idempotency_key, tenant_id, user_id, channel, bot_id, wecom_user_id, binding_id, binding_bound_at, biz_type, status, payload_json, create_time) "
+                                + "VALUES (?,?,?,?,?,?,?,?,?, 'DRAFT', ?, NOW())",
+                        key, user.getTenantId(), user.getId(),
+                        wecomOwner.channel, wecomOwner.botId, wecomOwner.wecomUserId,
+                        wecomOwner.bindingId, wecomOwner.bindingBoundAt,
+                        bizType, payload);
+            }
         } catch (DuplicateKeyException ex) {
             List<Map<String, Object>> raced = jdbcTemplate.queryForList(
-                    "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                    "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                            + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                     user.getTenantId(), user.getId(), key);
             if (raced.isEmpty()) {
                 throw ex;
             }
+            assertWecomOwnerMatches(raced.get(0), wecomOwner);
             if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
-            return draftView(raced.get(0), true);
+            return draftFlags(draftView(raced.get(0), true), raced.get(0));
         }
         List<Map<String, Object>> created = jdbcTemplate.queryForList(
-                "SELECT id, status, payload_json, bill_number FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
+                "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                        + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=?",
                 user.getTenantId(), user.getId(), key);
-        Map<String, Object> view = draftView(created.get(0), false);
-        view.put("stockUnchanged", true);
-        view.put("posted", false);
+        Map<String, Object> view = draftFlags(draftView(created.get(0), false), created.get(0));
+        view.put("nature", "REAL_ERP");
         return view;
+    }
+
+    /** Cancel DRAFT owned by ERP user + WeCom channel owner (when provided). */
+    public Map<String, Object> cancelDraftAs(User user, long draftId, WecomDraftOwner wecomOwner) {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
+        Map<String, Object> row = requireOwnedDraftRow(user, draftId, wecomOwner);
+        String status = String.valueOf(row.get("status"));
+        if ("CONFIRMED".equals(status)) {
+            throw new BusinessRunTimeException(409, "草稿已过账，不能取消");
+        }
+        if ("CANCELLED".equals(status)) {
+            Map<String, Object> already = new LinkedHashMap<String, Object>();
+            already.put("draftId", draftId);
+            already.put("status", "CANCELLED");
+            already.put("cancelled", true);
+            already.put("replayed", true);
+            already.put("posted", false);
+            already.put("stockUnchanged", true);
+            already.put("nature", "REAL_ERP");
+            return already;
+        }
+        int n = jdbcTemplate.update(
+                "UPDATE aierp_gateway_draft SET status='CANCELLED' WHERE id=? AND tenant_id=? AND user_id=? AND status='DRAFT'",
+                draftId, user.getTenantId(), user.getId());
+        if (n != 1) {
+            throw new BusinessRunTimeException(409, "草稿状态已变化，无法取消");
+        }
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("draftId", draftId);
+        view.put("status", "CANCELLED");
+        view.put("cancelled", true);
+        view.put("posted", false);
+        view.put("stockUnchanged", true);
+        view.put("nature", "REAL_ERP");
+        return view;
+    }
+
+    public Map<String, Object> cancelDraftAs(User user, long draftId) {
+        return cancelDraftAs(user, draftId, null);
+    }
+
+    /** Read draft owned by ERP user + WeCom channel owner (when provided). */
+    public Map<String, Object> draftStatusAs(User user, long draftId, WecomDraftOwner wecomOwner) {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
+        }
+        Map<String, Object> row = requireOwnedDraftRow(user, draftId, wecomOwner);
+        Map<String, Object> view = draftFlags(draftView(row, false), row);
+        view.put("bizType", row.get("biz_type"));
+        view.put("createTime", String.valueOf(row.get("create_time")));
+        view.put("nature", "REAL_ERP");
+        return view;
+    }
+
+    public Map<String, Object> draftStatusAs(User user, long draftId) {
+        return draftStatusAs(user, draftId, null);
+    }
+
+    private Map<String, Object> requireOwnedDraftRow(User user, long draftId, WecomDraftOwner wecomOwner) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, status, payload_json, bill_number, biz_type, create_time, channel, bot_id, wecom_user_id, binding_id, binding_bound_at "
+                        + "FROM aierp_gateway_draft WHERE id=? AND tenant_id=? AND user_id=?",
+                draftId, user.getTenantId(), user.getId());
+        if (rows.isEmpty()) {
+            throw new BusinessRunTimeException(404, "草稿不存在或不属于当前绑定用户");
+        }
+        Map<String, Object> row = rows.get(0);
+        assertWecomOwnerMatches(row, wecomOwner);
+        return row;
+    }
+
+    private void assertWecomOwnerMatches(Map<String, Object> row, WecomDraftOwner wecomOwner) {
+        if (wecomOwner == null) {
+            return;
+        }
+        // WeCom callers must only see drafts created for their exact sender + binding generation.
+        if (row.get("wecom_user_id") == null || row.get("bot_id") == null || row.get("binding_id") == null
+                || row.get("binding_bound_at") == null) {
+            throw new BusinessRunTimeException(403, "该草稿不属于当前企微绑定会话");
+        }
+        if (!wecomOwner.wecomUserId.equals(String.valueOf(row.get("wecom_user_id")))
+                || !wecomOwner.botId.equals(String.valueOf(row.get("bot_id")))
+                || wecomOwner.bindingId != ((Number) row.get("binding_id")).longValue()) {
+            throw new BusinessRunTimeException(403, "无权访问其他企微身份的草稿");
+        }
+        String rowBoundAt = String.valueOf(row.get("binding_bound_at")).replace('T', ' ');
+        if (rowBoundAt.length() > 19) {
+            rowBoundAt = rowBoundAt.substring(0, 19);
+        }
+        String curBoundAt = wecomOwner.bindingBoundAt;
+        if (curBoundAt != null && curBoundAt.length() > 19) {
+            curBoundAt = curBoundAt.substring(0, 19);
+        }
+        if (curBoundAt == null || !rowBoundAt.startsWith(curBoundAt.substring(0, Math.min(19, curBoundAt.length())))) {
+            throw new BusinessRunTimeException(403, "绑定已更新，原企微草稿不可再访问，请重新创建");
+        }
+    }
+
+    private static Map<String, Object> draftFlags(Map<String, Object> view, Map<String, Object> row) {
+        boolean confirmed = "CONFIRMED".equals(String.valueOf(row.get("status")));
+        view.put("posted", confirmed);
+        view.put("stockUnchanged", !confirmed);
+        view.put("nature", "REAL_ERP");
+        return view;
+    }
+
+    /** Immutable WeCom ownership snapshot stored on drafts. */
+    public static final class WecomDraftOwner {
+        public final String channel;
+        public final String botId;
+        public final String wecomUserId;
+        public final long bindingId;
+        public final String bindingBoundAt;
+
+        public WecomDraftOwner(String channel, String botId, String wecomUserId, long bindingId, String bindingBoundAt) {
+            this.channel = channel;
+            this.botId = botId;
+            this.wecomUserId = wecomUserId;
+            this.bindingId = bindingId;
+            this.bindingBoundAt = bindingBoundAt;
+        }
     }
 
     public Map<String, Object> confirm(JSONObject body, HttpServletRequest request) throws Exception {

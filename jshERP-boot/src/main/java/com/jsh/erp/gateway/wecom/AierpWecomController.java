@@ -12,8 +12,9 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * WeCom adapter + PC claim endpoints for AIERP-012A/013.
+ * WeCom adapter for AIERP-012A/013/015A.
  * Adapter routes require HMAC; claim requires logged-in ERP session.
+ * No WeCom confirm/posting route (015B).
  */
 @RestController
 @RequestMapping("/aierp/v1/wecom")
@@ -25,6 +26,8 @@ public class AierpWecomController {
     private AierpWecomBindingService bindingService;
     @Resource
     private AierpWecomQueryService queryService;
+    @Resource
+    private AierpWecomDraftService draftService;
 
     @PostMapping("/binding/issue")
     public BaseResponseInfo issue(@RequestBody String raw, HttpServletRequest request) {
@@ -83,6 +86,24 @@ public class AierpWecomController {
     public BaseResponseInfo reportQuery(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(queryService.reportQuery(parse(raw)));
+    }
+
+    @PostMapping("/purchase/prepare")
+    public BaseResponseInfo purchasePrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(draftService.purchasePrepare(parse(raw)));
+    }
+
+    @PostMapping("/draft/status")
+    public BaseResponseInfo draftStatus(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(draftService.draftStatus(parse(raw)));
+    }
+
+    @PostMapping("/draft/cancel")
+    public BaseResponseInfo draftCancel(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(draftService.draftCancel(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {

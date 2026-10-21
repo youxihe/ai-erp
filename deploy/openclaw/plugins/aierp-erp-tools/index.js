@@ -3,7 +3,7 @@
  * Trusts only ctx.requesterSenderId when ctx.messageChannel === "wecom".
  * Never accepts wecomUserId / tenantId / erpUserId / token from the model.
  * Prefer DM-only: reject when chatType/sessionKey indicates group/channel.
- * 012A: bind + stock. 013: material / partner / bill / report (read-only).
+ * 012A: bind + stock. 013: material/partner/bill/report. 015A: purchase DRAFT (no confirm).
  */
 import { createHmac, randomBytes } from "node:crypto";
 
@@ -214,6 +214,21 @@ function formatReport(data) {
       `- ${r.partnerName || "合计"}：单据 ${r.billCount}，数量 ${r.totalQty}，金额 ${r.totalAmount}`,
   );
   return `${label}（${range}）：\n${lines.join("\n")}\n数据来自 ERP，非模型估算。`;
+}
+
+function formatPurchaseDraft(data) {
+  const s = data?.summary || {};
+  const lines = [
+    `采购草稿 #${data?.draftId ?? "?"} · ${data?.statusLabel || data?.status || "DRAFT"}`,
+    `- 物料：${s.materialName || "?"}（${s.barCode || "?"}）`,
+    `- 数量：${s.qty ?? "?"} ${s.unit || ""} → ${s.depotName || "?"}`,
+    `- 供应商：${s.partnerName || "?"}`,
+    s.amount != null ? `- 参考金额：${s.amount}` : null,
+    `- 库存：${s.stockDeltaHint || "确认后才会变化"}`,
+    `- 账号：${data?.boundErpLoginName || "?"}`,
+    data?.hint || "待确认、未入库。当前不能通过对话直接审核过账。",
+  ].filter(Boolean);
+  return lines.join("\n");
 }
 
 function registerErpTools(api) {
@@ -512,12 +527,113 @@ function registerErpTools(api) {
       },
     }),
   );
+
+  make(
+    "erp_purchase_prepare",
+    "创建真实未审核采购草稿（不改库存、不审核）。需要物料编码、数量、单位、仓库、供应商与幂等键。缺字段先追问。禁止声称已入库。",
+    "/aierp/v1/wecom/purchase/prepare",
+    {
+      type: "object",
+      properties: {
+        barCode: { type: "string", description: "物料编码，如 RM-A001" },
+        qty: { type: "number", description: "采购数量" },
+        unit: { type: "string", description: "单位，如 L" },
+        depotName: { type: "string", description: "入库仓库，如 原料仓" },
+        organName: { type: "string", description: "供应商名称" },
+        idempotencyKey: { type: "string", description: "幂等键，同一对话同一意图保持稳定" },
+        remark: { type: "string", description: "备注（可选）" },
+      },
+      required: ["barCode", "qty", "unit", "depotName", "organName", "idempotencyKey"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      barCode: str(p.barCode),
+      qty: num(p.qty),
+      unit: str(p.unit),
+      depotName: str(p.depotName),
+      organName: str(p.organName),
+      idempotencyKey: str(p.idempotencyKey),
+      remark: str(p.remark),
+    }),
+    (data) => ({
+      text: formatPurchaseDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: !!data?.posted,
+        stockUnchanged: data?.stockUnchanged !== false,
+        summary: data?.summary || null,
+        replayed: !!data?.replayed,
+      },
+    }),
+  );
+
+  make(
+    "erp_draft_status",
+    "查询当前绑定用户名下采购草稿状态与摘要（只读）。",
+    "/aierp/v1/wecom/draft/status",
+    {
+      type: "object",
+      properties: { draftId: { type: "number", description: "草稿 ID" } },
+      required: ["draftId"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      draftId: num(p.draftId),
+    }),
+    (data) => ({
+      text: formatPurchaseDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: !!data?.posted,
+        stockUnchanged: data?.stockUnchanged !== false,
+        summary: data?.summary || null,
+      },
+    }),
+  );
+
+  make(
+    "erp_draft_cancel",
+    "取消尚未过账的采购草稿。不能取消已确认单据。不改变库存。",
+    "/aierp/v1/wecom/draft/cancel",
+    {
+      type: "object",
+      properties: { draftId: { type: "number", description: "草稿 ID" } },
+      required: ["draftId"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      draftId: num(p.draftId),
+    }),
+    (data) => ({
+      text: data?.hint || `草稿 #${data?.draftId} 已取消，未入库。`,
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || "CANCELLED",
+        cancelled: true,
+        posted: false,
+        stockUnchanged: true,
+      },
+    }),
+  );
 }
 
 const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
-  description: "WeCom trusted-identity ERP bind + read-only stock/business queries (DM-only)",
+  description: "WeCom trusted-identity ERP bind + queries + purchase DRAFT (no confirm)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);

@@ -1,0 +1,136 @@
+{
+  "task": "AIERP-015A",
+  "at": "2026-10-21T02:41:06.722Z",
+  "base": "http://127.0.0.1:9999/jshERP-boot",
+  "passed": 25,
+  "total": 25,
+  "dualUserUat": "SIMULATED_TWO_WECOM_SAME_ERP",
+  "confirmToolRegistered": false,
+  "results": [
+    {
+      "name": "unbound_prepare_401",
+      "ok": true,
+      "detail": "{\"code\":401,\"data\":{\"message\":\"尚未绑定 ERP，请先发送「绑定ERP」\"}}"
+    },
+    {
+      "name": "bind_issue",
+      "ok": true,
+      "detail": "{\"codeLen\":8}"
+    },
+    {
+      "name": "bind_claim",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "spoof_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"拒绝客户端伪造身份字段\"}}"
+    },
+    {
+      "name": "purchase_prepare_real_draft",
+      "ok": true,
+      "detail": "{\"draftId\":102,\"status\":\"DRAFT\",\"amount\":200,\"label\":\"待确认、未入库\"}"
+    },
+    {
+      "name": "prepare_idempotent_replay",
+      "ok": true,
+      "detail": "{\"code\":200,\"draftId\":102,\"replayed\":true}"
+    },
+    {
+      "name": "prepare_idempotent_conflict",
+      "ok": true,
+      "detail": "409"
+    },
+    {
+      "name": "draft_status",
+      "ok": true,
+      "detail": "{\"status\":\"DRAFT\",\"label\":\"待确认、未入库\"}"
+    },
+    {
+      "name": "no_confirm_route",
+      "ok": true,
+      "detail": "{\"status\":500}"
+    },
+    {
+      "name": "bad_depot_rejected",
+      "ok": true,
+      "detail": "400"
+    },
+    {
+      "name": "stock_unchanged_after_prepare",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"158.700000\",\"stockAfterPrepare\":\"158.700000\"}"
+    },
+    {
+      "name": "db_draft_unposted",
+      "ok": true,
+      "detail": "DRAFT\tNULL"
+    },
+    {
+      "name": "draft_cancel",
+      "ok": true,
+      "detail": "CANCELLED"
+    },
+    {
+      "name": "stock_unchanged_after_cancel",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"158.700000\",\"stockAfterCancel\":\"158.700000\"}"
+    },
+    {
+      "name": "second_wecom_same_erp_bind",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "owner_a_prepare",
+      "ok": true,
+      "detail": "{\"draftId\":103,\"code\":200,\"msg\":null}"
+    },
+    {
+      "name": "owner_b_cannot_status_a",
+      "ok": true,
+      "detail": "{\"code\":403}"
+    },
+    {
+      "name": "owner_b_cannot_cancel_a",
+      "ok": true,
+      "detail": "{\"code\":403}"
+    },
+    {
+      "name": "unbind_before_rebind",
+      "ok": true,
+      "detail": "{\"unbound\":true,\"status\":\"UNBOUND\"}"
+    },
+    {
+      "name": "rebind_new_generation",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "rebind_denies_old_draft",
+      "ok": true,
+      "detail": "{\"code\":403,\"msg\":{\"message\":\"绑定已更新，原企微草稿不可再访问，请重新创建\"}}"
+    },
+    {
+      "name": "posted_flag_seed_draft",
+      "ok": true,
+      "detail": "{\"draftId\":104,\"code\":200,\"msg\":null,\"keyLen\":24}"
+    },
+    {
+      "name": "idempotent_confirmed_posted_true",
+      "ok": true,
+      "detail": "{\"posted\":true,\"stockUnchanged\":false,\"status\":\"CONFIRMED\"}"
+    },
+    {
+      "name": "status_confirmed_posted_true",
+      "ok": true,
+      "detail": "{\"posted\":true,\"status\":\"CONFIRMED\"}"
+    },
+    {
+      "name": "stock_still_unchanged_end",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"158.700000\",\"stockFinal\":\"158.700000\"}"
+    }
+  ]
+}

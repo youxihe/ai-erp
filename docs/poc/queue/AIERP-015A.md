@@ -1,7 +1,7 @@
 # AIERP-015A · 企微多轮采购信息收集与 ERP 真草稿（不入账）
 
-- **状态**：RELEASED / next_order #2，前置是 PR #21 的跨仓权限 Review Fix 已 push；**013 源码合并后做最终集成验收**
-- **开发分支**：`feat/aierp-015a-purchase-dialog-draft`，必须从最新 `origin/master` 建，不从未审的 013 分支派生。
+- **状态**：READY_FOR_REVIEW
+- **开发分支**：`feat/aierp-015a-purchase-dialog-draft`（自最新 `origin/master`；未从 013 派生）
 - **角色**：Cursor-ERP / OpenClaw+Java 适配器 / jshERP PC 小量交互。
 - **设计依据**：`docs/poc/adr/AIERP-014D-conversational-confirmation.md`、`docs/poc/14d-api-contract.md`。
 - **目标**：企微用户说“采购 10L 表面活性剂”→ 多轮补齐单位、原料仓、供应商等字段 → 真实 ERP 主数据/权限校验 → 生成**未审核、不会改变库存的真实 DRAFT** → 返回采购草稿号/详细摘要/当前状态/取消或修改方式。
