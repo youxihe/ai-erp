@@ -30,9 +30,12 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * AIERP-015B: business receipt text + optional PDF from real CONFIRMED native bills.
@@ -43,9 +46,12 @@ public class AierpWecomReceiptService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Pattern DEPOT_ID = Pattern.compile("\\[(\\d+)\\]");
 
     @Resource
     private JdbcTemplate jdbcTemplate;
+    @Resource
+    private AierpWecomBindingService bindingService;
 
     @Value("${aierp.receipt.storage-dir:/opt/jshERP/receipts}")
     private String storageDir;
@@ -142,21 +148,102 @@ public class AierpWecomReceiptService {
     }
 
     public byte[] loadPdfBytes(User user, String receiptId) {
+        if (user == null || user.getId() == null || user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "请先登录 ERP");
+        }
+        // Re-check live user + tenant (revoked/disabled sessions must not keep reading PDFs).
+        bindingService.assertSessionUserLive(user);
+
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT * FROM aierp_gateway_receipt WHERE receipt_id=? AND tenant_id=? AND actor_user_id=?",
                 receiptId, user.getTenantId(), user.getId());
         if (rows.isEmpty()) {
             throw new BusinessRunTimeException(404, "回执不存在或无权访问");
         }
-        Object ref = rows.get(0).get("pdf_storage_ref");
+        Map<String, Object> receipt = rows.get(0);
+        assertReceiptBillStillVisible(user, receipt);
+
+        Object ref = receipt.get("pdf_storage_ref");
         if (ref == null) {
             throw new BusinessRunTimeException(404, "回执 PDF 尚未生成");
         }
         try {
             return Files.readAllBytes(new File(String.valueOf(ref)).toPath());
+        } catch (BusinessRunTimeException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new BusinessRunTimeException(500, "读取回执 PDF 失败");
         }
+    }
+
+    /**
+     * Follow 012A/013: every line depot on the native bill must still be in the actor's UserDepot.
+     */
+    private void assertReceiptBillStillVisible(User user, Map<String, Object> receipt) {
+        Long headerId = null;
+        if (receipt.get("depot_head_id") != null) {
+            headerId = ((Number) receipt.get("depot_head_id")).longValue();
+        }
+        if (headerId == null && receipt.get("bill_number") != null) {
+            List<Map<String, Object>> heads = jdbcTemplate.queryForList(
+                    "SELECT id FROM jsh_depot_head WHERE number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1' LIMIT 1",
+                    receipt.get("bill_number"), user.getTenantId());
+            if (!heads.isEmpty()) {
+                headerId = ((Number) heads.get(0).get("id")).longValue();
+            }
+        }
+        if (headerId == null) {
+            throw new BusinessRunTimeException(403, "回执关联单据不可用，拒绝下载");
+        }
+        List<Map<String, Object>> headTenant = jdbcTemplate.queryForList(
+                "SELECT id, tenant_id FROM jsh_depot_head WHERE id=? AND IFNULL(delete_flag,'0')<>'1'",
+                headerId);
+        if (headTenant.isEmpty()
+                || !user.getTenantId().equals(((Number) headTenant.get(0).get("tenant_id")).longValue())) {
+            throw new BusinessRunTimeException(403, "无权访问其他租户回执");
+        }
+        List<Long> depots = allowedDepotIds(user);
+        if (depots.isEmpty()) {
+            throw new BusinessRunTimeException(403, "当前用户无仓库权限，拒绝下载回执");
+        }
+        Integer totalLines = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jsh_depot_item di WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1'",
+                Integer.class, headerId);
+        if (totalLines == null || totalLines < 1) {
+            throw new BusinessRunTimeException(404, "单据没有有效明细");
+        }
+        StringBuilder in = new StringBuilder();
+        List<Object> args = new ArrayList<Object>();
+        args.add(headerId);
+        for (int i = 0; i < depots.size(); i++) {
+            if (i > 0) {
+                in.append(',');
+            }
+            in.append('?');
+            args.add(depots.get(i));
+        }
+        Integer allowedLines = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jsh_depot_item di WHERE di.header_id=? AND IFNULL(di.delete_flag,'0')<>'1' "
+                        + "AND di.depot_id IN (" + in + ")",
+                Integer.class, args.toArray());
+        if (allowedLines == null || allowedLines.intValue() != totalLines.intValue()) {
+            throw new BusinessRunTimeException(403, "仓库权限已变更，无权继续下载该回执");
+        }
+    }
+
+    private List<Long> allowedDepotIds(User user) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT `value` FROM jsh_user_business WHERE type='UserDepot' AND key_id=? AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getString(1), String.valueOf(user.getId()));
+        List<Long> ids = new ArrayList<Long>();
+        if (values.isEmpty() || values.get(0) == null) {
+            return ids;
+        }
+        Matcher matcher = DEPOT_ID.matcher(values.get(0));
+        while (matcher.find()) {
+            ids.add(Long.valueOf(matcher.group(1)));
+        }
+        return ids;
     }
 
     private Map<String, Object> buildFacts(User user, Map<String, Object> confirmed) {

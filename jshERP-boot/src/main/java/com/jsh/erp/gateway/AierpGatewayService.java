@@ -1321,25 +1321,21 @@ public class AierpGatewayService {
         return view;
     }
 
+    /** Session-owned draft row (ERP UI). Caller must still re-check live WeCom binding before confirm. */
+    public Map<String, Object> loadOwnedDraftRow(User sessionUser, long draftId) {
+        return requireOwnedDraftRow(sessionUser, draftId, null);
+    }
+
     /**
-     * ERP session UI confirm: user must own the draft; WeCom ownership reconstructed from draft row.
+     * @deprecated Use {@link com.jsh.erp.gateway.wecom.AierpWecomConfirmService#confirmUi} which
+     * re-validates live ACTIVE binding + binding_version before {@link #confirmAs}.
      */
+    @Deprecated
     public Map<String, Object> confirmUiAs(User sessionUser, long draftId) throws Exception {
-        Map<String, Object> row = requireOwnedDraftRow(sessionUser, draftId, null);
-        if (row.get("wecom_user_id") == null || row.get("binding_id") == null || row.get("binding_version") == null) {
-            // Non-WeCom draft: fall back to classic session confirm path via idempotency is not used here.
-            throw new BusinessRunTimeException(400, "该草稿不是企微草稿，请使用原有确认入口");
-        }
-        WecomDraftOwner owner = new WecomDraftOwner(
-                String.valueOf(row.get("channel") == null ? "wecom" : row.get("channel")),
-                String.valueOf(row.get("bot_id")),
-                String.valueOf(row.get("wecom_user_id")),
-                ((Number) row.get("binding_id")).longValue(),
-                ((Number) row.get("binding_version")).longValue(),
-                row.get("binding_bound_at") == null ? null : String.valueOf(row.get("binding_bound_at")));
-        ConfirmEventProof proof = new ConfirmEventProof(
-                "确认采购" + draftId, null, false, "ERP_SESSION_UI");
-        return confirmAs(sessionUser, owner, draftId, proof);
+        Map<String, Object> row = loadOwnedDraftRow(sessionUser, draftId);
+        throw new BusinessRunTimeException(400,
+                "请通过 confirmUi 确认企微草稿（须重验 ACTIVE 绑定与 binding_version）; draftId=" + draftId
+                        + (row.get("binding_version") == null ? "" : " v" + row.get("binding_version")));
     }
 
     private User currentUser() throws Exception {

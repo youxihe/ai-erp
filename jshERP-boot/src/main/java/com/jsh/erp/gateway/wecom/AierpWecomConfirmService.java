@@ -56,6 +56,7 @@ public class AierpWecomConfirmService {
 
     /**
      * ERP logged-in UI fallback: session user confirms own WeCom draft.
+     * Re-checks live ACTIVE binding + binding_version (never trusts draft-row reconstruction alone).
      */
     public Map<String, Object> confirmUi(JSONObject body, User sessionUser) throws Exception {
         if (sessionUser == null || sessionUser.getId() == null) {
@@ -65,8 +66,13 @@ public class AierpWecomConfirmService {
             throw new BusinessRunTimeException(400, "缺少 draftId");
         }
         long draftId = Long.parseLong(String.valueOf(body.get("draftId")).trim());
-        Map<String, Object> confirmed = gatewayService.confirmUiAs(sessionUser, draftId);
-        return receiptService.enrichConfirmResult(sessionUser, null, confirmed);
+        Map<String, Object> draftRow = gatewayService.loadOwnedDraftRow(sessionUser, draftId);
+        AierpGatewayService.WecomDraftOwner liveOwner =
+                bindingService.requireLiveOwnerMatchingDraft(sessionUser, draftRow);
+        AierpGatewayService.ConfirmEventProof proof =
+                new AierpGatewayService.ConfirmEventProof("确认采购" + draftId, null, false, "ERP_SESSION_UI");
+        Map<String, Object> confirmed = gatewayService.confirmAs(sessionUser, liveOwner, draftId, proof);
+        return receiptService.enrichConfirmResult(sessionUser, liveOwner, confirmed);
     }
 
     private static AierpGatewayService.WecomDraftOwner toOwner(AierpWecomBindingService.BoundContext ctx) {

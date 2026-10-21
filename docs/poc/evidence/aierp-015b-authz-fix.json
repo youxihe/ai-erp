@@ -1,0 +1,99 @@
+{
+  "suite": "aierp-015b-authz-fix",
+  "at": "2026-10-21T08:09:25.830Z",
+  "wecomFixture": "aierp015***",
+  "results": [
+    {
+      "name": "erp_login",
+      "ok": true,
+      "detail": "{\"login\":\"jsh\"}"
+    },
+    {
+      "name": "fixture_bind",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "fixture_prepare_draft",
+      "ok": true,
+      "detail": "{\"draftId\":112,\"code\":200}"
+    },
+    {
+      "name": "binding_version_before",
+      "ok": true,
+      "detail": "1\t17"
+    },
+    {
+      "name": "unbind",
+      "ok": true,
+      "detail": "{\"unbound\":true,\"status\":\"UNBOUND\"}"
+    },
+    {
+      "name": "confirm_ui_rejects_unbound",
+      "ok": true,
+      "detail": "{\"code\":403,\"msg\":{\"message\":\"企微绑定已解除，无法确认该草稿\"}}"
+    },
+    {
+      "name": "rebind_new_generation",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "binding_version_bumped",
+      "ok": true,
+      "detail": "{\"verBefore\":\"1\\t17\",\"verAfter\":\"2\\t17\"}"
+    },
+    {
+      "name": "confirm_ui_rejects_stale_binding_version",
+      "ok": true,
+      "detail": "{\"code\":403,\"msg\":{\"message\":\"绑定已更新，原企微草稿不可再确认，请重新创建\"}}"
+    },
+    {
+      "name": "fixture_draft_cancelled_db",
+      "ok": true,
+      "detail": "{\"draftId\":112}"
+    },
+    {
+      "name": "pdf_fixture_available",
+      "ok": true,
+      "detail": "{\"receiptId\":\"cf541ec5…\",\"billNumber\":\"GW-PURCHASE-111\",\"pdfStatus\":\"PDF_GENERATED\"}"
+    },
+    {
+      "name": "pdf_actor_is_test_login",
+      "ok": true,
+      "detail": "{\"actorLogin\":\"jsh\"}"
+    },
+    {
+      "name": "pdf_active_actor_ok",
+      "ok": true,
+      "detail": "{\"status\":200,\"bytes\":58586,\"pdf\":true}"
+    },
+    {
+      "name": "pdf_unknown_receipt_denied",
+      "ok": true,
+      "detail": "{\"status\":200,\"code\":404}"
+    },
+    {
+      "name": "pdf_disabled_user_denied",
+      "ok": true,
+      "detail": "{\"status\":200,\"code\":403,\"msg\":{\"message\":\"ERP 用户已禁用，无法查询库存\"}}"
+    },
+    {
+      "name": "pdf_depot_revoked_denied",
+      "ok": true,
+      "detail": "{\"status\":200,\"code\":403,\"msg\":{\"message\":\"当前用户无仓库权限，拒绝下载回执\"},\"billNumber\":\"GW-PURCHASE-111\",\"depotHeadId\":\"366\"}"
+    },
+    {
+      "name": "pdf_restored_ok",
+      "ok": true,
+      "detail": "{\"status\":200,\"bytes\":58586}"
+    },
+    {
+      "name": "fixture_unbind_cleanup",
+      "ok": true,
+      "detail": "{\"wecom\":\"aierp015b-fi…\"}"
+    }
+  ],
+  "pass": 18,
+  "fail": 0
+}
