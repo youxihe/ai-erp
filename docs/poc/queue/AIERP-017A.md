@@ -1,6 +1,6 @@
 # AIERP-017A · 企业微信 Excel 模板发送 / 文件回收 / 解析预览（客户 Demo 第一棒）
 
-- **状态**：REVIEW_FIX_REQUIRED / PR #30（真实文件 UAT 中未解析 XLSX 即从文件名猜 100L 创建未审核 #113；P0，不能合并）。
+- **状态**：REVIEW_FIX_REQUIRED / PR #30（真人已验证真正 PREVIEWED；仍需修复模型参数门禁旁路、模板必填字段与精简回复、服务端预览接续）。
 - **开发分支**：`feat/aierp-017a-wecom-xlsx-inbound-preview`，只处理 AI-ERP。
 - **优先级**：P0 客户 Demo；**本棒绝对不批量审核、入库、出库，也不修改库存**。
 - **当前复用**：`AierpExcelController` 的 `GET /aierp/v1/excel/template?scene=`、`POST /preview`，`AierpExcelService` 支持真实 XLSX `PURCHASE/MIX/SERVICE` 解析预览，上传上限 2MB/200 行；`INITIAL/SALE` 目前是仅模板、不可确认，请在企微明确标注，而不是宣称支持批量销售出库。
@@ -29,3 +29,5 @@
 ## ChatGPT 2026-10-21 18:58 真人 UAT 挂起门槛
 
 用户上传带 `---100L---` 的 XLSX 后，插件并未生成 ERP preview，模型竟以文件名猜测单元格数量并调用普通采购草稿工具创建 #113。必须按照 GitHub PR #30 最新 Review 评论从真实可信入站文件字节解析；OpenClaw `message_received` 仅观察、不可靠修改模型输入，`inbound_claim` 仅在 own conversation binding 才可执行。解析失败的同一文件流程不得创建任何源于文件的业务草稿。验收必须上传**文件名100L但单元格20L** 的 XLSX、能得到 PREVIEWED/previewId/实际20L；不入库、不创建草稿。#113 不可自动确认。\n
+## 2026-10-21 20:48 UAT 更新
+真人 WeCom 已可成功解析 XLSX，最终 `previewId=pv-fc475d1a9fd0441f95c7db35d055b68a`，单号 T-20261021、100L、20元/L、供应商华东化工，真实预览记录 1 张无错误。此前 017A “file preview 未收到”状态已过时。剩余是草稿接力不可用、模版业务单号必填不清晰、技术化回复。P0 代码中 `excelWorkflowCancel` 模型参数绕过阻断需修复，不能仅靠提示词。完整单张采购 Excel 闭环已独立释放 AIERP-017B1；本轮 017A 不越权直接调用 Excel confirm。

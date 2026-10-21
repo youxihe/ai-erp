@@ -25,7 +25,8 @@
 | AIERP-015C | PLANNED / after 015B | 企微 PDF 附件发送实测、回执再次领取、确认指令标点兼容 |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
-| **AIERP-017A** | **REVIEW_FIX_REQUIRED / PR #30 · next_order #1** | **真实企微 XLSX 回传未进入 ERP 预览；Agent 从文件名猜出100L并建 #113，须解决真实附件解析和 file-to-draft 数据来源闸门** |
+| **AIERP-017A** | **REVIEW_FIX_REQUIRED / PR #30 · next_order #1** | **真人 XLSX PREVIEWED 成功（100L / 华东化工 / 1张单），待去除 prepare 门禁模型参数旁路、优化美观必填模板及业务对话** |
+| **AIERP-017B1** | **RELEASED / next_order #2 (gated)** | **单张采购 Excel 有效预览 → 服务端真正未审核 DRAFT → 企微本人确认原生入库；待 #30 Review/Merge 后才部署** |
 | AIERP-017B | PLANNED / after 017A | **采购入库、配制生产、服务耗料出库批量 DRAFT；销售出库接口差异补齐** |
 | AIERP-017C | PLANNED / after 017B + 015B | **批次可信确认 → 原生多单过账 → XLSX/PDF 回执发送** |
 | AIERP-017 | SUPERSEDED by 017A–017C | Excel 批量业务成为客户 Demo 核心，不是普通文件功能 |
@@ -33,6 +34,18 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-21 20:48 · 实测 Excel 已成功解析；核心阻断转为“预览 → 草稿 → 确认”
+
+**用户真人企微最新证据**：三次发 Excel，其中两次返回真实 `PREVIEWED` + `previewId`，最后有效单号 `T-20261021`，RM-A001 100 L，华东化工，原料仓，单价 20 元，无错误；库存不变。**不要再将 017A 描述为文件上传解析不通，也不要要求用户继续重传作同一目的的测试。**
+
+当前模型却在用户回复“按文件处理并确认入库”“入库吧”时声称没有收到文件，说明服务端记录的最新有效 preview 与 Agent 后续消息没有连接。017A 当前只允许预览，不应该虚称已能批量/Excel 过账；新释放 **017B1 单张采购快线** 负责“由已验证 preview 后端读取原始规范数据 → 生成真实未审核 DRAFT → 仅由本人可信入站确认审核入库”。
+
+另一个 **P0 安全缺陷**：`AierpWecomDraftService.purchasePrepare` 根据**模型传入** `excelWorkflowCancel:true` 绕过 Redis 文件工作流门禁；必须从 PR #30 移除该 bypass，独立认证“取消文件”接口才允许关闭工作流。模板中首次出现“缺少业务单号”，需明显标记字段 **必填/选填**、说明同业务单号多行、提供自动唯一单号和日期预填、样式清晰；已完成预览以后不要显示英文 `previewId`、`canConfirm`、`scene`、`行null`、重复技术解释。
+
+**加速次序**：#30 原分支最小修复（真实文件预览已 PASS，不再重复造失败）→ ChatGPT Review/Merge → 017B1 从最新 master 独立做一个采购 Excel 单张业务闭环 → 017B 生产/耗料/销售批量扩展 → 017C 多单可信确认。019B 动态 Agent 网关继续后置，不能阻塞客户 Demo。
+
+详见 `docs/poc/queue/AIERP-017B1.md`，F: 唯一 OpenClaw 实例需先集成回归、再部署，绝不能任由并发分支覆盖插件。#113 不许自动确认。
 
 ## 2026-10-21 18:58 · 真人 Excel UAT 失败（立即修复 017A，阻断 017B/017C）
 
