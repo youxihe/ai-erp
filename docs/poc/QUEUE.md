@@ -20,16 +20,31 @@
 | AIERP-014D | **DONE / PR #22** | **可信原始消息确认、草稿挑战、显式 ERP actor 设计已 Review + Merge** |
 | AIERP-015A | **DONE / PR #24** | 企业微信真实生成采购 DRAFT #106，12 工具集成；25/25 本地测试，未入库 |
 | **AIERP-015B** | **REVIEW_FIX_REQUIRED / PR #27 · next_order #1** | **已验证企微采购 #111 原生过账及文字回执；修复 UI fallback 旧绑定确认和 PDF 下载撤权后权限** |
-| **AIERP-019A** | **RELEASED / next_order #2 (docs-only)** | **ERP 受控 API 能力目录/OpenAPI 子集、OpenClaw SOP Skills、通用工具方案设计** |
+| **AIERP-019A** | **RELEASED / next_order #3 (docs-only / parallel)** | **ERP 受控 API 能力目录/OpenAPI 子集、OpenClaw SOP Skills、通用工具方案设计** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | PLANNED / after 015B | 企微 PDF 附件发送实测、回执再次领取、确认指令标点兼容 |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
-| AIERP-017 | PLANNED | Excel 企微文件接入、业务异常处理；图片/Excel/H5 报表按渠道能力降级 |
+| **AIERP-017A** | **RELEASED / next_order #2 (CODE)** | **企微 Excel 模板文件发送、用户回传 XLSX、ERP 无过账预览** |
+| AIERP-017B | PLANNED / after 017A | **采购入库、配制生产、服务耗料出库批量 DRAFT；销售出库接口差异补齐** |
+| AIERP-017C | PLANNED / after 017B + 015B | **批次可信确认 → 原生多单过账 → XLSX/PDF 回执发送** |
+| AIERP-017 | SUPERSEDED by 017A–017C | Excel 批量业务成为客户 Demo 核心，不是普通文件功能 |
 | AIERP-018 | PLANNED | 多企微身份、不同 ERP 仓库权限/租户 UAT 与渠道安全收口 |
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-21 · Excel 批量业务提升为客户 Demo P0（含出库与生产）
+
+**新的优先级**：015B PR #27 授权修复 → **017A Excel 企微文件收发/预览** → 017B 多场景批量 DRAFT → 017C 本人可信确认/原生多单过账/回执。019A API/SOP 设计可并行，**不让抽象架构开发阻塞用户可见的 Excel 演示**；019B 通用工具 runtime 实施待 Excel 第一条实际文件链路验收后再排。
+
+- `AIERP-002` 已实现真实 XLSX：`PURCHASE`、`MIX`、`SERVICE` 的模板、解析、预览和 PC 手动确认；`SALE`、`INITIAL` **仅模板不能确认**。已有 `/aierp/v1/excel/confirm` 会立刻逐单过账，绝不能作为模型可调用批量工具。
+- 017A **现正式 RELEASED**：真实企微请求模板→发送 XLSX→用户填写返回文件→可信附件处理→ERP 真实文件预览/校验、库存与原生单据零变化。当前 OpenClaw Windows native `F:\\aierp-openclaw`，不重装/升级。
+- 017B **未 RELEASED**：按用户上传文件创建未审核批量草稿，优先采购、`MIX` 药水配制/组装、`SERVICE` 客户服务耗料。销售出库 `SALE` 需要额外的 jshERP 原生正式出库方案与权限、金额、审计验收，不能假装 `SERVICE` 就是完整销售；普通领料/其它出库 P1；调拨/退货/盘点/期初 P2。
+- 017C **未 RELEASED**：一次可信企微原文确认绑定**批次版本 + 实际有效单据清单 hash**，服务器以原生单据逐张幂等入账，成功/失败明细可追溯；返回批次回执 XLSX，PDF 可附加。若存在部分成功必须准确标记，不能谎称原子全部成功。
+- `015C` 企微 PDF 送达的受控文件发送能力与 017A 的 XLSX 文件发送可复用同一个专用媒体适配器，禁止授予 Agent 任意磁盘文件上传 Tool 或启用所有 WeCom CLI 工具。
+
+演示脚本及验收：`docs/poc/EXCEL_BATCH_DEMO_ACCEPTANCE.md`；任务卡：`docs/poc/queue/AIERP-017A.md`、`AIERP-017B.md`、`AIERP-017C.md`。Cursor PR 分支每一棒 Push + ChatGPT Review 后再 Release 下一棒，**不能自行 Merge**。
 
 ## 2026-10-21 13:19 · Agent 产品架构升级（暂不实施通用写操作）
 
