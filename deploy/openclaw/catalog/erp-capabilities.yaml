@@ -1,0 +1,849 @@
+# AIERP-019A · ERP 能力目录（文档可见；运行时须服务端 allowlist 注册）
+# 分支 product/aierp-019a-capability-catalog-skills 对齐 Java 源码快照（含 012A/013/015A；015B 能力以 feat/aierp-015b（PR #27）Java 为准；本 docs 分支不合并该代码）
+version: "019a.2"
+catalogDate: "2026-10-21"
+schemaVersion: 1
+notes:
+  - "文档中的 operationId 不等于模型可调用；COMMIT 级永不对 LLM 暴露为 Tool。"
+  - "企微路径：HMAC 适配器 + 渠道可信 wecomUserId（OpenClaw ctx.requesterSenderId）。"
+  - "会话路径：X-Access-Token 当前 ERP 用户（Demo 工作台 / PC 登录）。"
+  - "015B confirm/receipt 以 PR #27（feat/aierp-015b）为准；本 docs 分支不合并其 Java，仅目录与 Skills 引用。"
+
+runtimeRegistration:
+  openClawPlugin: deploy/openclaw/plugins/aierp-erp-tools/index.js
+  liveToolCount: 12
+  liveTools:
+    - erp_bind_start
+    - erp_binding_status
+    - erp_unbind
+    - erp_stock_query
+    - erp_material_search
+    - erp_partner_search
+    - erp_bill_search
+    - erp_bill_detail
+    - erp_report_query
+    - erp_purchase_prepare
+    - erp_draft_status
+    - erp_draft_cancel
+
+capabilities:
+
+  binding.issue:
+    titleZh: 签发企微绑定码
+    intent: 为当前企微私聊用户生成 8 位一次性绑定码（5 分钟）
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_bind_start
+    javaSource: com.jsh.erp.gateway.wecom.AierpWecomController#issue → AierpWecomBindingService#issueBindCode
+    auth:
+      - type: HMAC_WEcom_ADAPTER
+        headers: [X-Aierp-Adapter-Timestamp, X-Aierp-Adapter-Nonce, X-Aierp-Adapter-Signature]
+    erpPermission: 无功能号；限流每 wecomUserId 每小时 10 次
+    warehouseScope: 不适用
+    tenantScope: 绑定前无租户；码与 botId+wecomUserId 关联
+    requestSchema:
+      type: object
+      required: [wecomUserId, botId, channel]
+      properties:
+        wecomUserId: { type: string, description: 适配器注入，禁止模型填写 }
+        botId: { type: string }
+        channel: { type: string, enum: [wecom] }
+      additionalProperties: false
+    responseSchema:
+      type: object
+      properties:
+        bindCode: { type: string, pattern: "^[A-Z0-9]{8}$" }
+        expiresInSec: { type: integer, example: 300 }
+        hint: { type: string }
+    limits:
+      bindCodeTtlSec: 300
+      maxIssuePerWecomUserPerHour: 10
+    sensitiveFields: [bindCode]
+    errors:
+      - { code: 429, message: 签发过于频繁 }
+      - { code: 403, message: HMAC 校验失败 }
+
+  binding.claim:
+    titleZh: ERP 工作台消费绑定码
+    intent: 已登录 ERP 用户输入绑定码，建立企微↔ERP 映射
+    sideEffectLevel: COMMIT
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: com.jsh.erp.gateway.wecom.AierpWecomController#claim → AierpWecomBindingService#claimBindCode
+    auth:
+      - type: ERP_SESSION
+        header: X-Access-Token
+    erpPermission: 须有效登录用户与 tenantId
+    warehouseScope: 不适用
+    tenantScope: 绑定到 session 用户 tenant_id / erp_user_id
+    requestSchema:
+      type: object
+      required: [bindCode]
+      properties:
+        bindCode: { type: string, minLength: 8, maxLength: 8 }
+      additionalProperties: true
+    responseSchema:
+      type: object
+      properties:
+        status: { enum: [ACTIVE] }
+        erpLoginName: { type: string }
+        tenantId: { type: integer }
+        boundAt: { type: string }
+    limits: {}
+    sensitiveFields: [wecomUserId]
+    errors:
+      - { code: 404, message: 绑定码不存在或已失效 }
+      - { code: 409, message: 绑定码已使用 }
+      - { code: 410, message: 绑定码已过期 }
+
+  binding.status:
+    titleZh: 查询企微绑定状态
+    intent: 判断当前企微用户是否已绑定 ERP 及登录名
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_binding_status
+    javaSource: AierpWecomController#status → AierpWecomBindingService#bindingStatus
+    auth: [HMAC_WEcom_ADAPTER]
+    erpPermission: 无
+    warehouseScope: 不适用
+    tenantScope: 返回 bound 用户 tenantId（若已绑定）
+    requestSchema:
+      type: object
+      required: [wecomUserId, botId, channel]
+      properties:
+        wecomUserId: { type: string }
+        botId: { type: string }
+        channel: { enum: [wecom] }
+    responseSchema:
+      type: object
+      properties:
+        bound: { type: boolean }
+        erpLoginName: { type: string, nullable: true }
+        tenantId: { type: integer, nullable: true }
+        hint: { type: string }
+    limits: {}
+    sensitiveFields: []
+    errors:
+      - { code: 403, message: HMAC 失败 }
+
+  binding.unbind:
+    titleZh: 解除企微绑定
+    intent: 当前企微用户主动解绑 ERP
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_unbind
+    javaSource: AierpWecomController#unbind → AierpWecomBindingService#unbind
+    auth: [HMAC_WEcom_ADAPTER]
+    erpPermission: 无
+    warehouseScope: 不适用
+    tenantScope: 仅影响该 wecomUserId+botId 绑定行
+    requestSchema:
+      type: object
+      required: [wecomUserId, botId, channel]
+      properties:
+        wecomUserId: { type: string }
+        botId: { type: string }
+        channel: { enum: [wecom] }
+    responseSchema:
+      type: object
+      properties:
+        unbound: { type: boolean }
+    limits: {}
+    sensitiveFields: []
+    errors: []
+
+  stock.query:
+    titleZh: 实时库存查询
+    intent: 按物料关键字/编码、可选仓库查当前库存
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_stock_query
+    javaSource:
+      wecom: AierpWecomController#stockQuery → AierpWecomBindingService#stockQueryDelegated → AierpGatewayService#stockQueryAs
+      session: AierpGatewayController#stockQuery → AierpGatewayService#stockQuery
+    auth:
+      wecom: [HMAC_WEcom_ADAPTER, boundActiveUser]
+      session: [ERP_SESSION]
+    erpPermission:
+      functionId: 246
+      name: 库存查询
+    warehouseScope: UserDepot 授权仓库；无仓库权限 403
+    tenantScope: 绑定/会话用户 tenant_id
+    requestSchema:
+      type: object
+      properties:
+        query: { type: string, description: 物料中文名或编码关键字 }
+        barCode: { type: string }
+        depotName: { type: string }
+        materialName: { type: string, description: 会话网关别名 }
+      additionalProperties: false
+    responseSchema:
+      type: object
+      properties:
+        nature: { const: REAL_ERP }
+        loginName: { type: string }
+        boundErpLoginName: { type: string }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              barCode: { type: string }
+              materialName: { type: string }
+              depotName: { type: string }
+              unit: { type: string }
+              currentStock: { type: number }
+        asOf: { type: string, nullable: true }
+    limits:
+      keywordMaterialScanMax: 40
+    sensitiveFields: []
+    errors:
+      - { code: 403, message: 无库存功能或无可查仓库 }
+      - { code: 404, message: 未识别物料 }
+
+  material.search:
+    titleZh: 物料主数据搜索
+    intent: 模糊/精确查物料编码、名称、单位、分类、启停
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_material_search
+    javaSource: AierpWecomController#materialSearch → AierpWecomQueryService#materialSearch
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser]
+    erpPermission: { functionId: 246 }
+    warehouseScope: 不适用（主数据）
+    tenantScope: tenant_id
+    requestSchema:
+      type: object
+      properties:
+        query: { type: string }
+        barCode: { type: string }
+        limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      additionalProperties: false
+    responseSchema:
+      type: object
+      properties:
+        ambiguous: { type: boolean }
+        rowCount: { type: integer }
+        rows: { type: array }
+        hint: { type: string }
+    limits: { defaultLimit: 10, maxLimit: 50 }
+    sensitiveFields: []
+    errors:
+      - { code: 403, message: 无物料查询权限 }
+
+  partner.search:
+    titleZh: 供应商/客户搜索
+    intent: 按名称查往来单位（不含电话地址）
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_partner_search
+    javaSource: AierpWecomController#partnerSearch → AierpWecomQueryService#partnerSearch
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser]
+    erpPermission:
+      supplier: { functionId: 33 }
+      customer: { functionId: 202 }
+    warehouseScope: 不适用
+    tenantScope: tenant_id
+    requestSchema:
+      type: object
+      required: [partnerType]
+      properties:
+        partnerType: { enum: [supplier, customer, 供应商, 客户] }
+        query: { type: string }
+        limit: { type: integer, maximum: 50 }
+    responseSchema:
+      type: object
+      properties:
+        partnerType: { type: string }
+        rows:
+          type: array
+          items:
+            properties:
+              partnerId: { type: integer }
+              partnerName: { type: string }
+              enabled: { type: boolean }
+    limits: { maxLimit: 50 }
+    sensitiveFields: [phone, address, cost]
+    errors:
+      - { code: 400, message: partnerType 无效 }
+
+  bill.search:
+    titleZh: 业务单据列表
+    intent: 查采购入库/组装配制/服务耗料单（非销售）
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_bill_search
+    javaSource: AierpWecomController#billSearch → AierpWecomQueryService#billSearch
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser]
+    erpPermission:
+      purchase: { functionId: 33 }
+      mix: { functionId: 232 }
+      service: { functionId: 202 }
+    warehouseScope: 整单所有明细 depot 均须在 UserDepot，否则整单拒绝
+    tenantScope: tenant_id
+    requestSchema:
+      type: object
+      required: [billType]
+      properties:
+        billType: { enum: [purchase, mix, service] }
+        fromDate: { type: string, format: date }
+        toDate: { type: string, format: date }
+        days: { type: integer, minimum: 1, maximum: 90 }
+        status: { description: "已审核|未审核|1|0" }
+        query: { type: string, description: 单号关键字 }
+        partnerName: { type: string }
+        limit: { type: integer, maximum: 50 }
+    responseSchema:
+      type: object
+      properties:
+        billType: { type: string }
+        fromDate: { type: string }
+        toDate: { type: string }
+        rows: { type: array }
+    limits:
+      maxDateSpanDays: 90
+      defaultLimit: 10
+      maxLimit: 50
+    sensitiveFields: []
+    errors:
+      - { code: 403, message: 含未授权仓库的单据不可见 }
+
+  bill.detail:
+    titleZh: 单据明细
+    intent: 按单号读行级物料/仓库/数量/单价
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_bill_detail
+    javaSource: AierpWecomController#billDetail → AierpWecomQueryService#billDetail
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser]
+    erpPermission: 同 bill.search 按 native type/subType
+    warehouseScope: assertBillFullyAuthorized
+    tenantScope: tenant_id
+    requestSchema:
+      type: object
+      required: [billNumber]
+      properties:
+        billNumber: { type: string }
+    responseSchema:
+      type: object
+      properties:
+        bill: { type: object }
+        lines: { type: array }
+        lineCount: { type: integer }
+    limits: {}
+    sensitiveFields: []
+    errors:
+      - { code: 404, message: 单据不存在 }
+      - { code: 403, message: 类型不在采购/组装/服务范围或仓库未授权 }
+
+  report.query:
+    titleZh: 经营摘要报表
+    intent: 后端聚合采购入库或服务耗料（已审核）
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_report_query
+    javaSource: AierpWecomController#reportQuery → AierpWecomQueryService#reportQuery
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser]
+    erpPermission:
+      purchase_in_summary: { functionId: 33 }
+      service_consume_by_customer: { functionId: 202 }
+    warehouseScope: 聚合仅统计授权仓库行
+    tenantScope: tenant_id
+    requestSchema:
+      type: object
+      required: [report]
+      properties:
+        report:
+          enum: [purchase_in_summary, service_consume_by_customer]
+        fromDate: { type: string, format: date }
+        toDate: { type: string, format: date }
+        days: { type: integer, maximum: 90 }
+        partnerName: { type: string, description: 服务报表客户过滤 }
+    responseSchema:
+      type: object
+      properties:
+        report: { type: string }
+        totals: { type: object, nullable: true }
+        rows: { type: array }
+        hint: { type: string }
+    limits:
+      maxDateSpanDays: 90
+      serviceGroupLimit: 20
+    sensitiveFields: []
+    errors:
+      - { code: 400, message: 不支持的 report 类型 }
+
+  purchase.prepare:
+    titleZh: 创建采购未审核草稿
+    intent: 校验主数据后写入 aierp_gateway_draft，不过账
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_purchase_prepare
+    javaSource: AierpWecomController#purchasePrepare → AierpWecomDraftService#purchasePrepare → AierpGatewayService#createDraftAs(PURCHASE)
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser, wecomDraftOwner]
+    erpPermission: { functionId: 33, button: "1", name: 新增 }
+    warehouseScope: resolveLine 校验 UserDepot
+    tenantScope: tenant_id + user_id + wecom 绑定代际
+    requestSchema:
+      type: object
+      required: [barCode, qty, unit, depotName, organName, idempotencyKey]
+      properties:
+        barCode: { type: string }
+        qty: { type: number, exclusiveMinimum: 0 }
+        unit: { type: string }
+        depotName: { type: string }
+        organName: { type: string }
+        idempotencyKey: { type: string, maxLength: 80 }
+        remark: { type: string }
+        unitPrice: { type: number }
+    responseSchema:
+      type: object
+      properties:
+        draftId: { type: integer }
+        status: { enum: [DRAFT, CONFIRMED, CANCELLED] }
+        posted: { type: boolean }
+        stockUnchanged: { type: boolean }
+        summary: { type: object }
+        hint: { type: string }
+    limits:
+      idempotencyKeyMaxLen: 80
+    sensitiveFields: []
+    errors:
+      - { code: 409, message: 幂等键冲突且 payload 不同 }
+      - { code: 400, message: 单位/仓库/供应商校验失败 }
+
+  draft.status:
+    titleZh: 查询采购草稿状态
+    intent: 读取本人（+企微 owner）草稿摘要
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_draft_status
+    javaSource: AierpWecomController#draftStatus → AierpWecomDraftService#draftStatus
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser, wecomDraftOwner]
+    erpPermission: 读自己的 draft 行
+    warehouseScope: 不适用
+    tenantScope: tenant_id + user_id + binding generation
+    requestSchema:
+      type: object
+      required: [draftId]
+      properties:
+        draftId: { type: integer }
+    responseSchema:
+      type: object
+      properties:
+        draftId: { type: integer }
+        statusLabel: { type: string }
+        summary: { type: object }
+    limits: {}
+    sensitiveFields: []
+    errors:
+      - { code: 404, message: 草稿不存在 }
+      - { code: 403, message: 绑定代际不匹配 }
+
+  draft.cancel:
+    titleZh: 取消未过账草稿
+    intent: 将 DRAFT 置 CANCELLED，库存不变
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: true
+    legacyOpenClawTool: erp_draft_cancel
+    javaSource: AierpWecomController#draftCancel → AierpWecomDraftService#draftCancel
+    auth: [HMAC_WEcom_ADAPTER, boundActiveUser, wecomDraftOwner]
+    erpPermission: 草稿 owner
+    warehouseScope: 不适用
+    tenantScope: 同 draft.status
+    requestSchema:
+      type: object
+      required: [draftId]
+      properties:
+        draftId: { type: integer }
+    responseSchema:
+      type: object
+      properties:
+        cancelled: { type: boolean }
+        stockUnchanged: { const: true }
+        hint: { type: string }
+    limits: {}
+    sensitiveFields: []
+    errors:
+      - { code: 409, message: 已过账不可取消 }
+
+  draft.confirm:
+    titleZh: 网关草稿过账（会话）
+    intent: 将会话用户 aierp_gateway_draft 提交为已审核原生单据
+    sideEffectLevel: COMMIT
+    implementationStatus: IMPLEMENTED_SESSION_ONLY
+    modelCallable: false
+    javaSource: AierpGatewayController#confirm → AierpGatewayService#confirm → confirmInTx
+    auth: [ERP_SESSION]
+    erpPermission:
+      perBizType:
+        PURCHASE: { functionId: 33, button: "7" }
+        MIX: { functionId: 232, button: "7" }
+        SERVICE: { functionId: 202, button: "7" }
+    warehouseScope: reassertAccess + 库存行锁
+    tenantScope: session user tenant_id
+    requestSchema:
+      type: object
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey: { type: string }
+    responseSchema:
+      type: object
+      properties:
+        billNumber: { type: string }
+        replayed: { type: boolean }
+        stockBefore: { type: object }
+        stockAfter: { type: object }
+        nativeBill: { type: object }
+    limits:
+      confirmRetryOnDeadlock: 3
+    sensitiveFields: []
+    errors:
+      - { code: 400, message: 库存不足整单拒绝 }
+      - { code: 403, message: 无审核按钮 }
+
+  draft.confirm.wecom:
+    titleZh: 企微可信确认过账
+    intent: 消费 WECOM_BEFORE_DISPATCH 原始入站 + 挑战，委托 confirmAs
+    sideEffectLevel: COMMIT
+    implementationStatus: IMPLEMENTED_015B_PR27
+    modelCallable: false
+    javaSource: "master: AierpWecomController + AierpWecomConfirmService#confirmFromTrustedInbound → AierpGatewayService#confirmAs"
+    auth:
+      - HMAC_WEcom_ADAPTER
+      - trustedInboundEvent
+      - eventSource=WECOM_BEFORE_DISPATCH
+    erpPermission: 同 draft.confirm + 实时绑定 ACTIVE
+    warehouseScope: 同 draft.confirm
+    tenantScope: 绑定 ERP 用户 tenant
+    requestSchema:
+      type: object
+      required: [draftId, inboundMessageId, phraseOrChallenge]
+      properties:
+        draftId: { type: integer }
+        inboundMessageId: { type: string }
+        phrase: { type: string }
+        eventSource: { const: WECOM_BEFORE_DISPATCH }
+    responseSchema:
+      type: object
+      properties:
+        billNumber: { type: string }
+        receiptText: { type: string }
+        receiptId: { type: string }
+        replayed: { type: boolean }
+    limits:
+      challengeTtlSec: 420
+    sensitiveFields: []
+    errors:
+      - { code: 403, message: 非可信入站/群聊/他人身份 }
+    notes:
+      - "019A 分支 WecomController 注释：No WeCom confirm/posting route。"
+      - "OpenClaw 禁止注册 erp_draft_confirm。"
+
+  draft.confirm-ui:
+    titleZh: ERP 页面确认草稿
+    intent: 已登录 ERP 用户在 UI 确认本人企微草稿
+    sideEffectLevel: COMMIT
+    implementationStatus: IMPLEMENTED_015B_PR27
+    modelCallable: false
+    javaSource: "master: AierpWecomConfirmService#confirmUi"
+    auth: [ERP_SESSION, liveBindingVersionMatch]
+    erpPermission: 同 draft.confirm
+    warehouseScope: 同 draft.confirm
+    tenantScope: session 用户须与草稿 wecom owner 绑定一致
+    requestSchema:
+      type: object
+      required: [draftId]
+      properties:
+        draftId: { type: integer }
+    responseSchema:
+      type: object
+      properties:
+        billNumber: { type: string }
+        receiptText: { type: string }
+    limits: {}
+    sensitiveFields: []
+    errors:
+      - { code: 403, message: 解绑重绑后 binding_version 不匹配 }
+
+  receipt.pdf:
+    titleZh: 下载采购入库业务回执 PDF
+    intent: 已 CONFIRMED 单据生成/下载 PDF（非税务发票）
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED_015B_PR27
+    modelCallable: false
+    javaSource: "master: AierpWecomReceiptService + POST /aierp/v1/wecom/receipt/pdf"
+    auth: [ERP_SESSION, receiptOwnershipCheck]
+    erpPermission: 须能查看对应 depot_head / 仓库
+    warehouseScope: 回执明细仓库权限
+    tenantScope: receipt.tenant_id = actor.tenant_id
+    requestSchema:
+      type: object
+      required: [receiptId]
+      properties:
+        receiptId: { type: string }
+    responseSchema:
+      type: string
+      contentMediaType: application/pdf
+    limits: {}
+    sensitiveFields: [pdfBytes]
+    errors:
+      - { code: 404, message: 回执不存在或无权 }
+
+  gateway.purchase.draft:
+    titleZh: 会话创建采购草稿
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpGatewayController#purchaseDraft → createDraft(PURCHASE)
+    auth: [ERP_SESSION]
+    erpPermission: { functionId: 33, button: "1" }
+    warehouseScope: UserDepot
+    tenantScope: session
+    requestSchema:
+      type: object
+      required: [idempotencyKey, organName, lines]
+      properties:
+        idempotencyKey: { type: string }
+        organName: { type: string }
+        lines: { type: array, minItems: 1 }
+        remark: { type: string }
+    responseSchema:
+      type: object
+      properties:
+        draftId: { type: integer }
+        status: { const: DRAFT }
+    limits: {}
+    sensitiveFields: []
+    errors: []
+
+  gateway.mix.draft:
+    titleZh: 会话创建组装配制草稿
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpGatewayController#mixDraft → createDraft(MIX)
+    auth: [ERP_SESSION]
+    erpPermission: { functionId: 232, button: "1" }
+    warehouseScope: UserDepot
+    tenantScope: session
+    requestSchema:
+      type: object
+      required: [idempotencyKey, finished, lines]
+      properties:
+        finished: { type: object, required: [barCode, depotName, qty, unit] }
+        lines: { type: array, minItems: 1 }
+    responseSchema:
+      type: object
+      properties:
+        draftId: { type: integer }
+    limits: {}
+    sensitiveFields: []
+    errors: []
+    agentNotes:
+      runtimeWecomTool: PLANNED_016_019B
+      skill: erp-mixing
+
+  gateway.service.draft:
+    titleZh: 会话创建服务耗料草稿
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpGatewayController#serviceDraft → createDraft(SERVICE)
+    auth: [ERP_SESSION]
+    erpPermission: { functionId: 202, button: "1" }
+    warehouseScope: UserDepot；出库校验库存
+    tenantScope: session
+    requestSchema:
+      type: object
+      required: [idempotencyKey, organName, lines]
+      properties:
+        organName: { type: string, description: 客户 }
+        lines: { type: array }
+    responseSchema:
+      type: object
+      properties:
+        draftId: { type: integer }
+    limits: {}
+    sensitiveFields: []
+    errors: []
+    agentNotes:
+      runtimeWecomTool: PLANNED_016_019B
+
+  mix.prepare:
+    titleZh: 企微创建配制草稿
+    sideEffectLevel: DRAFT
+    implementationStatus: PLANNED_016_019B
+    modelCallable: false
+    javaSource: "未实现：预期 mirror purchase.prepare → createDraftAs(MIX)"
+    auth: [HMAC_WEcom_ADAPTER]
+    erpPermission: { functionId: 232, button: "1" }
+    warehouseScope: UserDepot
+    tenantScope: wecom owner
+    requestSchema:
+      type: object
+      required: [idempotencyKey, finished, lines]
+    responseSchema:
+      type: object
+    limits: {}
+    sensitiveFields: []
+    errors: []
+
+  service.prepare:
+    titleZh: 企微创建服务耗料草稿
+    sideEffectLevel: DRAFT
+    implementationStatus: PLANNED_016_019B
+    modelCallable: false
+    javaSource: "未实现：预期 createDraftAs(SERVICE)"
+    auth: [HMAC_WEcom_ADAPTER]
+    erpPermission: { functionId: 202, button: "1" }
+    warehouseScope: UserDepot
+    tenantScope: wecom owner
+    requestSchema:
+      type: object
+      required: [idempotencyKey, organName, lines]
+    responseSchema:
+      type: object
+    limits: {}
+    sensitiveFields: []
+    errors: []
+
+  gateway.report.summary:
+    titleZh: 会话侧经营快照
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpGatewayController#summary → AierpGatewayService#summary
+    auth: [ERP_SESSION]
+    erpPermission: { functionId: 246 }
+    warehouseScope: demo 物料在各授权仓库存
+    tenantScope: session
+    requestSchema:
+      type: object
+      additionalProperties: true
+    responseSchema:
+      type: object
+      properties:
+        draftCount: { type: integer }
+        confirmedCount: { type: integer }
+        stocks: { type: array }
+    limits: { recentBillsLimit: 8 }
+    sensitiveFields: []
+    errors: []
+
+  excel.template:
+    titleZh: 下载 Excel 业务模板
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpExcelController#template / templateFilled → AierpExcelService#template
+    auth: [ERP_SESSION]
+    erpPermission: 登录即可（Demo）
+    warehouseScope: 不适用
+    tenantScope: session
+    requestSchema:
+      query:
+        scene: { enum: [PURCHASE, MIX, SERVICE, INITIAL, SALE, PACK] }
+      body:
+        scene: { type: string }
+        rows: { type: array, description: 预填行 }
+    responseSchema:
+      type: string
+      contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    limits:
+      scenesNotConfirmable: [INITIAL, SALE]
+    sensitiveFields: []
+    errors:
+      - { code: 400, message: scene 无效 }
+
+  excel.preview:
+    titleZh: 上传 Excel 解析预览
+    sideEffectLevel: DRAFT
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpExcelController#preview → AierpExcelService#preview
+    auth: [ERP_SESSION]
+    erpPermission: 登录用户
+    warehouseScope: 解析时校验主数据与仓库
+    tenantScope: aierp_excel_preview.tenant_id
+    requestSchema:
+      type: object
+      multipart:
+        file: { type: string, format: binary, maxSizeBytes: 2097152 }
+        scene: { type: string, optional: true }
+    responseSchema:
+      type: object
+      properties:
+        previewId: { type: string }
+        status: { const: PREVIEWED }
+        posted: { const: false }
+        records: { type: array }
+        summary: { type: object }
+    limits:
+      maxFileBytes: 2097152
+      maxDataRows: 200
+      formats: [.xlsx]
+    sensitiveFields: []
+    errors:
+      - { code: 400, message: 无识别数据行 / 超行数 }
+
+  excel.confirm:
+    titleZh: Excel 批次确认过账
+    sideEffectLevel: COMMIT
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpExcelController#confirm → AierpExcelService#confirm → gatewayService.confirm
+    auth: [ERP_SESSION, humanUiConfirm]
+    erpPermission: 各 record.bizType 对应审核按钮
+    warehouseScope: 同 gateway confirm
+    tenantScope: preview owner
+    requestSchema:
+      type: object
+      required: [previewId, idempotencyBatchKey]
+      properties:
+        previewId: { type: string }
+        idempotencyBatchKey: { type: string }
+        selectedBusinessKeys: { type: array, items: { type: string } }
+    responseSchema:
+      type: object
+      properties:
+        batchId: { type: string }
+        results: { type: array }
+        replayed: { type: boolean }
+    limits: {}
+    sensitiveFields: []
+    errors:
+      - { code: 404, message: preview 不存在 }
+    notes:
+      - "Agent 不得调用；须 ERP Demo/UI 或未来受控批次确认通道。"
+
+  excel.receipt:
+    titleZh: 下载 Excel 导入回执
+    sideEffectLevel: READ
+    implementationStatus: IMPLEMENTED
+    modelCallable: false
+    javaSource: AierpExcelController#receipt → AierpExcelService#receipt
+    auth: [ERP_SESSION]
+    erpPermission: batch owner
+    warehouseScope: 不适用
+    tenantScope: aierp_excel_batch
+    requestSchema:
+      query:
+        batchId: { type: string }
+    responseSchema:
+      contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    limits: {}
+    sensitiveFields: []
+    errors: []
