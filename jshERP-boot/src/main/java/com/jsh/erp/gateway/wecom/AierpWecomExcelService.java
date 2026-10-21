@@ -101,7 +101,8 @@ public class AierpWecomExcelService {
         boolean openWorkflow = body.getBooleanValue("openWorkflow") || body.get("openWorkflow") == null;
         if (openWorkflow && preview.get("previewId") != null) {
             putWorkflow(ctx, "PREVIEWED", String.valueOf(preview.get("previewId")),
-                    body.getString("fileSha256"), body.getString("messageMsgId"), null);
+                    body.getString("fileSha256"), body.getString("messageMsgId"), null,
+                    preview.get("userSummaryZh") == null ? null : String.valueOf(preview.get("userSummaryZh")));
         }
         return preview;
     }
@@ -111,25 +112,31 @@ public class AierpWecomExcelService {
         if (body != null && body.getString("status") != null) {
             putWorkflow(ctx, body.getString("status").trim().toUpperCase(Locale.ROOT),
                     body.getString("previewId"), body.getString("fileSha256"),
-                    body.getString("messageMsgId"), body.getString("reason"));
+                    body.getString("messageMsgId"), body.getString("reason"),
+                    body.getString("userSummaryZh"));
         }
         Map<String, Object> current = getWorkflow(ctx);
         if (current == null) {
             Map<String, Object> empty = new LinkedHashMap<String, Object>();
             empty.put("status", "NONE");
             empty.put("blocksPurchasePrepare", false);
+            empty.put("hasValidPreview", false);
             return empty;
         }
-        current.put("blocksPurchasePrepare", blocksPrepare(String.valueOf(current.get("status"))));
+        String status = String.valueOf(current.get("status"));
+        current.put("blocksPurchasePrepare", blocksPrepare(status));
+        current.put("hasValidPreview", "PREVIEWED".equals(status) && current.get("previewId") != null);
         return current;
     }
 
     public Map<String, Object> workflowCancel(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
-        putWorkflow(ctx, "CANCELLED", null, null, body == null ? null : body.getString("messageMsgId"), "USER_CANCEL");
+        putWorkflow(ctx, "CANCELLED", null, null, body == null ? null : body.getString("messageMsgId"),
+                "USER_CANCEL", null);
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("status", "CANCELLED");
         data.put("blocksPurchasePrepare", false);
+        data.put("hasValidPreview", false);
         data.put("hint", "Excel 文件流程已关闭，可重新口头采购。");
         return data;
     }
@@ -143,19 +150,22 @@ public class AierpWecomExcelService {
         String status = String.valueOf(current.get("status"));
         if (blocksPrepare(status)) {
             throw new BusinessRunTimeException(409,
-                    "Excel 文件流程未关闭（status=" + status + "）。017A 仅预览，禁止用文件名/口头猜测创建采购草稿。"
-                            + "请先完成 PREVIEWED 回复或调用 excel/workflow/cancel。勿确认 #113。");
+                    "当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建采购草稿。"
+                            + "请先按已核对的文件继续，或回复「取消文件」后再口头下单。");
         }
     }
 
     private void putWorkflow(AierpWecomBindingService.BoundContext ctx, String status, String previewId,
-                             String fileSha256, String messageMsgId, String reason) {
+                             String fileSha256, String messageMsgId, String reason, String userSummaryZh) {
         Map<String, Object> wf = new LinkedHashMap<String, Object>();
         wf.put("status", status);
         wf.put("previewId", previewId);
         wf.put("fileSha256", fileSha256);
         wf.put("messageMsgId", messageMsgId);
         wf.put("reason", reason);
+        if (userSummaryZh != null && !userSummaryZh.trim().isEmpty()) {
+            wf.put("userSummaryZh", userSummaryZh.trim());
+        }
         wf.put("erpUserId", ctx.user.getId());
         wf.put("tenantId", ctx.user.getTenantId());
         wf.put("wecomUserIdMasked", mask(ctx.wecomUserId));

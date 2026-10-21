@@ -154,6 +154,45 @@ note(
   { code: prep.json?.code, msg: prep.json?.data?.message || prep.json?.message },
 );
 
+const bypass = await signedPost("/aierp/v1/wecom/purchase/prepare", {
+  wecomUserId: WECOM,
+  botId: BOT,
+  channel: "wecom",
+  barCode: "RM-A001",
+  qty: 100,
+  unit: "L",
+  depotName: "原料仓",
+  organName: "华东化工",
+  idempotencyKey: `evil-cancel-bypass-${Date.now()}`,
+  remark: "model-arg-must-not-bypass",
+  excelWorkflowCancel: true,
+});
+note(
+  "prepare_blocked_despite_excelWorkflowCancel_model_arg",
+  bypass.json?.code === 409 || (bypass.json?.code !== 200 && /Excel|文件|核对|409/i.test(JSON.stringify(bypass.json))),
+  { code: bypass.json?.code, msg: bypass.json?.data?.message || bypass.json?.message },
+);
+
+const summaryOk =
+  typeof pdata?.userSummaryZh === "string" &&
+  pdata.userSummaryZh.length > 10 &&
+  !/previewId|canConfirm|status=PREVIEWED|posted=false/i.test(pdata.userSummaryZh);
+note("user_summary_no_tech_jargon", summaryOk, {
+  sample: String(pdata?.userSummaryZh || "").slice(0, 180),
+});
+note(
+  "workflow_retains_preview_summary",
+  wf.json?.data?.hasValidPreview === true &&
+    !!wf.json?.data?.previewId &&
+    typeof wf.json?.data?.userSummaryZh === "string" &&
+    wf.json.data.userSummaryZh.length > 0,
+  {
+    status: wf.json?.data?.status,
+    hasValidPreview: wf.json?.data?.hasValidPreview,
+    summaryLen: String(wf.json?.data?.userSummaryZh || "").length,
+  },
+);
+
 const cancel = await signedPost("/aierp/v1/wecom/excel/workflow/cancel", {
   wecomUserId: WECOM,
   botId: BOT,
@@ -178,8 +217,8 @@ const out = {
   results,
   pass: results.filter((x) => x.ok).length,
   fail: results.filter((x) => !x.ok).length,
-  LIVE_WECOM_FILE_PREVIEW: "PENDING_USER_DM",
-  note: "Do not confirm draft #113. Filename ---100L--- must not become qty.",
+  LIVE_WECOM_FILE_PREVIEW: "PASS_PRIOR_UAT",
+  note: "Do not confirm draft #113. Filename ---100L--- must not become qty. Model excelWorkflowCancel must not bypass gate.",
 };
 writeFileSync(join(evidenceDir, "aierp-017a-filename-vs-cells.json"), JSON.stringify(out, null, 2));
 if (out.fail) {

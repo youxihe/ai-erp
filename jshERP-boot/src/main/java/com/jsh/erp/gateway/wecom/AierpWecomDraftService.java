@@ -32,10 +32,9 @@ public class AierpWecomDraftService {
 
     public Map<String, Object> purchasePrepare(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
-        // 017A: block inventing "Excel drafts" from filename/chat while a file workflow is open.
-        if (body == null || !body.getBooleanValue("excelWorkflowCancel")) {
-            excelService.assertNoOpenFileWorkflow(ctx);
-        }
+        // 017A: never trust model args (e.g. excelWorkflowCancel) to bypass the file workflow gate.
+        // Only authenticated POST /excel/workflow/cancel from trusted「取消文件」may close it.
+        excelService.assertNoOpenFileWorkflow(ctx);
         AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
         JSONObject draftBody = buildPurchaseBody(body);
         Map<String, Object> created = gatewayService.createDraftAs(ctx.user, "PURCHASE", draftBody, owner);

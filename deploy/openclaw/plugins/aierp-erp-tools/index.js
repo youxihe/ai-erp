@@ -800,35 +800,73 @@ function workflowBlocksPrepare(wf) {
 }
 
 function formatPreviewLines(data) {
-  const lines = [];
-  lines.push("status=PREVIEWED");
-  lines.push(`previewId=${data?.previewId || "?"}`);
-  lines.push("posted=false");
-  lines.push("stockUnchanged=true");
-  lines.push("说明：以下数量/金额来自 XLSX 单元格，不是文件名。本阶段仅预览，不会入库，不会创建采购草稿。");
-  if (data?.hintZh || data?.hint) lines.push(String(data.hintZh || data.hint));
+  if (data?.userSummaryZh) return String(data.userSummaryZh);
+  if (data?.hintZh) return String(data.hintZh);
   const records = Array.isArray(data?.records) ? data.records : [];
-  for (const rec of records.slice(0, 20)) {
+  const lines = [];
+  const errors = [];
+  let billCount = 0;
+  let lineCount = 0;
+  for (const rec of records) {
+    billCount += 1;
+    const sourceRows = Array.isArray(rec?.sourceRows) ? rec.sourceRows : [];
+    lineCount += sourceRows.length || 1;
     const errs = Array.isArray(rec?.errors) ? rec.errors.filter(Boolean) : [];
+    if (errs.length || rec?.canConfirm === false) {
+      const rowLabel = sourceRows.length ? sourceRows[0] : "?";
+      errors.push(`第${rowLabel}行：${errs.join("；") || "数据有误"}`);
+    }
+  }
+  if (errors.length) {
+    lines.push(`文件已收到，但还有 ${errors.length} 处需要修改：`);
+    for (const e of errors.slice(0, 5)) lines.push(`- ${e}`);
+    lines.push("请改好后重新发回 Excel。库存未变化，也未创建采购单。");
+    return lines.join("\n");
+  }
+  lines.push(`文件已核对：${billCount || records.length} 张业务单 / ${lineCount || records.length} 行明细。`);
+  for (const rec of records.slice(0, 5)) {
     const norm = rec?.normalized || {};
+    const sceneLabel =
+      rec?.scene === "PURCHASE" ? "采购单" : rec?.scene === "MIX" ? "配制单" : rec?.scene === "SERVICE" ? "服务单" : "业务单";
+    let head = `${sceneLabel} ${rec?.businessKey || "?"}`;
+    if (norm.organName) head += `｜${norm.organName}`;
+    lines.push(head);
     const purchaseLines = Array.isArray(norm.lines) ? norm.lines : [];
-    lines.push(`— 业务单 ${rec?.businessKey || "?"} scene=${rec?.scene || "?"} canConfirm=${!!rec?.canConfirm}`);
-    if (norm.organName) lines.push(`  供应商/客户: ${norm.organName}`);
-    for (const ln of purchaseLines.slice(0, 10)) {
+    for (const ln of purchaseLines.slice(0, 8)) {
+      const qty = ln.qty ?? "?";
+      const unit = ln.unit || "";
+      const price = ln.unitPrice ?? ln.price;
+      let amount = "";
+      if (price != null && price !== "" && qty !== "?") {
+        const n = Number(qty) * Number(price);
+        if (Number.isFinite(n)) amount = `＝${n} 元`;
+      }
       lines.push(
-        `  行: 物料=${ln.barCode || "?"} 仓库=${ln.depotName || "?"} 数量=${ln.qty || "?"} ${ln.unit || ""} 单价=${ln.unitPrice || ln.price || "-"}`,
+        `  ${ln.barCode || ""}${ln.depotName ? "｜" + ln.depotName : ""}｜${qty}${unit}` +
+          (price != null && price !== "" ? ` × ${price} 元${amount}` : ""),
       );
     }
     if (norm.finished) {
       const f = norm.finished;
-      lines.push(`  成品: ${f.barCode || "?"} 仓库=${f.depotName || "?"} 数量=${f.qty || "?"} ${f.unit || ""}`);
+      lines.push(`  成品 ${f.barCode || ""}｜${f.qty || "?"}${f.unit || ""}`);
     }
-    if (errs.length) lines.push(`  错误: ${errs.join("; ")}`);
   }
-  if (!records.length) lines.push("（无明细行）");
-  lines.push("若要放弃文件流程并改口头采购，请回复：取消文件");
+  lines.push("数据无误，尚未入库。本阶段仅核对；下一阶段会生成待确认采购单后再请您确认。");
+  lines.push("不必重新上传同一文件。若改口头采购，请回复「取消文件」。");
   return lines.join("\n");
 }
+
+function formatParseFailed(reason) {
+  const map = {
+    FILE_STAGING_PENDING: "文件还在接收中，请稍后再发一次同一份 Excel。",
+    FILE_BYTES_MISSING: "没有收到可用的 Excel 文件，请重新发送 .xlsx。",
+    FILE_TOO_LARGE: "Excel 超过 2MB，请精简后重发。",
+    NO_PREVIEW_ID: "文件未能完成核对，请重新发送 .xlsx。",
+  };
+  return map[reason] || `文件未能完成核对：${reason || "未知原因"}。库存未变化，也未创建采购单。`;
+}
+
+const EXCEL_FOLLOWUP = /^\s*(入库吧|确认入库|按文件|按刚才的?文件|按文件(里面|内容)|继续(入库|处理)|提交入库|生成草稿|按文件处理.*)\s*$/i;
 
 async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, stagingPending }) {
   const displayName = xlsxPath ? basename(xlsxPath) : "upload.xlsx";
@@ -857,8 +895,7 @@ async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, s
       ...wfBase,
       status: "FAILED",
       reason: "FILE_STAGING_PENDING",
-      replyText:
-        "FILE_PARSE_FAILED：附件仍在暂存中，尚未取得可用字节。请稍后重新发送同一个 .xlsx（不要根据文件名猜数量）。",
+      replyText: formatParseFailed("FILE_STAGING_PENDING"),
     };
     storeWorkflow(failed);
     await signedPost("/aierp/v1/wecom/excel/workflow/status", {
@@ -877,8 +914,7 @@ async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, s
       ...wfBase,
       status: "FAILED",
       reason: "FILE_BYTES_MISSING",
-      replyText:
-        "FILE_PARSE_FAILED：未取得可信附件本地路径/字节，无法解析。禁止根据文件名或聊天猜测数量。请重新发送 .xlsx。",
+      replyText: formatParseFailed("FILE_BYTES_MISSING"),
     };
     storeWorkflow(failed);
     await signedPost("/aierp/v1/wecom/excel/workflow/status", {
@@ -904,7 +940,7 @@ async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, s
         ...wfBase,
         status: "FAILED",
         reason: "FILE_TOO_LARGE",
-        replyText: "FILE_PARSE_FAILED：Excel 超过 2MB。库存未变化，未创建草稿。",
+        replyText: formatParseFailed("FILE_TOO_LARGE"),
       };
       storeWorkflow(failed);
       return failed;
@@ -926,7 +962,7 @@ async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, s
         status: "FAILED",
         reason: "NO_PREVIEW_ID",
         fileSha256,
-        replyText: "FILE_PARSE_FAILED：ERP 未返回 previewId，不能宣称已解析。库存未变。",
+        replyText: formatParseFailed("NO_PREVIEW_ID"),
       };
       storeWorkflow(failed);
       redactExcelLog({
@@ -965,7 +1001,7 @@ async function runExcelPreview({ wecomUserId, xlsxPath, messageId, sessionKey, s
       ...wfBase,
       status: "FAILED",
       reason: "ERP_PREVIEW_ERROR",
-      replyText: `FILE_PARSE_FAILED：${String(err?.message || err)}。未根据文件名推断业务数据；库存未变；未创建草稿。`,
+      replyText: formatParseFailed(String(err?.message || err).slice(0, 120)),
     };
     storeWorkflow(failed);
     redactExcelLog({
@@ -1052,7 +1088,7 @@ function registerConfirmAndExcelDispatchHook(api) {
         sessionKey,
         wecomUserId: senderId,
         at: Date.now(),
-        replyText: "已关闭 Excel 文件流程。现在可以重新发起独立的口头采购（不使用文件名/旧预览）。",
+        replyText: "已关闭文件流程。现在可以重新口头下采购单。",
       };
       storeWorkflow(cleared);
       try {
@@ -1083,6 +1119,40 @@ function registerConfirmAndExcelDispatchHook(api) {
       } catch (err) {
         return { handled: true, text: `确认未完成：${String(err?.message || err)}` };
       }
+    }
+
+    // Durable preview follow-up: user says 入库吧 after session/model reset.
+    if (EXCEL_FOLLOWUP.test(text) && !isConfirmPhrase(text)) {
+      try {
+        const st = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+          wecomUserId: senderId,
+          botId: botId(),
+          channel: CHANNEL_ID,
+        });
+        if (st && st.status === "PREVIEWED" && (st.userSummaryZh || st.previewId)) {
+          const summary = st.userSummaryZh
+            ? String(st.userSummaryZh)
+            : "文件已核对完成，结果仍保留在服务端。";
+          const body =
+            summary +
+            "\n\n已保留刚才的核对结果，不必重新上传。" +
+            "本阶段仅完成核对，尚未生成待确认采购单；下一阶段开通后即可确认入库。" +
+            "若要口头采购，请先回复「取消文件」。";
+          return { handled: true, text: body };
+        }
+        if (st && (st.status === "PENDING" || st.status === "FAILED")) {
+          return {
+            handled: true,
+            text: "刚才的文件还没核对成功。请重新发送 .xlsx，或回复「取消文件」后口头下单。",
+          };
+        }
+      } catch {
+        // fall through
+      }
+      return {
+        handled: true,
+        text: "当前没有可继续的 Excel 核对结果。请先发送填写好的 .xlsx，或直接口头下采购单。",
+      };
     }
 
     const paths = collectXlsxPaths(event, ctx);
@@ -1117,9 +1187,7 @@ function registerConfirmAndExcelDispatchHook(api) {
       });
       return {
         handled: true,
-        text:
-          "FILE_PARSE_FAILED：未在 LLM 前取得可信 XLSX 字节（观察钩子未完成或附件路径缺失）。" +
-          "不能根据文件名中的数量创建草稿。请重新发送 .xlsx 文件。",
+        text: formatParseFailed("FILE_BYTES_MISSING"),
       };
     }
 
@@ -1158,8 +1226,8 @@ function registerPrepareGate(api) {
     return {
       block: true,
       blockReason:
-        "Excel 文件流程未关闭：禁止用口头/文件名猜测调用 erp_purchase_prepare 创建“文件草稿”。" +
-        "请等待 PREVIEWED（含 previewId 与单元格数量）或回复「取消文件」后重新口头下单。不要确认草稿 #113。",
+        "当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建采购草稿。" +
+        "请按已核对的文件继续，或回复「取消文件」后再口头下单。不要确认草稿 #113。",
     };
   };
   try {

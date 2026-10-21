@@ -1,6 +1,6 @@
 {
   "suite": "aierp-017a-excel-preview-flow",
-  "at": "2026-10-21T12:08:32.139Z",
+  "at": "2026-10-21T13:52:07.293Z",
   "wecomFixture": "aierp017***",
   "results": [
     {
@@ -11,22 +11,22 @@
     {
       "name": "template_purchase",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"采购入库模板.xlsx\",\"confirmSupported\":true,\"bytes\":4188}"
+      "detail": "{\"code\":200,\"fileName\":\"采购入库模板.xlsx\",\"confirmSupported\":true,\"bytes\":5233}"
     },
     {
       "name": "template_mix",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\",\"confirmSupported\":true,\"bytes\":4186}"
+      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\",\"confirmSupported\":true,\"bytes\":5222}"
     },
     {
       "name": "template_service",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"服务耗料模板.xlsx\",\"confirmSupported\":true,\"bytes\":4182}"
+      "detail": "{\"code\":200,\"fileName\":\"服务耗料模板.xlsx\",\"confirmSupported\":true,\"bytes\":5227}"
     },
     {
       "name": "template_sale",
       "ok": true,
-      "detail": "{\"code\":200,\"fileName\":\"销售出库模板（仅模板不可过账）.xlsx\",\"confirmSupported\":false,\"bytes\":4209}"
+      "detail": "{\"code\":200,\"fileName\":\"销售出库模板（仅模板不可过账）.xlsx\",\"confirmSupported\":false,\"bytes\":5147}"
     },
     {
       "name": "sale_template_only",
@@ -36,22 +36,22 @@
     {
       "name": "template_purchase_filled",
       "ok": true,
-      "detail": "{\"bytes\":4321}"
+      "detail": "{\"bytes\":5293}"
     },
     {
       "name": "preview_purchase_ok",
       "ok": true,
-      "detail": "{\"previewId\":\"pv-12cadcca3e18413b9624c851fe7df570\",\"summary\":{\"records\":1,\"confirmable\":1,\"posted\":false,\"stockUnchanged\":true},\"hintZh\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\",\"records\":1}"
+      "detail": "{\"previewId\":\"pv-a52bba682abd4dcc9f0aa24d3e399fe0\",\"summary\":{\"records\":1,\"confirmable\":1,\"posted\":false,\"stockUnchanged\":true},\"hintZh\":\"文件已核对：1 张业务单 / 1 行明细。\\n采购单 017A-P-mvi68h14｜华东化工\\n  RM-A001｜原料仓｜1L × 10 元＝10 元\\n数据无误，尚未入库。本阶段仅核对；正式入库将在下一阶段生成待确认采购单后，由您本人确认。不必重新上传同一文件。若改口头采购，请回复「取消文件」。\",\"records\":1}"
     },
     {
       "name": "preview_mix_ok",
       "ok": true,
-      "detail": "{\"code\":200,\"previewId\":\"pv-865bf18522db4cb48e0c98b2b43d7b71\",\"hint\":\"批量文件已解析（仅预览，库存与已审核单据未变化）。业务单约 1 张，明细 1 行；可后续草稿候选 1 行，有问题 0 行。 本阶段不执行 excel.confirm，不会入库。销售出库/期初仅模板。\"}"
+      "detail": "{\"code\":200,\"previewId\":\"pv-dbbd92d2197945b19b85fded7ce607f8\",\"hint\":\"文件已核对：1 张业务单 / 1 行明细。\\n配制单 017A-M-mvi68h3f\\n  RM-A001｜原料仓｜0.1L\\n  成品 FG-101｜1L\\n数据无误，尚未入库。本阶段仅核对；正式入库将在下一阶段生成待确认采购单后，由您本人确认。\"}"
     },
     {
       "name": "preview_service_ok",
       "ok": true,
-      "detail": "{\"code\":200,\"previewId\":\"pv-4c8f6936714547b3952efb008eb00ca2\"}"
+      "detail": "{\"code\":200,\"previewId\":\"pv-d5a64641510a46dd85fbcb33e404b44c\"}"
     },
     {
       "name": "sale_preview_not_supported",
