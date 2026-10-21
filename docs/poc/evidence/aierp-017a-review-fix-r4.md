@@ -18,4 +18,12 @@ GitHub PR #30 为 **CLOSED / NOT MERGED**（控制面 #33 合并时由维护者�
 
 ## Tests
 
-见 `aierp-017a-filename-vs-cells.json`（含 `excelWorkflowCancel` 负例）与既有 preview-flow。
+- `aierp-017a-filename-vs-cells`：**10/10 PASS**（含 `excelWorkflowCancel:true` 负例、`userSummaryZh`、workflow 摘要保留）
+- `aierp-017a-excel-preview-flow`：**14/14 PASS**；库存 170.7 不变
+- Gateway：HTTP 200；企微通道 `running, works`
+- HEAD：`a319848b` · `REVIEW_FIX_PUSHED`
+- 勿确认 #113；017B1 等本 PR Merge 后再开
+
+## PR
+
+分支已 Push。若 #30 仍为 CLOSED，请维护者 Reopen 或开替代 PR 指向本分支（Cursor 不自行 Merge）。
