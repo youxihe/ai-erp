@@ -1,0 +1,25 @@
+{
+  "suite": "aierp-017a-prefill-evidence",
+  "at": "2026-10-21T09:51:35.744Z",
+  "templateCode": 200,
+  "byteLength": 4319,
+  "xlsxPath": "D:\\ERP\\ai-erp\\docs\\poc\\evidence\\aierp-017a-prefill-RM-A001.xlsx",
+  "mediaPath": "C:\\Users\\油锡贺\\AppData\\Local\\aierp-openclaw\\state\\media\\aierp-excel\\采购入库模板.xlsx",
+  "mediaDirective": "MEDIA: C:\\Users\\油锡贺\\AppData\\Local\\aierp-openclaw\\state\\media\\aierp-excel\\采购入库模板.xlsx",
+  "prefillNeedlesFound": {
+    "10": true,
+    "RM-A001": true,
+    "华东化工": true,
+    "原料仓": true,
+    "表面活性剂": true,
+    "12.5": true
+  },
+  "allNeedlesPresent": true,
+  "previewId": "pv-dcdfdcafdc4f4d83858307aed983f77c",
+  "previewPosted": true,
+  "stockBefore": 170.7,
+  "stockAfter": 170.7,
+  "stockUnchanged": true,
+  "FILE_OUTBOUND_WECOM": "NOT_VERIFIED_IN_THIS_SCRIPT",
+  "note": "XLSX bytes + MEDIA path ready for WeCom channel; live DM delivery requires user WeCom session."
+}

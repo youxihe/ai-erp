@@ -100,10 +100,10 @@ public class AierpExcelService {
                     "PURCHASE".equals(normalized) ? "PURCHASE" : normalized);
         }
         if ("MIX".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "03药水配制", MIX_HEADERS, fill == null ? null : fill.getJSONArray("rows"), "MIX");
+            writeSheet(book, "03药水配制", MIX_HEADERS, fillRows, "MIX");
         }
         if ("SERVICE".equals(normalized) || "PACK".equals(normalized)) {
-            writeSheet(book, "04服务耗料", SERVICE_HEADERS, fill == null ? null : fill.getJSONArray("rows"), "SERVICE");
+            writeSheet(book, "04服务耗料", SERVICE_HEADERS, fillRows, "SERVICE");
         }
         if ("INITIAL".equals(normalized) || "PACK".equals(normalized)) {
             Sheet sheet = writeSheet(book, "01物料期初", INITIAL_HEADERS, null, "INITIAL");
@@ -485,6 +485,11 @@ public class AierpExcelService {
             errors.add("单位不匹配: " + barCode + " 需要 " + expected + " 实际 " + line.getString("unit"));
         }
         String depotName = line.getString("depotName");
+        if (depotName == null || depotName.trim().isEmpty()) {
+            errors.add("缺少仓库 depotName");
+            return;
+        }
+        depotName = depotName.trim();
         Integer depots = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM jsh_depot WHERE name=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
                 Integer.class, depotName, user.getTenantId());
@@ -519,16 +524,28 @@ public class AierpExcelService {
                     JSONObject fin = new JSONObject(true);
                     fin.put("barCode", finished.trim());
                     fin.put("unit", row.getString("finishedUnit"));
-                    fin.put("depotName", row.getString("depotName") != null ? row.getString("depotName") : "成品仓");
+                    String finDepot = row.getString("finishedDepotName");
+                    fin.put("depotName", finDepot != null && !finDepot.trim().isEmpty() ? finDepot.trim() : "成品仓");
                     checkMaterial(user, fin, errors);
                 }
+                if (row.getString("barCode") != null && !row.getString("barCode").trim().isEmpty()) {
+                    JSONObject component = new JSONObject(true);
+                    component.put("barCode", row.getString("barCode").trim());
+                    component.put("unit", row.getString("unit"));
+                    String dep = row.getString("depotName");
+                    component.put("depotName", dep != null && !dep.trim().isEmpty() ? dep.trim() : "原料仓");
+                    checkMaterial(user, component, errors);
+                }
+                continue;
             }
             if (row.getString("barCode") != null && !row.getString("barCode").trim().isEmpty()) {
-                if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
-                    if (row.getString("organName") == null || row.getString("organName").trim().isEmpty()) {
-                        errors.add("预填采购行缺少供应商 organName");
-                    } else {
-                        assertSupplierExists(user, row.getString("organName").trim(), errors);
+                if ("PURCHASE".equals(scene) || "PACK".equals(scene) || "SERVICE".equals(scene)) {
+                    if ("PURCHASE".equals(scene) || "PACK".equals(scene)) {
+                        if (row.getString("organName") == null || row.getString("organName").trim().isEmpty()) {
+                            errors.add("预填采购行缺少供应商 organName");
+                        } else {
+                            assertSupplierExists(user, row.getString("organName").trim(), errors);
+                        }
                     }
                 }
                 checkMaterial(user, row, errors);
