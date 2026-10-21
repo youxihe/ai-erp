@@ -169,6 +169,7 @@ public class AierpWecomExcelService {
         wf.put("erpUserId", ctx.user.getId());
         wf.put("tenantId", ctx.user.getTenantId());
         wf.put("wecomUserIdMasked", mask(ctx.wecomUserId));
+        wf.put("bindingId", ctx.binding.get("id"));
         wf.put("bindingVersion", ctx.binding.get("binding_version"));
         wf.put("updatedAt", System.currentTimeMillis());
         String key = workflowKey(ctx);
@@ -186,7 +187,19 @@ public class AierpWecomExcelService {
             return null;
         }
         try {
-            return JSON.parseObject(String.valueOf(raw));
+            Map<String, Object> wf = JSON.parseObject(String.valueOf(raw));
+            // A WeCom sender can unbind/rebind to a different ERP user/tenant.
+            // Never reuse a cached preview, supplier/price or file workflow across
+            // actor changes or binding generations (including same-second rebind).
+            if (wf == null
+                    || !String.valueOf(ctx.user.getId()).equals(String.valueOf(wf.get("erpUserId")))
+                    || !String.valueOf(ctx.user.getTenantId()).equals(String.valueOf(wf.get("tenantId")))
+                    || !String.valueOf(ctx.binding.get("binding_version")).equals(String.valueOf(wf.get("bindingVersion")))
+                    || wf.get("bindingId") == null
+                    || !String.valueOf(ctx.binding.get("id")).equals(String.valueOf(wf.get("bindingId")))) {
+                return null;
+            }
+            return wf;
         } catch (Exception ex) {
             return null;
         }
