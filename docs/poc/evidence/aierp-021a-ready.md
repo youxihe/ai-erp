@@ -1,8 +1,8 @@
 # AIERP-021A READY_FOR_REVIEW
 
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
-- **HEAD**: `843f0740b0a7c4e0ace65fc70532603da6b56b7a`
-- **Implementation**: `27adcf05295ae46e1ef6860fe44e62e7e0cdeb0f`
+- **Implementation HEAD**: `27adcf05295ae46e1ef6860fe44e62e7e0cdeb0f`
+- **Branch tip**: use `git rev-parse origin/feat/aierp-021a-partner-masterdata-sop` (includes READY docs)
 - **Base**: `origin/master` @ `74b32fe8`
 - **Scope**: WeCom prepare?confirm create/update of ERP `Supplier` (???|??). No stock / purchase / mix / service post.
 - **No merge / no F:** plugin `index.js` not wired; shared OpenClaw runtime untouched.
@@ -12,7 +12,7 @@
 | Area | Path |
 |---|---|
 | Java facade | `AierpWecomMasterDataService` (`createPartnerAs` / `updatePartnerAs` + prepare/commit) |
-| API | `POST /aierp/v1/wecom/master/partner/prepare` ï¿½ `.../commit` |
+| API | `POST /aierp/v1/wecom/master/partner/prepare` · `.../commit` |
 | Auth filter allowlist | `LogCostFilter` |
 | Schema | `deploy/sql/08-aierp-021a-partner-master.sql` (+ seed-demo) |
 | SOP | `sop/partner-upsert.mjs` + registry priority `partner_confirm` |
