@@ -194,7 +194,8 @@ async function main() {
     wecomUserId: "x",
     isConfirmPhrase: (t) => /^\s*确认\s*采购/.test(t) || /^\s*确认\s*配制/.test(t),
   });
-  assert(routedMix?.sopId === "purchase_confirm", "mix phrase → trusted confirm path (Java rejects cross-type)");
+  // After 016M merge: mix phrases route to mix_confirm SOP; Java still rejects cross-type on confirm API.
+  assert(routedMix?.sopId === "mix_confirm", "mix phrase → mix_confirm (cross-type still rejected in Java)");
   pass("sop_registry_unit", { service: routed, mixRouted: routedMix });
 
   const bindRows = mysql(

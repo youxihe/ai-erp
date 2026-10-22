@@ -261,6 +261,14 @@ public class AierpWecomExcelService {
 
     /** Clear Excel workflow after native confirm so verbal purchase is unblocked. */
     public void markWorkflowPosted(AierpWecomBindingService.BoundContext ctx, long draftId) {
+        markWorkflowPosted(ctx, draftId, null);
+    }
+
+    /**
+     * Mark Excel workflow POSTED after native confirm.
+     * PURCHASE keeps「已入库」; SERVICE uses「已出库」; do not retitle purchase/PDF paths.
+     */
+    public void markWorkflowPosted(AierpWecomBindingService.BoundContext ctx, long draftId, String bizType) {
         Map<String, Object> current = getWorkflow(ctx);
         if (current == null) {
             return;
@@ -284,16 +292,44 @@ public class AierpWecomExcelService {
         if (!matched) {
             return;
         }
+        String phrase = current.get("confirmPhrase") == null ? "" : String.valueOf(current.get("confirmPhrase"));
+        boolean service = "SERVICE".equals(bizType) || phrase.startsWith("确认耗料");
+        String summary = service
+                ? ("服务耗料单 #" + draftId + " 已出库。")
+                : ("采购单 #" + draftId + " 已入库。");
         putWorkflow(ctx, "POSTED",
                 current.get("previewId") == null ? null : String.valueOf(current.get("previewId")),
                 current.get("fileSha256") == null ? null : String.valueOf(current.get("fileSha256")),
                 null, "CONFIRMED",
-                "采购单 #" + draftId + " 已入库。",
+                summary,
                 draftId, current.get("businessKey") == null ? null : String.valueOf(current.get("businessKey")),
                 null,
                 current.get("batchId") == null ? null : String.valueOf(current.get("batchId")),
                 current.get("drafts"));
     }
+
+
+    /** Package helper for AIERP-016S SERVICE verified prepare. */
+    public Map<String, Object> peekWorkflow(AierpWecomBindingService.BoundContext ctx) {
+        return getWorkflow(ctx);
+    }
+
+    /** Load preview payload owned by the bound ERP user. */
+    public JSONObject loadOwnedPreviewPayload(AierpWecomBindingService.BoundContext ctx, String previewId) {
+        return loadPreviewPayload(ctx, previewId);
+    }
+
+    public void putOwnedWorkflow(AierpWecomBindingService.BoundContext ctx, String status, String previewId,
+                                 String fileSha256, String messageMsgId, String reason, String userSummaryZh,
+                                 Object draftId, String businessKey, String confirmPhrase) {
+        putWorkflow(ctx, status, previewId, fileSha256, messageMsgId, reason, userSummaryZh, draftId, businessKey, confirmPhrase, null, null);
+    }
+
+    public String shortIdempotencyKeyFor(AierpWecomBindingService.BoundContext ctx,
+                                         String fileSha256, String businessKey) {
+        return shortIdempotencyKey(ctx, fileSha256, businessKey);
+    }
+
 
     public void assertNoOpenFileWorkflow(AierpWecomBindingService.BoundContext ctx) {
         Map<String, Object> current = getWorkflow(ctx);

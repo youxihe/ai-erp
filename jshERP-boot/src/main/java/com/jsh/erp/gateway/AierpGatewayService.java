@@ -64,9 +64,9 @@ public class AierpGatewayService {
 
     @Resource
     private JdbcTemplate jdbcTemplate;
-@Resource
+    @Resource
     private SystemConfigService systemConfigService;
-@Resource
+    @Resource
     private UserBusinessService userBusinessService;
     @Resource
     private UserService userService;
@@ -281,9 +281,7 @@ public class AierpGatewayService {
         assertGatewayBizType(bizType);
         assertFunction(user, functionOf(bizType), BTN_ADD, bizType);
         String key = required(body, "idempotencyKey");
-        JSONObject normalized = normalize(bizType, body, user);
-        String payload = normalized.toJSONString();
-        String payloadHash = sha256Hex(payload);
+        // Look up before normalize so CONFIRMED replay is not blocked by post-outbound stock drift.
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
                 "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, "
                         + "binding_bound_at, binding_version, draft_version, payload_hash "
@@ -292,6 +290,19 @@ public class AierpGatewayService {
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
             assertWecomOwnerMatches(row, wecomOwner);
+            // Already posted: return audited bill even if live stock snapshot would fail normalize.
+            if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
+                if (!bizType.equals(String.valueOf(row.get("biz_type")))) {
+                    throw new BusinessRunTimeException(409, "幂等键已用于其他业务类型，拒绝覆盖");
+                }
+                return draftFlags(draftView(row, true), row);
+            }
+        }
+        JSONObject normalized = normalize(bizType, body, user);
+        String payload = normalized.toJSONString();
+        String payloadHash = sha256Hex(payload);
+        if (!existing.isEmpty()) {
+            Map<String, Object> row = existing.get(0);
             if (!payload.equals(String.valueOf(row.get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
@@ -328,6 +339,12 @@ public class AierpGatewayService {
                 throw ex;
             }
             assertWecomOwnerMatches(raced.get(0), wecomOwner);
+            if ("CONFIRMED".equals(String.valueOf(raced.get(0).get("status")))) {
+                if (!bizType.equals(String.valueOf(raced.get(0).get("biz_type")))) {
+                    throw new BusinessRunTimeException(409, "幂等键已用于其他业务类型，拒绝覆盖");
+                }
+                return draftFlags(draftView(raced.get(0), true), raced.get(0));
+            }
             if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
@@ -1252,7 +1269,12 @@ public class AierpGatewayService {
         if (ids.isEmpty()) {
             throw new BusinessRunTimeException(400, "未找到当前租户下的" + type + ": " + name);
         }
-        return ids.get(0);
+        Long organId = ids.get(0);
+        // AIERP-016S: SERVICE prepare resolves 客户 via UserCustomer when customerFlag=1 (not tenant-only).
+        if ("客户".equals(type)) {
+            assertCustomerVisible(user, organId, name);
+        }
+        return organId;
     }
 
     private Long defaultAccountId(User user) {

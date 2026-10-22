@@ -1,7 +1,7 @@
 {
   "ticket": "AIERP-016S",
   "suite": "REVIEW_FIX non-post",
-  "at": "2026-10-22T17:40:11.074Z",
+  "at": "2026-10-22T19:01:14.595Z",
   "doConfirm": false,
   "pass": true,
   "results": [
@@ -13,7 +13,7 @@
           "sopId": "service_confirm"
         },
         "mixRouted": {
-          "sopId": "purchase_confirm"
+          "sopId": "mix_confirm"
         }
       }
     },
@@ -39,8 +39,8 @@
       "name": "stock_snapshot_before",
       "ok": true,
       "detail": {
-        "fgFinished": 149,
-        "rmRaw": 250.7
+        "fgFinished": 151,
+        "rmRaw": 349.2
       }
     },
     {
@@ -49,7 +49,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792690808541"
+          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792695672303"
         }
       }
     },
@@ -58,7 +58,7 @@
       "ok": true,
       "detail": {
         "code": 400,
-        "msg": "库存不足，拒绝创建服务耗料草稿：FG-101 @ 成品仓 可用 149.000000 需要 99999"
+        "msg": "库存不足，拒绝创建服务耗料草稿：FG-101 @ 成品仓（当前可用库存不足）"
       }
     },
     {
@@ -66,7 +66,7 @@
       "ok": true,
       "detail": {
         "code": 403,
-        "msg": "当前用户无权使用仓库: 禁仓mvjttkuz"
+        "msg": "当前用户无权使用仓库: 禁仓mvjwptqi"
       }
     },
     {
@@ -82,8 +82,8 @@
       "name": "prepare_service_draft",
       "ok": true,
       "detail": {
-        "draftId": 246,
-        "phrase": "确认耗料246",
+        "draftId": 293,
+        "phrase": "确认耗料293",
         "status": "AWAITING_CONFIRM"
       }
     },
@@ -91,8 +91,8 @@
       "name": "prepare_stock_unchanged",
       "ok": true,
       "detail": {
-        "nBefore": 149,
-        "nMid": 149
+        "nBefore": 151,
+        "nMid": 151
       }
     },
     {
@@ -101,7 +101,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配（PURCHASE≠SERVICE），请回复「确认耗料246」"
+          "message": "确认指令与单据类型不匹配，请回复「确认耗料293」"
         }
       }
     },
@@ -111,7 +111,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配（MIX≠SERVICE），请回复「确认耗料246」"
+          "message": "确认指令与单据类型不匹配，请回复「确认耗料293」"
         }
       }
     },
@@ -119,7 +119,7 @@
       "name": "no_post_after_prepare",
       "ok": true,
       "detail": {
-        "draftId": 246
+        "draftId": 293
       }
     },
     {
@@ -135,8 +135,8 @@
       "ok": true,
       "detail": {
         "reason": "set AIERP_016S_CONFIRM=1 to post FG-101 -1L (do not repost GW-SERVICE-136)",
-        "draftId": 246,
-        "confirmPhrase": "确认耗料246",
+        "draftId": 293,
+        "confirmPhrase": "确认耗料293",
         "LIVE_WECOM_CONFIRM": "PENDING_USER",
         "NOT_VERIFIED": "human WeCom UAT"
       }
@@ -145,23 +145,23 @@
       "name": "cancel_unposted_test_draft",
       "ok": true,
       "detail": {
-        "draftId": 246
+        "draftId": 293
       }
     },
     {
       "name": "reject_service_phrase_on_purchase",
       "ok": true,
       "detail": {
-        "draftId": 247,
+        "draftId": 294,
         "code": 400,
-        "msg": "确认指令与单据类型不匹配（SERVICE≠PURCHASE），请回复「确认采购247」"
+        "msg": "确认指令与单据类型不匹配，请回复「确认采购294」"
       }
     },
     {
       "name": "cancel_purchase_cross_type_fixture",
       "ok": true,
       "detail": {
-        "draftId": 247
+        "draftId": 294
       }
     },
     {
@@ -172,7 +172,7 @@
         "billNumber": "GW-SERVICE-136",
         "posted": true,
         "status": "CONFIRMED",
-        "stockUnchanged": 149
+        "stockUnchanged": 151
       }
     },
     {
