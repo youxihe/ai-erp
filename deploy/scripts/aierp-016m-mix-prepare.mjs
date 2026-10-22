@@ -313,24 +313,25 @@ note(
   stockAfterReplay,
 );
 
-// Model boolean alone cannot shortcut recipe confirmation
-const boolOnly = await signedPost("/aierp/v1/wecom/mix/prepare", {
+// Model boolean alone must fail with recipeHash message even while Excel DRAFT_READY is open
+const boolWhileOpen = await signedPost("/aierp/v1/wecom/mix/prepare", {
   wecomUserId: WECOM,
   botId: BOT,
   channel: "wecom",
   recipeUserConfirmed: true,
   userConfirmedRecipe: true,
-  idempotencyKey: `mix-bool-${Date.now()}`,
+  idempotencyKey: `mix-bool-open-${Date.now()}`,
   finished: { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" },
   lines: [{ barCode: "RM-A001", qty: "0.1", unit: "L", depotName: "原料仓" }],
 });
-const boolMsg = String(boolOnly.json?.data?.message || boolOnly.json?.message || "");
+const boolOpenMsg = String(boolWhileOpen.json?.data?.message || boolWhileOpen.json?.message || "");
 note(
-  "refuse_model_boolean_as_recipe_approval",
-  boolOnly.json?.code !== 200 &&
-    /recipeHash|布尔|recipe-preview|模型/.test(boolMsg) &&
-    !/用户已确认/.test(boolMsg),
-  { code: boolOnly.json?.code, msg: boolMsg.slice(0, 240) },
+  "refuse_model_boolean_while_excel_draft_open",
+  boolWhileOpen.json?.code !== 200 &&
+    /recipeHash|布尔|recipe-preview|模型/.test(boolOpenMsg) &&
+    !/用户已确认/.test(boolOpenMsg) &&
+    !/待确认草稿/.test(boolOpenMsg),
+  { code: boolWhileOpen.json?.code, msg: boolOpenMsg.slice(0, 240) },
 );
 
 // Cross-type: 确认采购 / 确认耗料 on MIX draft must not succeed (non-post probe)
@@ -402,6 +403,26 @@ if (draftId1) {
     console.warn("cleanup skipped:", String(ex?.message || ex).slice(0, 120));
   }
 }
+
+// Model boolean alone cannot shortcut recipe confirmation (even with/without open workflow)
+const boolOnly = await signedPost("/aierp/v1/wecom/mix/prepare", {
+  wecomUserId: WECOM,
+  botId: BOT,
+  channel: "wecom",
+  recipeUserConfirmed: true,
+  userConfirmedRecipe: true,
+  idempotencyKey: `mix-bool-${Date.now()}`,
+  finished: { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" },
+  lines: [{ barCode: "RM-A001", qty: "0.1", unit: "L", depotName: "原料仓" }],
+});
+const boolMsg = String(boolOnly.json?.data?.message || boolOnly.json?.message || "");
+note(
+  "refuse_model_boolean_as_recipe_approval",
+  boolOnly.json?.code !== 200 &&
+    /recipeHash|布尔|recipe-preview|模型/.test(boolMsg) &&
+    !/用户已确认/.test(boolMsg),
+  { code: boolOnly.json?.code, msg: boolMsg.slice(0, 240) },
+);
 
 const invent = await signedPost("/aierp/v1/wecom/mix/prepare", {
   wecomUserId: WECOM,

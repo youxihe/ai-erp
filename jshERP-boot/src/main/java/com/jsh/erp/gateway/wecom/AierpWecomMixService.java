@@ -123,8 +123,10 @@ public class AierpWecomMixService {
      */
     public Map<String, Object> mixPrepare(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
-        assertNoBlockingWorkflow(ctx);
+        // Validate recipeHash / refuse model booleans BEFORE workflow gate so an open
+        // Excel DRAFT_READY cannot mask the 400「布尔不能证明用户已核对」response.
         JSONObject draftBody = buildMixBodyFromSlots(ctx, body);
+        assertNoBlockingWorkflow(ctx);
         AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
         Map<String, Object> created = gatewayService.createDraftAs(ctx.user, "MIX", draftBody, owner);
         Map<String, Object> view = enrichMixView(ctx, created, draftBody.getString("businessKey"), false);
