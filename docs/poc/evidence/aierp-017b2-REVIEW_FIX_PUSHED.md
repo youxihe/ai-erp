@@ -11,7 +11,7 @@
 | Branch | `feat/aierp-017b2-multi-purchase-draft` |
 | Base (origin/master) | `29069d15ff6a6382f17c9925ea4d79942bd31d95` (#46) |
 | Fix commit | `a0d2fde402548953400e709998764035641db1ca` |
-| **Remote HEAD (after this push)** | `PLACEHOLDER_HEAD` |
+| **Remote HEAD** | `5bc40da0d3d28188f75e4eb2e249d766da5ca45f` (evidence body; pin commit may follow) |
 | Review | ChatGPT Round 1 → REVIEW_FIX_REQUIRED → **REVIEW_FIX_PUSHED** |
 | Merge | **Do not merge** to master from this agent |
 

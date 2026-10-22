@@ -2,7 +2,7 @@
 
 ## HEAD
 
-见 `aierp-017b2-REVIEW_FIX_PUSHED.md`（push 后 `origin/feat/aierp-017b2-multi-purchase-draft` tip）。
+`5bc40da0d3d28188f75e4eb2e249d766da5ca45f` · branch `feat/aierp-017b2-multi-purchase-draft` · 详见 `aierp-017b2-REVIEW_FIX_PUSHED.md`
 
 ## 行为
 
