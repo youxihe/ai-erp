@@ -1,14 +1,20 @@
 {
   "ticket": "AIERP-016S",
-  "at": "2026-10-22T10:18:48.511Z",
-  "doConfirm": true,
+  "suite": "REVIEW_FIX non-post",
+  "at": "2026-10-22T16:47:01.480Z",
+  "doConfirm": false,
   "pass": true,
   "results": [
     {
       "name": "sop_registry_unit",
       "ok": true,
       "detail": {
-        "sopId": "service_confirm"
+        "service": {
+          "sopId": "service_confirm"
+        },
+        "mixRouted": {
+          "sopId": "purchase_confirm"
+        }
       }
     },
     {
@@ -25,14 +31,15 @@
       "name": "real_customer",
       "ok": true,
       "detail": {
-        "organName": "苏州精密电子"
+        "organName": "测试客户-202610221025",
+        "userCustomerPreferred": true
       }
     },
     {
       "name": "stock_snapshot_before",
       "ok": true,
       "detail": {
-        "fgFinished": 150,
+        "fgFinished": 149,
         "rmRaw": 250.7
       }
     },
@@ -42,7 +49,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792664327205"
+          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792687618081"
         }
       }
     },
@@ -51,15 +58,32 @@
       "ok": true,
       "detail": {
         "code": 400,
-        "msg": "库存不足，拒绝创建服务耗料草稿：FG-101 @ 成品仓 可用 150.000000 需要 99999"
+        "msg": "库存不足，拒绝创建服务耗料草稿：FG-101 @ 成品仓 可用 149.000000 需要 99999"
+      }
+    },
+    {
+      "name": "reject_cross_depot",
+      "ok": true,
+      "detail": {
+        "code": 403,
+        "msg": "当前用户无权使用仓库: 禁仓mvjrx71c"
+      }
+    },
+    {
+      "name": "reject_usercustomer_invisible",
+      "ok": true,
+      "detail": {
+        "organName": "苏州精密电子",
+        "code": 403,
+        "msg": "当前用户无权使用客户: 苏州精密电子"
       }
     },
     {
       "name": "prepare_service_draft",
       "ok": true,
       "detail": {
-        "draftId": 136,
-        "phrase": "确认耗料136",
+        "draftId": 209,
+        "phrase": "确认耗料209",
         "status": "AWAITING_CONFIRM"
       }
     },
@@ -67,8 +91,8 @@
       "name": "prepare_stock_unchanged",
       "ok": true,
       "detail": {
-        "nBefore": 150,
-        "nMid": 150
+        "nBefore": 149,
+        "nMid": 149
       }
     },
     {
@@ -77,53 +101,99 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配，请回复「确认耗料136」"
+          "message": "确认指令与单据类型不匹配（PURCHASE≠SERVICE），请回复「确认耗料209」"
         }
       }
     },
     {
-      "name": "confirm_once",
+      "name": "reject_mix_phrase_on_service",
       "ok": true,
       "detail": {
+        "code": 400,
+        "data": {
+          "message": "确认指令与单据类型不匹配（MIX≠SERVICE），请回复「确认耗料209」"
+        }
+      }
+    },
+    {
+      "name": "no_post_after_prepare",
+      "ok": true,
+      "detail": {
+        "draftId": 209
+      }
+    },
+    {
+      "name": "reject_cross_owner_confirm",
+      "ok": true,
+      "detail": {
+        "other": "ai***",
+        "code": 401
+      }
+    },
+    {
+      "name": "confirm_skipped",
+      "ok": true,
+      "detail": {
+        "reason": "set AIERP_016S_CONFIRM=1 to post FG-101 -1L (do not repost GW-SERVICE-136)",
+        "draftId": 209,
+        "confirmPhrase": "确认耗料209",
+        "LIVE_WECOM_CONFIRM": "PENDING_USER",
+        "NOT_VERIFIED": "human WeCom UAT"
+      }
+    },
+    {
+      "name": "cancel_unposted_test_draft",
+      "ok": true,
+      "detail": {
+        "draftId": 209
+      }
+    },
+    {
+      "name": "reject_service_phrase_on_purchase",
+      "ok": true,
+      "detail": {
+        "draftId": 210,
+        "code": 400,
+        "msg": "确认指令与单据类型不匹配（SERVICE≠PURCHASE），请回复「确认采购210」"
+      }
+    },
+    {
+      "name": "cancel_purchase_cross_type_fixture",
+      "ok": true,
+      "detail": {
+        "draftId": 210
+      }
+    },
+    {
+      "name": "audited_replay_posted_not_new_draft",
+      "ok": true,
+      "detail": {
+        "draftId": "136",
         "billNumber": "GW-SERVICE-136",
-        "pdfStatus": "NONE",
-        "receiptSnippet": "服务耗料出库已完成（已审核）\n原生单号：GW-SERVICE-136\n客户：苏州精密电子\n服务项目：Demo C UAT 服务测试\n单据类型：出库/其它（非销售）\n操作人：jsh\n处理时间：2026-10-22 18:18:47\n- PCB清洗液（FG-101） 1 L ← 成品仓\n库存变化明细：\n- FG-101@成品仓  150 → 149（-1）\n《服"
+        "posted": true,
+        "status": "CONFIRMED",
+        "stockUnchanged": 149
       }
     },
     {
-      "name": "confirm_stock_N_minus_1",
+      "name": "xlsx_posted_replay_no_new_draft",
       "ok": true,
       "detail": {
-        "nBefore": 150,
-        "nAfter": 149
-      }
-    },
-    {
-      "name": "raw_depot_unchanged",
-      "ok": true,
-      "detail": {
-        "rmBefore": 250.7,
-        "rmAfter": 250.7
-      }
-    },
-    {
-      "name": "native_service_other_outbound",
-      "ok": true,
-      "detail": "GW-SERVICE-136\t出库\t其它\t1"
-    },
-    {
-      "name": "confirm_replay_no_double_outbound",
-      "ok": true,
-      "detail": {
+        "draftId": "136",
         "bill": "GW-SERVICE-136",
-        "nReplay": 149
+        "replayed": true
       }
     }
   ],
   "uatNotes": {
-    "LIVE_WECOM_CONFIRM": "SCRIPT_CONFIRMED",
+    "LIVE_WECOM_CONFIRM": "PENDING_USER",
     "next": "企微私聊发服务耗料 Excel 或对话槽位 → 待确认 → 本人回复 确认耗料{draftId} → 核对 FG-101 成品仓 -1L、原料仓不变、回执《服务耗料出库回执》",
     "noFDeploy": true,
-    "noPluginIndexEdit": true
+    "noRepostGwService136": true,
+    "NOT_VERIFIED": [
+      "human WeCom UAT",
+      "F: plugin deploy",
+      "SERVICE PDF"
+    ]
   }
 }

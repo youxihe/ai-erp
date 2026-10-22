@@ -47,7 +47,7 @@ if (!secret || secret.length < 32) {
   process.exit(1);
 }
 
-function mysql(sql) {
+function mysqlViaDocker(sql) {
   const r = spawnSync(
     "docker",
     [
@@ -63,10 +63,67 @@ function mysql(sql) {
       "-e",
       sql,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: 20000 },
   );
-  if (r.status !== 0) throw new Error(r.stderr || r.stdout || "mysql failed");
+  if (r.status !== 0) throw new Error(r.stderr || r.stdout || "mysql docker failed");
   return (r.stdout || "").trim().split(/\r?\n/).filter(Boolean);
+}
+
+/** Host-port fallback when Docker CLI/pipe is unavailable (containers still bound). */
+function mysqlViaTcp(sql) {
+  const script = `
+const mysql = require('mysql2/promise');
+(async () => {
+  const c = await mysql.createConnection({
+    host: process.env.AIERP_MYSQL_HOST || '127.0.0.1',
+    port: Number(process.env.AIERP_MYSQL_PORT || 13306),
+    user: 'root',
+    password: process.env.AIERP_MYSQL_ROOT_PASSWORD || 'aierp_root_change_me',
+    database: 'jsh_erp',
+    charset: 'utf8mb4',
+  });
+  const [rows, fields] = await c.query(${JSON.stringify(sql)});
+  await c.end();
+  if (Array.isArray(rows) && rows.length && fields && fields.length) {
+    for (const row of rows) {
+      const vals = fields.map((f) => {
+        const v = row[f.name];
+        if (v == null) return '';
+        if (Buffer.isBuffer(v)) return v.toString('utf8');
+        if (v instanceof Date) return v.toISOString().slice(0, 19).replace('T', ' ');
+        return String(v);
+      });
+      process.stdout.write(vals.join('\\t') + '\\n');
+    }
+  } else if (typeof rows === 'object' && rows && 'affectedRows' in rows) {
+    /* DDL/DML ok */
+  }
+})().catch((e) => { console.error(e.message || e); process.exit(1); });
+`;
+  const r = spawnSync(process.execPath, ["-e", script], {
+    encoding: "utf8",
+    cwd: resolve(__dirname),
+    env: {
+      ...process.env,
+      AIERP_MYSQL_ROOT_PASSWORD: MYSQL_ROOT_PASSWORD,
+      AIERP_MYSQL_HOST: process.env.AIERP_MYSQL_HOST || "127.0.0.1",
+      AIERP_MYSQL_PORT: process.env.AIERP_MYSQL_PORT || "13306",
+    },
+    timeout: 30000,
+  });
+  if (r.status !== 0) throw new Error(r.stderr || r.stdout || "mysql tcp failed");
+  return (r.stdout || "").trim().split(/\r?\n/).filter(Boolean);
+}
+
+function mysql(sql) {
+  if (process.env.AIERP_MYSQL_TCP === "1" || process.env.AIERP_MYSQL_TCP === "true") {
+    return mysqlViaTcp(sql);
+  }
+  try {
+    return mysqlViaDocker(sql);
+  } catch (ex) {
+    return mysqlViaTcp(sql);
+  }
 }
 
 async function signedPost(path, bodyObj) {
