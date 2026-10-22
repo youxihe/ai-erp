@@ -1,11 +1,9 @@
 # AIERP-021A READY_FOR_REVIEW
 
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
-- **Implementation HEAD**: `27adcf05295ae46e1ef6860fe44e62e7e0cdeb0f`
-- **Branch tip**: use `git rev-parse origin/feat/aierp-021a-partner-masterdata-sop` (includes READY docs)
 - **Base**: `origin/master` @ `74b32fe8`
-- **Scope**: WeCom prepare?confirm create/update of ERP `Supplier` (???|??). No stock / purchase / mix / service post.
-- **No merge / no F:** plugin `index.js` not wired; shared OpenClaw runtime untouched.
+- **Scope**: WeCom prepare?confirm create/update of ERP `Supplier` (`???`|`??`). No stock / purchase / mix / service post.
+- **No merge / no F:** OpenClaw F: runtime not deployed from this branch.
 
 ## Deliverables
 
@@ -13,10 +11,10 @@
 |---|---|
 | Java facade | `AierpWecomMasterDataService` (`createPartnerAs` / `updatePartnerAs` + prepare/commit) |
 | API | `POST /aierp/v1/wecom/master/partner/prepare` · `.../commit` |
-| Auth filter allowlist | `LogCostFilter` |
+| Auth filter allowlist | `LogCostFilter` (annotation + explicit doFilter) |
 | Schema | `deploy/sql/08-aierp-021a-partner-master.sql` (+ seed-demo) |
 | SOP | `sop/partner-upsert.mjs` + registry priority `partner_confirm` |
-| Plugin | **not** edited (`index.js` / F: deploy deferred) |
+| Plugin (light) | `erp_partner_prepare` tool + before_dispatch `????/????` ? commit (**no** LLM commit tool) |
 
 ## Automated tests
 
@@ -27,7 +25,13 @@ Covered: prepare zero `jsh_supplier` insert; commit real id/type/tenant/creator;
 
 ## Live WeCom UAT
 
-`NOT_RUN` ? channel `plugin/index.js` wiring deferred to F: unified integrate. Local HMAC + DB facts verified.
+`NOT_RUN` — F: unified plugin deploy deferred. Local HMAC + DB facts verified (20/20).
+
+## Gaps
+
+- Human WeCom DM screenshots pending
+- F: OpenClaw plugin integrate deferred (do not overwrite running plugin)
+- Cross-device concurrent update race: recordDigest covered; multi-user live UAT optional
 
 ## Review ask
 

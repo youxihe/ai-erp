@@ -1,11 +1,11 @@
 {
   "ticket": "AIERP-021A",
   "botId": "default",
-  "wecomUserId": "aierp021a-mvjeeyh8",
-  "supplierName": "测试供应商-202610221028",
-  "customerName": "测试客户-202610221028",
-  "partnerId": 915,
-  "customerId": 916,
+  "wecomUserId": "aierp021a-mvjereig",
+  "supplierName": "测试供应商-202610221038",
+  "customerName": "测试客户-202610221038",
+  "partnerId": 917,
+  "customerId": 918,
   "stockBefore": "463.900000",
   "stockAfter": "463.900000",
   "passed": 20,
@@ -29,7 +29,7 @@
     {
       "name": "prepare_zero_db_insert",
       "ok": true,
-      "detail": "{\"requestId\":6,\"phrase\":\"确认建档6\",\"beforeCreate\":0,\"afterPrep\":0,\"summary\":\"供应商｜名称 测试供应商-202610221028｜联系人 张工｜电话 13800001111｜地址 演示路1号\"}"
+      "detail": "{\"requestId\":10,\"phrase\":\"确认建档10\",\"beforeCreate\":0,\"afterPrep\":0,\"summary\":\"供应商｜名称 测试供应商-202610221038｜联系人 张工｜电话 13800001111｜地址 演示路1号\"}"
     },
     {
       "name": "llm_self_confirm_rejected",
@@ -44,7 +44,7 @@
     {
       "name": "commit_create_real_id",
       "ok": true,
-      "detail": "{\"partnerId\":915,\"row\":{\"id\":\"915\",\"supplier\":\"测试供应商-202610221028\",\"type\":\"供应商\",\"contacts\":\"张工\",\"phone_num\":\"13800001111\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"bank_name\":\"NULL\",\"account_number\":\"NULL\",\"tax_num\":\"NULL\",\"begin_need_pay\":\"0.000000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"},\"hint\":\"供应商已建档，ID=915。可用于采购/服务选择；未过账。\"}"
+      "detail": "{\"partnerId\":917,\"row\":{\"id\":\"917\",\"supplier\":\"测试供应商-202610221038\",\"type\":\"供应商\",\"contacts\":\"张工\",\"phone_num\":\"13800001111\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"bank_name\":\"NULL\",\"account_number\":\"NULL\",\"tax_num\":\"NULL\",\"begin_need_pay\":\"0.000000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"},\"hint\":\"供应商已建档，ID=917。可用于采购/服务选择；未过账。\"}"
     },
     {
       "name": "commit_stock_unchanged",
@@ -54,12 +54,12 @@
     {
       "name": "replay_once_idempotent",
       "ok": true,
-      "detail": "{\"nature\":\"REAL_ERP\",\"op\":\"CREATE\",\"status\":\"CONSUMED\",\"requestId\":6,\"partnerId\":915,\"type\":\"供应商\",\"idempotentReplay\":true,\"posted\":false,\"stockUnchanged\":true,\"boundErpLoginName\":\"jsh\",\"tenantId\":63,\"hint\":\"该确认已处理过，未重复建档/修改。\",\"name\":\"测试供应商-202610221028\",\"contacts\":\"张工\",\"phone\":\"13800001111\"}"
+      "detail": "{\"nature\":\"REAL_ERP\",\"op\":\"CREATE\",\"status\":\"CONSUMED\",\"requestId\":10,\"partnerId\":917,\"type\":\"供应商\",\"idempotentReplay\":true,\"posted\":false,\"stockUnchanged\":true,\"boundErpLoginName\":\"jsh\",\"tenantId\":63,\"hint\":\"该确认已处理过，未重复建档/修改。\",\"name\":\"测试供应商-202610221038\",\"contacts\":\"张工\",\"phone\":\"13800001111\"}"
     },
     {
       "name": "dup_name_rejected",
       "ok": true,
-      "detail": "{\"code\":409,\"data\":{\"message\":\"同类型名称已存在：测试供应商-202610221028\"}}"
+      "detail": "{\"code\":409,\"data\":{\"message\":\"同类型名称已存在：测试供应商-202610221038\"}}"
     },
     {
       "name": "wrong_type_update_rejected",
@@ -74,22 +74,22 @@
     {
       "name": "update_prepare_diff_whitelist",
       "ok": true,
-      "detail": "{\"updReq\":7,\"diffs\":[{\"field\":\"contacts\",\"oldValue\":\"张工\",\"newValue\":\"李工\"},{\"field\":\"phone\",\"oldValue\":\"13800001111\",\"newValue\":\"13900002222\"}],\"summary\":\"修改供应商「测试供应商-202610221028」：contacts 张工→李工；phone 13800001111→13900002222\"}"
+      "detail": "{\"updReq\":11,\"diffs\":[{\"field\":\"contacts\",\"oldValue\":\"张工\",\"newValue\":\"李工\"},{\"field\":\"phone\",\"oldValue\":\"13800001111\",\"newValue\":\"13900002222\"}],\"summary\":\"修改供应商「测试供应商-202610221038」：contacts 张工→李工；phone 13800001111→13900002222\"}"
     },
     {
       "name": "update_commit_whitelist_only",
       "ok": true,
-      "detail": "{\"afterUpd\":{\"id\":\"915\",\"supplier\":\"测试供应商-202610221028\",\"type\":\"供应商\",\"contacts\":\"李工\",\"phone_num\":\"13900002222\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"bank_name\":\"KEEP_BANK\",\"account_number\":\"KEEP_ACCT\",\"tax_num\":\"KEEP_TAX\",\"begin_need_pay\":\"12.340000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"},\"beforeUpd\":{\"id\":\"915\",\"supplier\":\"测试供应商-202610221028\",\"type\":\"供应商\",\"contacts\":\"张工\",\"phone_num\":\"13800001111\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"b"
+      "detail": "{\"afterUpd\":{\"id\":\"917\",\"supplier\":\"测试供应商-202610221038\",\"type\":\"供应商\",\"contacts\":\"李工\",\"phone_num\":\"13900002222\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"bank_name\":\"KEEP_BANK\",\"account_number\":\"KEEP_ACCT\",\"tax_num\":\"KEEP_TAX\",\"begin_need_pay\":\"12.340000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"},\"beforeUpd\":{\"id\":\"917\",\"supplier\":\"测试供应商-202610221038\",\"type\":\"供应商\",\"contacts\":\"张工\",\"phone_num\":\"13800001111\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"b"
     },
     {
       "name": "customer_prepare_zero_insert",
       "ok": true,
-      "detail": "{\"requestId\":8}"
+      "detail": "{\"requestId\":12}"
     },
     {
       "name": "customer_commit_type_客户",
       "ok": true,
-      "detail": "{\"cusId\":916,\"cusRow\":{\"id\":\"916\",\"supplier\":\"测试客户-202610221028\",\"type\":\"客户\",\"contacts\":\"王工\",\"phone_num\":\"\",\"address\":\"\",\"description\":\"\",\"bank_name\":\"NULL\",\"account_number\":\"NULL\",\"tax_num\":\"NULL\",\"begin_need_pay\":\"0.000000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"}}"
+      "detail": "{\"cusId\":918,\"cusRow\":{\"id\":\"918\",\"supplier\":\"测试客户-202610221038\",\"type\":\"客户\",\"contacts\":\"王工\",\"phone_num\":\"\",\"address\":\"\",\"description\":\"\",\"bank_name\":\"NULL\",\"account_number\":\"NULL\",\"tax_num\":\"NULL\",\"begin_need_pay\":\"0.000000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"}}"
     },
     {
       "name": "same_name_cross_type_allowed_as_separate",
