@@ -1,9 +1,9 @@
 # AIERP-016M evidence (non-post)
 
 - pass: **true**
-- draftId: 243
-- businessKey: PZ-016M-MVJTBAMI
-- confirmPhrase: 确认配制243
+- draftId: 267
+- businessKey: PZ-016M-MVJUFJAR
+- confirmPhrase: 确认配制267
 - stock unchanged: true
 - GW-PURCHASE-119 untouched: true
 
@@ -32,7 +32,7 @@
 - PASS insufficient_stock_fails_prepare
 
 ## UAT
-- Automation only prepares unposted MIX drafts; does not run 确认配制 posting.
-- Human UAT: upload Excel (1 MIX bill x 3 raw) -> draft id -> DM 确认配制{id} -> verify FG-101 +1L and raw deltas.
-- No purchase PDF for MIX; text receipt only.
-- Do not auto-confirm GW-PURCHASE-119.
+- 自动化仅准备未审核 MIX 草稿，未执行「确认配制」过账。
+- 真人 UAT：上传同配制单号 3 行原料 Excel → 得草稿号 → 本人私聊「确认配制{id}」→ 核对 FG-101 成品仓 +1L 与原料扣减。
+- 禁止用采购 PDF 冒充配制回执；配制回执以文字为准（无 MIX 专用 PDF 模板时）。
+- 勿自动确认 GW-PURCHASE-119。

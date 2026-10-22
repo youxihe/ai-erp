@@ -2,9 +2,9 @@
 
 - suite: `aierp-016m-mix-prepare-flow`
 - pass/fail: **28/0**
-- Excel draftId: `244` -> phrase `确认配制244`
-- Slot draftId: `245`
-- businessKey: `MIX-016M-MVJTBJ1J`
+- Excel draftId: `268` → phrase `确认配制268`
+- Slot draftId: `269`
+- businessKey: `MIX-016M-MVJUFR85`
 - stock unchanged after prepare: **true**
 - LIVE_WECOM_CONFIRM: PENDING_USER (do not auto-confirm; never #119)
 
