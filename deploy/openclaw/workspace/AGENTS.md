@@ -13,6 +13,7 @@
 | 用户说法 | 由渠道/SOP 处理 | 不要做 |
 |---|---|---|
 | 「确认采购{数字}」 | purchase-confirm（原文） | 不要用模型工具确认 |
+| 「新建/修改原料或物料」 | **material-upsert SOP**（先摘要，本人 `确认建档物料/确认修改物料{申请号}`） | 无 master-data commit 工具；禁止库存/期初字段；勿与往来 `确认建档供应商/客户` 混用 |
 | 「发回执 / 发 GW-PURCHASE-119 回执」 | **receipt-send SOP** | 禁止 `erp_excel_template` |
 | 「文件直接发我 / 重发 / 没收到」 | **receipt-send 接续上一笔已验证回执** | 禁止发采购模板、禁止再入库 |
 | 「给我采购 Excel 模板」 | `erp_excel_template` | 不要当成回执 |
