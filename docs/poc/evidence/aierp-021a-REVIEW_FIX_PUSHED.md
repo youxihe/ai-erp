@@ -3,7 +3,8 @@
 - **Ticket**: AIERP-021A (PR #44 partner masterdata)
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **FINAL tip HEAD**: `cdb486d5abafc9ffa12bb5f31002295ead33e29c`
+- **Fix commit**: `cdb486d5abafc9ffa12bb5f31002295ead33e29c`
+- **FINAL tip HEAD**: `c4ee06ccc7bbed0f4a6de80fdadd1becd3edd801`
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no inventory auto-post)
 
 ## Coordinated naming (vs AIERP-021B / PR #45)
