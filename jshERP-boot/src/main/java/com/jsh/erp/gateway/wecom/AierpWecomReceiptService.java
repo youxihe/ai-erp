@@ -26,11 +26,13 @@ import java.io.FileOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,8 +40,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * AIERP-015B: business receipt text + optional PDF from real CONFIRMED native bills.
- * Never invent bill numbers / stock; never label as invoice.
+ * AIERP-015B/015C: business receipt text + PDF from real CONFIRMED native bills.
+ * 015C adds trusted WeCom HMAC find/file (never invent PDF; never re-post stock).
  */
 @Service
 public class AierpWecomReceiptService {
@@ -47,6 +49,10 @@ public class AierpWecomReceiptService {
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Pattern DEPOT_ID = Pattern.compile("\\[(\\d+)\\]");
+    private static final Pattern SAFE_BILL = Pattern.compile("^[A-Za-z0-9\\-]{3,64}$");
+    private static final Pattern SAFE_RECEIPT_ID = Pattern.compile("^[a-fA-F0-9]{16,64}$");
+    private static final long MAX_PDF_BYTES = 5L * 1024 * 1024;
+    private static final int RECENT_CANDIDATE_LIMIT = 8;
 
     @Resource
     private JdbcTemplate jdbcTemplate;
@@ -162,18 +168,260 @@ public class AierpWecomReceiptService {
         }
         Map<String, Object> receipt = rows.get(0);
         assertReceiptBillStillVisible(user, receipt);
+        return readPdfSecure(receipt);
+    }
 
+    /**
+     * AIERP-015C: list authorized receipts for trusted WeCom sender (HMAC adapter only).
+     * Does not invent bills; does not post stock.
+     */
+    public Map<String, Object> findForWecom(JSONObject body) throws Exception {
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        String billNumber = sanitizeBillNumber(body == null ? null : body.getString("billNumber"));
+        String receiptId = sanitizeReceiptId(body == null ? null : body.getString("receiptId"));
+        List<Map<String, Object>> rows = queryAuthorizedReceipts(ctx, billNumber, receiptId);
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("count", rows.size());
+        out.put("ambiguous", rows.size() > 1 && billNumber == null && receiptId == null);
+        List<Map<String, Object>> candidates = new ArrayList<Map<String, Object>>();
+        for (Map<String, Object> row : rows) {
+            candidates.add(summarizeCandidate(row));
+        }
+        out.put("candidates", candidates);
+        if (rows.size() == 1) {
+            out.put("receiptId", rows.get(0).get("receipt_id"));
+            out.put("billNumber", rows.get(0).get("bill_number"));
+            out.put("pdfStatus", rows.get(0).get("pdf_status"));
+            out.put("deliveryStatus", rows.get(0).get("delivery_status"));
+        }
+        if (rows.isEmpty()) {
+            out.put("userSummaryZh", "暂未找到可访问的已审核采购入库回执。");
+        } else if (rows.size() > 1 && billNumber == null && receiptId == null) {
+            StringBuilder sb = new StringBuilder("找到多张可访问的已审核回执，请回复其中一张单号：\n");
+            for (Map<String, Object> c : candidates) {
+                sb.append("- ").append(c.get("billNumber"));
+                if (c.get("summaryLine") != null) {
+                    sb.append(" · ").append(c.get("summaryLine"));
+                }
+                sb.append("\n");
+            }
+            out.put("userSummaryZh", sb.toString().trim());
+        } else {
+            out.put("userSummaryZh", buildUserSummaryZh(rows.get(0), false));
+        }
+        return out;
+    }
+
+    /**
+     * AIERP-015C: load authorized receipt PDF as base64 for WeCom MEDIA send.
+     * Marks handoff only; PDF_SENT_VERIFIED stays for client-open UAT.
+     */
+    public Map<String, Object> fileForWecom(JSONObject body) throws Exception {
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        String billNumber = sanitizeBillNumber(body == null ? null : body.getString("billNumber"));
+        String receiptId = sanitizeReceiptId(body == null ? null : body.getString("receiptId"));
+        List<Map<String, Object>> rows = queryAuthorizedReceipts(ctx, billNumber, receiptId);
+        if (rows.isEmpty()) {
+            Map<String, Object> miss = new LinkedHashMap<String, Object>();
+            miss.put("found", false);
+            miss.put("userSummaryZh", "暂未找到可访问的已审核采购入库回执。");
+            miss.put("deliveryStatus", "PDF_DELIVERY_NOT_VERIFIED");
+            return miss;
+        }
+        if (rows.size() > 1 && billNumber == null && receiptId == null) {
+            Map<String, Object> amb = findForWecom(body);
+            amb.put("found", false);
+            amb.put("needChoice", true);
+            return amb;
+        }
+        Map<String, Object> receipt = rows.get(0);
+        if (!"PDF_GENERATED".equals(String.valueOf(receipt.get("pdf_status")))) {
+            throw new BusinessRunTimeException(404, "该回执 PDF 尚未生成，请登录 ERP 查看文本回执");
+        }
+        byte[] pdf = readPdfSecure(receipt);
+        String fileName = "采购入库业务回执_" + receipt.get("bill_number") + ".pdf";
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("found", true);
+        out.put("receiptId", receipt.get("receipt_id"));
+        out.put("billNumber", receipt.get("bill_number"));
+        out.put("mime", "application/pdf");
+        out.put("fileName", fileName);
+        out.put("fileBase64", Base64.getEncoder().encodeToString(pdf));
+        out.put("pdfSha256", receipt.get("pdf_sha256"));
+        out.put("byteLength", pdf.length);
+        out.put("pdfStatus", receipt.get("pdf_status"));
+        // Adapter handoff ≠ client verified open
+        out.put("deliveryStatus", "PDF_DELIVERY_NOT_VERIFIED");
+        out.put("userSummaryZh", buildUserSummaryZh(receipt, true));
+        jdbcTemplate.update(
+                "UPDATE aierp_gateway_receipt SET delivery_status='PDF_ADAPTER_HANDED', updated_at=? WHERE id=?",
+                TS.format(LocalDateTime.now()), receipt.get("id"));
+        return out;
+    }
+
+    private List<Map<String, Object>> queryAuthorizedReceipts(
+            AierpWecomBindingService.BoundContext ctx, String billNumber, String receiptId) {
+        User user = ctx.user;
+        long liveVersion = ctx.binding.get("binding_version") == null
+                ? 0L : ((Number) ctx.binding.get("binding_version")).longValue();
+        StringBuilder sql = new StringBuilder(
+                "SELECT * FROM aierp_gateway_receipt WHERE tenant_id=? AND actor_user_id=? "
+                        + "AND wecom_user_id=? AND binding_version=? AND pdf_status='PDF_GENERATED'");
+        List<Object> args = new ArrayList<Object>();
+        args.add(user.getTenantId());
+        args.add(user.getId());
+        args.add(ctx.wecomUserId);
+        args.add(liveVersion);
+        if (receiptId != null) {
+            sql.append(" AND receipt_id=?");
+            args.add(receiptId);
+        }
+        if (billNumber != null) {
+            sql.append(" AND bill_number=?");
+            args.add(billNumber);
+        }
+        sql.append(" ORDER BY created_at DESC, id DESC LIMIT ").append(RECENT_CANDIDATE_LIMIT);
+        List<Map<String, Object>> raw = jdbcTemplate.queryForList(sql.toString(), args.toArray());
+        List<Map<String, Object>> visible = new ArrayList<Map<String, Object>>();
+        for (Map<String, Object> row : raw) {
+            try {
+                assertReceiptBillStillVisible(user, row);
+                assertNativeBillConfirmed(user, row);
+                visible.add(row);
+            } catch (BusinessRunTimeException ex) {
+                // skip unauthorized / revoked depot / unapproved
+            }
+        }
+        return visible;
+    }
+
+    private void assertNativeBillConfirmed(User user, Map<String, Object> receipt) {
+        List<Map<String, Object>> heads = jdbcTemplate.queryForList(
+                "SELECT id, status FROM jsh_depot_head WHERE number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1' LIMIT 1",
+                receipt.get("bill_number"), user.getTenantId());
+        if (heads.isEmpty() || !"1".equals(String.valueOf(heads.get(0).get("status")))) {
+            throw new BusinessRunTimeException(403, "原生单据未审核或不可用");
+        }
+    }
+
+    private byte[] readPdfSecure(Map<String, Object> receipt) {
         Object ref = receipt.get("pdf_storage_ref");
-        if (ref == null) {
+        if (ref == null || String.valueOf(ref).trim().isEmpty()) {
             throw new BusinessRunTimeException(404, "回执 PDF 尚未生成");
         }
         try {
-            return Files.readAllBytes(new File(String.valueOf(ref)).toPath());
+            Path root = new File(storageDir).getCanonicalFile().toPath().normalize();
+            Path file = new File(String.valueOf(ref)).getCanonicalFile().toPath().normalize();
+            if (!file.startsWith(root)) {
+                throw new BusinessRunTimeException(403, "非法回执路径");
+            }
+            if (!Files.isRegularFile(file)) {
+                throw new BusinessRunTimeException(404, "回执 PDF 文件不存在");
+            }
+            long size = Files.size(file);
+            if (size <= 0 || size > MAX_PDF_BYTES) {
+                throw new BusinessRunTimeException(500, "回执 PDF 大小异常");
+            }
+            byte[] bytes = Files.readAllBytes(file);
+            String expected = receipt.get("pdf_sha256") == null ? null : String.valueOf(receipt.get("pdf_sha256")).trim();
+            if (expected != null && !expected.isEmpty()) {
+                String actual = sha256Hex(bytes);
+                if (!expected.equalsIgnoreCase(actual)) {
+                    throw new BusinessRunTimeException(500, "回执文件校验失败");
+                }
+            }
+            return bytes;
         } catch (BusinessRunTimeException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new BusinessRunTimeException(500, "读取回执 PDF 失败");
         }
+    }
+
+    private Map<String, Object> summarizeCandidate(Map<String, Object> row) {
+        Map<String, Object> c = new LinkedHashMap<String, Object>();
+        c.put("receiptId", row.get("receipt_id"));
+        c.put("billNumber", row.get("bill_number"));
+        c.put("pdfStatus", row.get("pdf_status"));
+        c.put("createdAt", row.get("created_at") == null ? null : String.valueOf(row.get("created_at")));
+        c.put("summaryLine", extractSummaryLine(row));
+        return c;
+    }
+
+    private String extractSummaryLine(Map<String, Object> row) {
+        try {
+            JSONObject facts = JSON.parseObject(String.valueOf(row.get("receipt_json")));
+            if (facts == null) {
+                return null;
+            }
+            JSONArray lines = facts.getJSONArray("lines");
+            if (lines == null || lines.isEmpty()) {
+                return null;
+            }
+            JSONObject line = lines.getJSONObject(0);
+            StringBuilder sb = new StringBuilder();
+            if (line.get("material_name") != null) {
+                sb.append(line.get("material_name"));
+            }
+            if (line.get("oper_number") != null) {
+                if (sb.length() > 0) {
+                    sb.append(' ');
+                }
+                sb.append(line.get("oper_number"));
+            }
+            if (line.get("material_unit") != null) {
+                sb.append(line.get("material_unit"));
+            }
+            if (line.get("all_price") != null) {
+                sb.append(" ¥").append(line.get("all_price"));
+            }
+            return sb.length() == 0 ? null : sb.toString();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private String buildUserSummaryZh(Map<String, Object> row, boolean withFileHint) {
+        String bill = String.valueOf(row.get("bill_number"));
+        String line = extractSummaryLine(row);
+        StringBuilder sb = new StringBuilder();
+        sb.append("已为你找到采购单 ").append(bill);
+        if (line != null) {
+            sb.append("，").append(line);
+        }
+        sb.append("，已审核。");
+        if (withFileHint) {
+            sb.append("\n《采购入库业务回执》见附件（非发票）。");
+        }
+        return sb.toString();
+    }
+
+    private static String sanitizeBillNumber(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        if (!SAFE_BILL.matcher(t).matches()) {
+            throw new BusinessRunTimeException(400, "单号格式无效");
+        }
+        return t.toUpperCase();
+    }
+
+    private static String sanitizeReceiptId(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        if (!SAFE_RECEIPT_ID.matcher(t).matches()) {
+            throw new BusinessRunTimeException(400, "回执编号格式无效");
+        }
+        return t.toLowerCase();
     }
 
     /**

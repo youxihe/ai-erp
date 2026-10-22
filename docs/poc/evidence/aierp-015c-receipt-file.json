@@ -1,0 +1,52 @@
+{
+  "ticket": "AIERP-015C",
+  "at": "2026-10-22T06:13:42.202Z",
+  "wecomUserId": "sid",
+  "bill": "GW-PURCHASE-119",
+  "pdfEvidence": "D:\\ERP\\ai-erp\\docs\\poc\\evidence\\aierp-015c-GW-PURCHASE-119.pdf",
+  "stockBefore": "250.700000",
+  "stockAfter": "250.700000",
+  "results": [
+    {
+      "name": "find_by_bill_119",
+      "ok": true,
+      "detail": "{\"status\":200,\"code\":200,\"bill\":\"GW-PURCHASE-119\",\"count\":1,\"summary\":\"已为你找到采购单 GW-PURCHASE-119，表面活性剂 80.000000L ¥1600.000000，已审核。\"}"
+    },
+    {
+      "name": "find_latest_or_list",
+      "ok": true,
+      "detail": "{\"count\":3,\"ambiguous\":true,\"candidates\":[\"GW-PURCHASE-119\",\"GW-PURCHASE-111\",\"GW-PURCHASE-110\"]}"
+    },
+    {
+      "name": "file_pdf_119",
+      "ok": true,
+      "detail": "{\"found\":true,\"bill\":\"GW-PURCHASE-119\",\"bytes\":59094,\"hashOk\":true,\"headerOk\":true,\"delivery\":\"PDF_DELIVERY_NOT_VERIFIED\",\"summary\":\"已为你找到采购单 GW-PURCHASE-119，表面活性剂 80.000000L ¥1600.000000，已审核。\\n《采购入库业务回执》见附件（非发票）。\",\"file\":\"D:\\\\ERP\\\\ai-erp\\\\docs\\\\poc\\\\evidence\\\\aierp-015c-GW-PURCHASE-119.pdf\"}"
+    },
+    {
+      "name": "file_missing_bill",
+      "ok": true,
+      "detail": "{\"found\":false,\"summary\":\"暂未找到可访问的已审核采购入库回执。\"}"
+    },
+    {
+      "name": "file_other_wecom_denied",
+      "ok": true,
+      "detail": "{\"status\":200,\"code\":401,\"msg\":\"尚未绑定 ERP，请先发送「绑定ERP」\"}"
+    },
+    {
+      "name": "bill_path_injection_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"单号格式无效\"}"
+    },
+    {
+      "name": "stock_unchanged",
+      "ok": true,
+      "detail": "{\"before\":\"250.700000\",\"after\":\"250.700000\"}"
+    },
+    {
+      "name": "bill_still_approved",
+      "ok": true,
+      "detail": "{\"status\":\"1\"}"
+    }
+  ],
+  "pass": true
+}

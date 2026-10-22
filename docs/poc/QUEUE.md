@@ -22,7 +22,7 @@
 | AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
 | AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
-| **AIERP-015C** | **RELEASED / next_order #1 (CODE)** | **按已审核单号/最近一次确认查询真实采购回执，并把 PDF 原文件发送至本人企微；修复误发采购模板** |
+| **AIERP-015C** | **READY_FOR_REVIEW** | **HMAC receipt/find+file + before_dispatch 回执意图 → MEDIA PDF；#119 只读 PASS；客户端打开待 UAT** |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |

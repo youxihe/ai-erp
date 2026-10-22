@@ -1,7 +1,7 @@
 # AIERP-015C · 企业微信真实采购入库业务回执 PDF 查找与发送（客户 Demo P0）
 
-- **状态**：RELEASED / next_order #1，依赖 015B #27、017B1 #35 已合并。
-- **分支**：`feat/aierp-015c-wecom-real-receipt-pdf`（从**最新 origin/master**建立）。
+- **状态**：READY_FOR_REVIEW（代码已落地；企微客户端打开 PDF 待用户 UAT 后标 `PDF_SENT_VERIFIED`）。
+- **分支**：`feat/aierp-015c-wecom-real-receipt-pdf`（从 origin/master `f666e183` 建立）。
 - **要解决的真实缺陷**：真人企微采购确认 `GW-PURCHASE-119`，库存 170.7→250.7 L；用户说“《采购入库业务回执》发我”后，模型**错把回执当 Excel 模板**，回复“未入库”并发送 XLSX。现有 ERP 已生成业务回执 PDF，只有通过 session 的 `/aierp/v1/wecom/receipt/pdf`，缺可信企微读 PDF 和附件发送入口。
 - **唯一目标**：用户不用手动登录 ERP，私聊说“把刚才那张采购入库回执 PDF 发我”→ 返回真正来自已审核 ERP 原生单据的 PDF 附件，可在企微客户端打开。用户发 `发我 GW-PURCHASE-119 的回执` 同样可按已授权单号获取。
 

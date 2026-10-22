@@ -1,0 +1,59 @@
+{
+  "ticket": "AIERP-015C",
+  "kind": "intent-unit",
+  "pass": true,
+  "results": [
+    {
+      "text": "《采购入库业务回执》发我",
+      "expect": true,
+      "got": true,
+      "ok": true
+    },
+    {
+      "text": "把刚才的回执 PDF 发我",
+      "expect": true,
+      "got": true,
+      "ok": true
+    },
+    {
+      "text": "发 GW-PURCHASE-119 回执",
+      "expect": true,
+      "got": true,
+      "bill": "GW-PURCHASE-119",
+      "gotBill": "GW-PURCHASE-119",
+      "ok": true
+    },
+    {
+      "text": "发我 GW-PURCHASE-119 的采购入库业务回执 PDF",
+      "expect": true,
+      "got": true,
+      "bill": "GW-PURCHASE-119",
+      "gotBill": "GW-PURCHASE-119",
+      "ok": true
+    },
+    {
+      "text": "给我批量进货模板",
+      "expect": false,
+      "got": false,
+      "ok": true
+    },
+    {
+      "text": "采购入库模板",
+      "expect": false,
+      "got": false,
+      "ok": true
+    },
+    {
+      "text": "确认采购119",
+      "expect": false,
+      "got": false,
+      "ok": true
+    },
+    {
+      "text": "入库吧",
+      "expect": false,
+      "got": false,
+      "ok": true
+    }
+  ]
+}
