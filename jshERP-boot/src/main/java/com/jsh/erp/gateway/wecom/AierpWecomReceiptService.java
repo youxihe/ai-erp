@@ -143,25 +143,32 @@ public class AierpWecomReceiptService {
         String pdfSha = null;
         String pdfRef = null;
         String delivery = "TEXT_ONLY";
-        try {
-            byte[] pdf = renderPdf(facts);
-            File dir = new File(storageDir);
-            if (!dir.exists() && !dir.mkdirs()) {
-                throw new BusinessRunTimeException(500, "无法创建回执存储目录");
+        boolean mixReceipt = isMixFacts(facts);
+        // AIERP-016M: never generate a purchase-titled PDF for MIX (do not fake 采购入库业务回执).
+        if (!mixReceipt) {
+            try {
+                byte[] pdf = renderPdf(facts);
+                File dir = new File(storageDir);
+                if (!dir.exists() && !dir.mkdirs()) {
+                    throw new BusinessRunTimeException(500, "无法创建回执存储目录");
+                }
+                String fileName = "采购入库业务回执_" + billNumber + ".pdf";
+                File out = new File(dir, receiptId + "_" + fileName);
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    fos.write(pdf);
+                }
+                pdfSha = sha256Hex(pdf);
+                pdfRef = out.getAbsolutePath();
+                pdfStatus = "PDF_GENERATED";
+                delivery = "PDF_DELIVERY_NOT_VERIFIED";
+            } catch (Exception ex) {
+                pdfStatus = "PDF_FAILED";
+                delivery = "TEXT_ONLY";
+                facts.put("pdfError", String.valueOf(ex.getMessage()));
             }
-            String fileName = "采购入库业务回执_" + billNumber + ".pdf";
-            File out = new File(dir, receiptId + "_" + fileName);
-            try (FileOutputStream fos = new FileOutputStream(out)) {
-                fos.write(pdf);
-            }
-            pdfSha = sha256Hex(pdf);
-            pdfRef = out.getAbsolutePath();
-            pdfStatus = "PDF_GENERATED";
-            delivery = "PDF_DELIVERY_NOT_VERIFIED";
-        } catch (Exception ex) {
-            pdfStatus = "PDF_FAILED";
+        } else {
+            facts.put("pdfSkipped", "MIX_NO_PURCHASE_PDF");
             delivery = "TEXT_ONLY";
-            facts.put("pdfError", String.valueOf(ex.getMessage()));
         }
 
         jdbcTemplate.update(
@@ -614,6 +621,7 @@ public class AierpWecomReceiptService {
         Map<String, Object> head = heads.get(0);
         List<Map<String, Object>> lines = jdbcTemplate.queryForList(
                 "SELECT i.material_id, i.depot_id, i.oper_number, i.unit_price, i.all_price, i.material_unit, "
+                        + "IFNULL(i.material_type,'') AS material_type, "
                         + "m.name AS material_name, me.bar_code, d.name AS depot_name "
                         + "FROM jsh_depot_item i "
                         + "LEFT JOIN jsh_material m ON m.id=i.material_id "
@@ -621,8 +629,10 @@ public class AierpWecomReceiptService {
                         + "LEFT JOIN jsh_depot d ON d.id=i.depot_id "
                         + "WHERE i.header_id=? AND IFNULL(i.delete_flag,'0')<>'1'",
                 head.get("id"));
+        boolean mix = isMixBill(billNumber, head);
         Map<String, Object> facts = new LinkedHashMap<String, Object>();
-        facts.put("title", "采购入库业务回执");
+        facts.put("title", mix ? "组装配制业务回执" : "采购入库业务回执");
+        facts.put("receiptKind", mix ? "MIX" : "PURCHASE");
         facts.put("disclaimer", "此文件仅作业务记录，不作为税务发票或付款证明。");
         facts.put("billNumber", billNumber);
         facts.put("billStatus", "已审核");
@@ -638,7 +648,25 @@ public class AierpWecomReceiptService {
         return facts;
     }
 
+    private static boolean isMixBill(String billNumber, Map<String, Object> head) {
+        if (billNumber != null && billNumber.startsWith("GW-MIX-")) {
+            return true;
+        }
+        if (head == null) {
+            return false;
+        }
+        return "其它".equals(String.valueOf(head.get("type")))
+                && "组装单".equals(String.valueOf(head.get("sub_type")));
+    }
+
+    private static boolean isMixFacts(Map<String, Object> facts) {
+        return facts != null && "MIX".equals(String.valueOf(facts.get("receiptKind")));
+    }
+
     private String renderText(Map<String, Object> facts) {
+        if (isMixFacts(facts)) {
+            return renderMixText(facts);
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("采购入库已完成（已审核）\n");
         sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
@@ -670,6 +698,41 @@ public class AierpWecomReceiptService {
             }
         }
         sb.append("《采购入库业务回执》已生成（非发票）。");
+        return sb.toString();
+    }
+
+    /** MIX receipt: finished FG + raw material deltas; no purchase PDF claim. */
+    private String renderMixText(Map<String, Object> facts) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("组装配制已完成（已审核）\n");
+        sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
+        sb.append("操作人：").append(nullToDash(facts.get("creatorLogin"))).append("\n");
+        sb.append("处理时间：").append(fmtTime(facts.get("operTime"))).append("\n");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
+        if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                String mType = line.get("material_type") == null ? "" : String.valueOf(line.get("material_type"));
+                String role = "组合件".equals(mType) ? "成品产出" : ("普通子件".equals(mType) ? "原料领用" : "明细");
+                sb.append("- [").append(role).append("] ")
+                        .append(nullToDash(line.get("material_name")))
+                        .append("（").append(nullToDash(line.get("bar_code"))).append("）")
+                        .append(" ").append(fmtQty(line.get("oper_number")))
+                        .append(" ").append(nullToDash(line.get("material_unit")))
+                        .append(" @ ").append(nullToDash(line.get("depot_name")))
+                        .append("\n");
+            }
+        }
+        List<String[]> stockRows = stockChangeRows(facts.get("stockBefore"), facts.get("stockAfter"));
+        if (!stockRows.isEmpty()) {
+            sb.append("库存变化（成品仓↑ / 原料仓↓）：\n");
+            for (String[] r : stockRows) {
+                sb.append("- ").append(r[0]).append("@").append(r[1])
+                        .append("  ").append(r[2]).append(" → ").append(r[3])
+                        .append("（").append(r[4]).append("）\n");
+            }
+        }
+        sb.append("文字回执已生成；配制场景不附带《采购入库业务回执》PDF。");
         return sb.toString();
     }
 

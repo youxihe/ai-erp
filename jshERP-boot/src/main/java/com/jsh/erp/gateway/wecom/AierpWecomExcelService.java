@@ -41,6 +41,8 @@ public class AierpWecomExcelService {
     private RedisService redisService;
     @Resource
     private JdbcTemplate jdbcTemplate;
+    @Resource
+    private AierpWecomMixService mixService;
 
     public Map<String, Object> template(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
@@ -122,8 +124,17 @@ public class AierpWecomExcelService {
             try {
                 Map<String, Object> drafted = tryPrepareVerifiedPurchase(ctx,
                         String.valueOf(preview.get("previewId")), fileSha256, false);
-                if (drafted != null) {
+                if (drafted != null && Boolean.TRUE.equals(drafted.get("autoDraft"))) {
                     preview.putAll(drafted);
+                } else {
+                    // AIERP-016M: single MIX Excel → unposted draft (confirm配制 only).
+                    Map<String, Object> mixDrafted = mixService.tryPrepareVerifiedMixFromPreview(ctx,
+                            String.valueOf(preview.get("previewId")), fileSha256, false);
+                    if (mixDrafted != null && Boolean.TRUE.equals(mixDrafted.get("autoDraft"))) {
+                        preview.putAll(mixDrafted);
+                    } else if (drafted != null) {
+                        preview.putAll(drafted);
+                    }
                 }
             } catch (Exception ex) {
                 // Preview must still succeed; draft can be retried via prepare-verified.

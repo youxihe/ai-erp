@@ -18,6 +18,8 @@ import {
   factsFromConfirm,
   sanitizeForChannel,
 } from "./sop/renderers/wecom-business.mjs";
+import { registerMixConfirmDispatch } from "./sop/register-mix-confirm.mjs";
+import { isMixConfirmPhrase } from "./sop/mix-prepare.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -158,7 +160,8 @@ function num(v) {
 
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
-  return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t);
+  // MIX confirm is handled by sop/register-mix-confirm.mjs (priority 55).
+  return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t) || isMixConfirmPhrase(t);
 }
 
 
@@ -251,6 +254,20 @@ function formatPurchaseDraft(data) {
 }
 
 function formatConfirm(data) {
+  const isMix =
+    data?.bizType === "MIX" ||
+    data?.receiptKind === "MIX" ||
+    String(data?.billNumber || "").startsWith("GW-MIX-");
+  if (isMix) {
+    const hint = data?.receiptText || data?.hint;
+    if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
+      return sanitizeForChannel(String(hint).slice(0, 800), { markdown: false });
+    }
+    return sanitizeForChannel(
+      `组装配制已完成\n${data?.billNumber || "?"} · 已审核（无采购 PDF）`,
+      { markdown: false },
+    );
+  }
   try {
     const facts = factsFromConfirm(data || {});
     if (facts.billNumber) {
@@ -1126,6 +1143,10 @@ function registerConfirmAndExcelDispatchHook(api) {
       return { handled: true, text: cleared.replyText };
     }
 
+        // MIX「确认配制{n}」is owned by registerMixConfirmDispatch (priority 55).
+        if (isMixConfirmPhrase(text)) {
+          return;
+        }
         if (isConfirmPhrase(text)) {
       try {
         const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
@@ -1139,8 +1160,9 @@ function registerConfirmAndExcelDispatchHook(api) {
         });
         let reply = formatConfirm(data);
         const bill = data?.billNumber;
-        // Auto-send receipt PDF after successful confirm (no need for user to ask).
-        if (bill && data?.status === "CONFIRMED") {
+        const isMixBill = String(bill || "").startsWith("GW-MIX-") || data?.bizType === "MIX";
+        // Auto-send receipt PDF after successful purchase confirm only (never fake purchase PDF for MIX).
+        if (bill && data?.status === "CONFIRMED" && !isMixBill) {
           try {
             const sent = await runReceiptSend({
               wecomUserId: senderId,
@@ -1352,6 +1374,14 @@ const plugin = {
   register(api) {
     registerErpTools(api);
     registerExcelObserveHook(api);
+    // AIERP-016M: thin MIX confirm registration (before purchase confirm hook).
+    registerMixConfirmDispatch(api, {
+      botId,
+      signedPost,
+      trustedWecomUserId,
+      isWecomGroupChat,
+      channelId: CHANNEL_ID,
+    });
     registerConfirmAndExcelDispatchHook(api);
     registerPrepareGate(api);
   },

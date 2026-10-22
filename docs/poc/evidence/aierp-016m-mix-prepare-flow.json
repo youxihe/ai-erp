@@ -1,0 +1,120 @@
+{
+  "suite": "aierp-016m-mix-prepare-flow",
+  "at": "2026-10-22T09:57:12.229Z",
+  "headNote": "non-post only; confirm phrase 确认配制{draftId}; no F: deploy; do not confirm #119",
+  "wecomUserIdMasked": "m16-***",
+  "businessKey": "MIX-016M-MVJDA54O",
+  "excelDraftId": 124,
+  "slotDraftId": 125,
+  "stockBefore": {
+    "RM-A001@原料仓": 250.7,
+    "RM-B002@原料仓": 4.8,
+    "RM-C003@原料仓": 36.4,
+    "FG-101@成品仓": 151
+  },
+  "stockAfterPrepare": {
+    "RM-A001@原料仓": 250.7,
+    "RM-B002@原料仓": 4.8,
+    "RM-C003@原料仓": 36.4,
+    "FG-101@成品仓": 151
+  },
+  "pass": 19,
+  "fail": 0,
+  "results": [
+    {
+      "name": "phrase_match_plain",
+      "ok": true,
+      "detail": "确认配制123"
+    },
+    {
+      "name": "phrase_match_spaced",
+      "ok": true,
+      "detail": "spaced"
+    },
+    {
+      "name": "phrase_reject_purchase",
+      "ok": true,
+      "detail": "purchase"
+    },
+    {
+      "name": "phrase_reject_bare",
+      "ok": true,
+      "detail": "bare"
+    },
+    {
+      "name": "build_requires_user_recipe",
+      "ok": true,
+      "detail": "must require recipeUserConfirmed"
+    },
+    {
+      "name": "binding_claim",
+      "ok": true,
+      "detail": "{\"code\":200}"
+    },
+    {
+      "name": "template_mix_3raw",
+      "ok": true,
+      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\"}"
+    },
+    {
+      "name": "preview_auto_mix_draft",
+      "ok": true,
+      "detail": "{\"draftId\":124,\"businessKey\":\"MIX-016M-MVJDA54O\",\"phrase\":\"确认配制124\",\"summary\":\"配制单 MIX-016M-MVJDA54O\\n待确认单 #124（未过账，库存未变）\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方，需用户确认。请回复「确认配制124」完成配制\",\"posted\":false,\"stockUnchanged\":true}"
+    },
+    {
+      "name": "prepare_not_posted",
+      "ok": true,
+      "detail": "{\"posted\":false,\"stockUnchanged\":true,\"status\":\"AWAITING_CONFIRM\"}"
+    },
+    {
+      "name": "summary_has_confirm_mix_phrase",
+      "ok": true,
+      "detail": "{\"phrase\":\"确认配制124\",\"hasInSummary\":true}"
+    },
+    {
+      "name": "summary_no_tech_jargon",
+      "ok": true,
+      "detail": "配制单 MIX-016M-MVJDA54O\n待确认单 #124（未过账，库存未变）\n成品：PCB清洗液（FG-101） 1 L → 成品仓\n原料（预计扣减，确认后生效）：\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\n- 络合剂（RM-B002） 0.1 L @ 原料仓\n- 纯水（RM-C003） 0.3 L @ 原料仓\n测试配方，需用户确认。请"
+    },
+    {
+      "name": "stock_unchanged_after_prepare",
+      "ok": true,
+      "detail": "{\"before\":{\"RM-A001@原料仓\":250.7,\"RM-B002@原料仓\":4.8,\"RM-C003@原料仓\":36.4,\"FG-101@成品仓\":151},\"after\":{\"RM-A001@原料仓\":250.7,\"RM-B002@原料仓\":4.8,\"RM-C003@原料仓\":36.4,\"FG-101@成品仓\":151}}"
+    },
+    {
+      "name": "workflow_draft_ready",
+      "ok": true,
+      "detail": "{\"userSummaryZh\":\"配制单 MIX-016M-MVJDA54O\\n待确认单 #124（未过账，库存未变）\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方，需用户确认。请回复「确认配制124」完成配制\",\"draftId\":124,\"bizType\":\"MIX\",\"hasValidPreview\":true,\"erpUserId\":63,\"bindingVersion\":1,\"blocksPurchasePrepare\":true,\"fileSha256\":\"547094c9de9649bbc184a2bfa2ef96fe88ce523cdea22d518fb15155680bfa68\",\"confirmPhrase\":\"确认配制124\",\"hasAwaitingDraft\":true,\"businessKey\":\"MIX-016M-MVJDA54O\",\"tenantId\":63,\"bindingId\":36,\"previewId\":\"pv-a2e8bcbea1404e01b05d145ecf7be007\",\"status\":\"DRAFT_REA"
+    },
+    {
+      "name": "reject_purchase_phrase_on_mix",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制124」\"}"
+    },
+    {
+      "name": "reject_bare_confirm_on_mix",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"请回复明确指令「确认配制124」（配制/服务耗料不接受单独「确认」）\"}"
+    },
+    {
+      "name": "stock_still_unchanged_after_reject",
+      "ok": true,
+      "detail": "{\"RM-A001@原料仓\":250.7,\"FG-101@成品仓\":151}"
+    },
+    {
+      "name": "slot_prepare_requires_recipe_flag",
+      "ok": true,
+      "detail": "{\"code\":409,\"msg\":\"当前有待确认草稿 #124。请回复「确认配制124」或「取消文件」后再口头配制。\"}"
+    },
+    {
+      "name": "slot_prepare_draft",
+      "ok": true,
+      "detail": "{\"draftId\":125,\"phrase\":\"确认配制125\",\"status\":\"AWAITING_CONFIRM\",\"formatted\":\"待确认、库存未变。请回复「确认配制125」完成配制过账。 配比为用户确认的测试配方。\"}"
+    },
+    {
+      "name": "slot_prepare_stock_unchanged",
+      "ok": true,
+      "detail": "{\"RM-A001@原料仓\":250.7,\"FG-101@成品仓\":151}"
+    }
+  ]
+}

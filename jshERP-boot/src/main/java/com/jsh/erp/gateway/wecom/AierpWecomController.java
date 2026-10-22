@@ -35,6 +35,8 @@ public class AierpWecomController {
     @Resource
     private AierpWecomReceiptService receiptService;
     @Resource
+    private AierpWecomMixService mixService;
+    @Resource
     private com.jsh.erp.service.UserService userService;
 
     @PostMapping("/binding/issue")
@@ -197,6 +199,25 @@ public class AierpWecomController {
     public BaseResponseInfo excelPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(excelService.prepareVerified(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: create/reuse unposted MIX draft from persisted Excel preview payload_json.
+     * Never posts inventory; confirm via 「确认配制{draftId}」 only.
+     */
+    @PostMapping("/mix/prepare-verified")
+    public BaseResponseInfo mixPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.prepareVerifiedMix(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: create MIX draft from user-confirmed recipe slots (not AI-invented ratios).
+     */
+    @PostMapping("/mix/prepare")
+    public BaseResponseInfo mixPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.mixPrepare(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {
