@@ -542,8 +542,11 @@ public class AierpExcelService {
         } else {
             JSONObject left = group.getJSONObject("normalized").getJSONObject("finished");
             JSONObject right = incoming.getJSONObject("normalized").getJSONObject("finished");
-            if (!left.getString("barCode").equals(right.getString("barCode")) || !left.getString("qty").equals(right.getString("qty"))) {
-                errors.add("同一配制单号的成品或产出数量不一致");
+            if (!left.getString("barCode").equals(right.getString("barCode"))
+                    || !left.getString("qty").equals(right.getString("qty"))
+                    || !String.valueOf(left.getString("unit")).equals(String.valueOf(right.getString("unit")))
+                    || !String.valueOf(left.getString("depotName")).equals(String.valueOf(right.getString("depotName")))) {
+                errors.add("同一配制单号的成品/产出数量/单位/目标仓库不一致");
             }
             group.getJSONObject("normalized").getJSONArray("lines").addAll(incoming.getJSONObject("normalized").getJSONArray("lines"));
         }

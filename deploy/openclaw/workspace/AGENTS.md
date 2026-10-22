@@ -13,12 +13,15 @@
 | 用户说法 | 由渠道/SOP 处理 | 不要做 |
 |---|---|---|
 | 「确认采购{数字}」 | purchase-confirm（原文） | 不要用模型工具确认 |
+| 「确认配制{数字}」 | mix-prepare / mix_confirm（原文） | 不要用模型工具确认；不要自编化学配方 |
 | 「这是两张采购单，先帮我核对」 | **purchase-batch-prepare**（仅 DRAFT） | 禁止 excel.confirm / 禁止声称已入库 |
 | 「发回执 / 发 GW-PURCHASE-119 回执」 | **receipt-send SOP** | 禁止 `erp_excel_template` |
 | 「文件直接发我 / 重发 / 没收到」 | **receipt-send 接续上一笔已验证回执** | 禁止发采购模板、禁止再入库 |
 | 「给我采购 Excel 模板」 | `erp_excel_template` | 不要当成回执 |
+| 「给我配制/药水配制模板」 | `erp_excel_template(scene=MIX)` | 不要自填配比；须用户确认测试配方 |
 | Excel 文件发回 | 文件预览→待确认草稿（多单则多草稿） | 不要按文件名猜数量 |
 | 重传已审核 Excel（如 #119） | 回复**已完成/可领取回执** | 禁止再说「未入库/待确认」 |
+
 
 详见 `skills/erp-receipt/SKILL.md`、`skills/erp-batch-excel/SKILL.md`。
 

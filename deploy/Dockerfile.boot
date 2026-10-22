@@ -1,6 +1,8 @@
 # Build-context: repository root (ai-erp/)
 FROM maven:3.9.6-eclipse-temurin-8 AS build
 WORKDIR /src
+# Prefer Maven Central only (avoid dead spring milestone / bintray mirrors).
+COPY deploy/scripts/maven-central-settings.xml /root/.m2/settings.xml
 COPY jshERP-boot/pom.xml ./pom.xml
 COPY jshERP-boot/src ./src
 # Upstream pom sets maven-compiler-plugin skip=true (IDE workflow).

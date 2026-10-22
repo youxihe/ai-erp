@@ -45,6 +45,8 @@ public class AierpWecomExcelService {
     private RedisService redisService;
     @Resource
     private JdbcTemplate jdbcTemplate;
+    @Resource
+    private AierpWecomMixService mixService;
 
     public Map<String, Object> template(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
@@ -128,6 +130,13 @@ public class AierpWecomExcelService {
                         String.valueOf(preview.get("previewId")), fileSha256, false, null);
                 if (drafted != null) {
                     preview.putAll(drafted);
+                } else {
+                    // AIERP-016M: single MIX Excel → unposted draft (confirm配制 only).
+                    Map<String, Object> mixDrafted = mixService.tryPrepareVerifiedMixFromPreview(ctx,
+                            String.valueOf(preview.get("previewId")), fileSha256, false);
+                    if (mixDrafted != null && Boolean.TRUE.equals(mixDrafted.get("autoDraft"))) {
+                        preview.putAll(mixDrafted);
+                    }
                 }
             } catch (Exception ex) {
                 // Preview must still succeed; draft can be retried via prepare-verified.
@@ -329,6 +338,10 @@ public class AierpWecomExcelService {
             } else {
                 otherOk.add(rec);
             }
+        }
+        // Soft path: pure MIX/SERVICE (no PURCHASE rows) → null so 016M helpers can run.
+        if (!throwOnIneligible && bad.isEmpty() && purchaseOk.isEmpty() && !otherOk.isEmpty()) {
+            return null;
         }
 
         if (!otherOk.isEmpty()) {

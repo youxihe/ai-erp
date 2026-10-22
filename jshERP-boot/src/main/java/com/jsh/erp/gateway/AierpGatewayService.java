@@ -43,7 +43,11 @@ public class AierpGatewayService {
 
     private static final Pattern DEPOT_ID = Pattern.compile("\\[(\\d+)\\]");
     private static final Pattern CONFIRM_PURCHASE = Pattern.compile(
-            "^\\s*确认\\s*采购\\s*[#＃]?\\s*(\\d+)\\s*$");
+            "^\\s*确认\\s*采购\\s*[#＃：:]?\\s*(\\d+)\\s*$");
+    private static final Pattern CONFIRM_MIX = Pattern.compile(
+            "^\\s*确认\\s*配制\\s*[#＃：:]?\\s*(\\d+)\\s*$");
+    private static final Pattern CONFIRM_SERVICE = Pattern.compile(
+            "^\\s*确认\\s*耗料\\s*[#＃：:]?\\s*(\\d+)\\s*$");
     private static final Pattern CONFIRM_SIMPLE = Pattern.compile("^\\s*确认\\s*$");
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final long FUN_STOCK = 246L;
@@ -536,7 +540,7 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(400, "缺少可信确认原文");
         }
         if (proof.groupChat) {
-            throw new BusinessRunTimeException(403, "禁止在群聊中确认采购");
+            throw new BusinessRunTimeException(403, "禁止在群聊中确认业务草稿");
         }
         if (!"WECOM_BEFORE_DISPATCH".equals(proof.source) && !"ERP_SESSION_UI".equals(proof.source)) {
             throw new BusinessRunTimeException(403, "确认来源不可信");
@@ -612,9 +616,12 @@ public class AierpGatewayService {
         }
 
         ParsedConfirmIntent intent = parseConfirmIntent(proof.rawText.trim());
+        String bizType = String.valueOf(row.get("biz_type"));
+        String expectedPhrase = confirmPhraseFor(bizType, draftId);
         if (!intent.confirm) {
-            throw new BusinessRunTimeException(400, "不是有效的确认指令，请回复「确认采购" + draftId + "」");
+            throw new BusinessRunTimeException(400, "不是有效的确认指令，请回复「" + expectedPhrase + "」");
         }
+        assertConfirmKindMatchesBizType(intent, bizType, draftId);
         if (intent.draftId != null && intent.draftId.longValue() != draftId) {
             throw new BusinessRunTimeException(400, "确认的草稿号与请求不一致");
         }
@@ -622,7 +629,7 @@ public class AierpGatewayService {
             int awaiting = countAwaitingOwnedDrafts(user, owner);
             if (awaiting != 1) {
                 throw new BusinessRunTimeException(400,
-                        "存在多个待确认草稿，请回复「确认采购" + draftId + "」指定草稿号");
+                        "存在多个待确认草稿，请回复「" + expectedPhrase + "」指定草稿号");
             }
         }
 
@@ -674,11 +681,13 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(400, "不是有效的确认指令");
         }
         if (intent.draftId != null) {
+            Map<String, Object> row = requireOwnedDraftRow(user, intent.draftId, owner);
+            assertConfirmKindMatchesBizType(intent, String.valueOf(row.get("biz_type")), intent.draftId);
             return intent.draftId;
         }
         List<Map<String, Object>> rows = listAwaitingOwnedDrafts(user, owner);
         if (rows.size() != 1) {
-            throw new BusinessRunTimeException(400, "存在多个或没有待确认草稿，请回复「确认采购{草稿号}」");
+            throw new BusinessRunTimeException(400, "存在多个或没有待确认草稿，请回复「确认采购/确认配制{草稿号}」");
         }
         return ((Number) rows.get(0).get("id")).longValue();
     }
@@ -839,8 +848,14 @@ public class AierpGatewayService {
             }
             for (int i = 0; i < rawLines.size(); i++) {
                 JSONObject line = rawLines.getJSONObject(i);
-                components.add(toRow(resolveLine(user, required(line, "barCode"), required(line, "depotName"),
-                        decimal(line, "qty"), required(line, "unit"), true)));
+                ResolvedLine component = resolveLine(user, required(line, "barCode"), required(line, "depotName"),
+                        decimal(line, "qty"), required(line, "unit"), true);
+                if (component.stockShort) {
+                    throw new BusinessRunTimeException(400,
+                            "库存不足，整单拒绝。原料 " + component.barCode + " @ " + component.depotName
+                                    + " 可用 " + component.stock + " 需要 " + component.qty);
+                }
+                components.add(toRow(component));
             }
             out.put("finished", toRow(finished));
             out.put("lines", components);
@@ -1260,6 +1275,7 @@ public class AierpGatewayService {
         row.put("taxRate", 0);
         row.put("taxMoney", 0);
         row.put("taxLastMoney", row.getBigDecimal("allPrice"));
+        row.put("currentStock", line.stock);
         return row;
     }
 
@@ -1311,6 +1327,7 @@ public class AierpGatewayService {
         Map<String, Object> view = new LinkedHashMap<String, Object>();
         view.put("draftId", row.get("id"));
         view.put("status", row.get("status"));
+        view.put("bizType", row.get("biz_type"));
         view.put("replayed", replayed);
         view.put("billNumber", row.get("bill_number"));
         view.put("depotHeadId", row.get("depot_head_id"));
@@ -1378,7 +1395,9 @@ public class AierpGatewayService {
                                           String payloadHash, Map<String, Object> view) {
         long draftId = ((Number) draftRow.get("id")).longValue();
         int draftVersion = draftRow.get("draft_version") == null ? 1 : ((Number) draftRow.get("draft_version")).intValue();
-        String phrase = "确认采购" + draftId;
+        String bizType = String.valueOf(draftRow.get("biz_type"));
+        String phrase = confirmPhraseFor(bizType, draftId);
+        String actionHint = confirmActionHint(bizType);
         // Expire prior pending challenges for this draft.
         jdbcTemplate.update(
                 "UPDATE aierp_gateway_confirm_challenge SET status='SUPERSEDED' WHERE draft_id=? AND status='PENDING'",
@@ -1399,12 +1418,17 @@ public class AierpGatewayService {
                 payloadHash, draftId);
         view.put("status", "AWAITING_CONFIRM");
         view.put("draftVersion", draftVersion);
+        view.put("bizType", bizType);
+        view.put("confirmPhrase", phrase);
         Map<String, Object> challenge = new LinkedHashMap<String, Object>();
         challenge.put("expiresInSec", CHALLENGE_TTL_SEC);
         challenge.put("phrase", phrase);
-        challenge.put("hint", "回复「" + phrase + "」提交入库；若仅有一个待确认草稿也可回复「确认」。");
+        // Bare「确认」only for PURCHASE (015B compat). MIX/SERVICE require explicit phrase.
+        String simpleHint = "PURCHASE".equals(bizType)
+                ? "；若仅有一个待确认采购草稿也可回复「确认」。" : "。";
+        challenge.put("hint", "回复「" + phrase + "」" + actionHint + simpleHint);
         view.put("challenge", challenge);
-        view.put("hint", "待确认、未入库。请回复「" + phrase + "」完成审核入库。");
+        view.put("hint", "待确认、库存未变。请回复「" + phrase + "」" + actionHint + "。");
     }
 
     private void consumeChallengeOrThrow(User user, WecomDraftOwner owner, Map<String, Object> draftRow,
@@ -1442,6 +1466,8 @@ public class AierpGatewayService {
         if (!intent.confirm) {
             throw new BusinessRunTimeException(400, "确认原文不匹配，请回复「" + expected + "」");
         }
+        String bizType = String.valueOf(draftRow.get("biz_type"));
+        assertConfirmKindMatchesBizType(intent, bizType, draftId);
         if (intent.draftId != null && intent.draftId.longValue() != draftId) {
             throw new BusinessRunTimeException(400, "确认草稿号不匹配");
         }
@@ -1455,19 +1481,75 @@ public class AierpGatewayService {
         }
     }
 
+    /** Public for WeCom confirm-ui / SOP phrase alignment by bizType. */
+    public static String confirmPhraseFor(String bizType, long draftId) {
+        if ("MIX".equals(bizType)) {
+            return "确认配制" + draftId;
+        }
+        if ("SERVICE".equals(bizType)) {
+            return "确认耗料" + draftId;
+        }
+        return "确认采购" + draftId;
+    }
+
+    private static String confirmActionHint(String bizType) {
+        if ("MIX".equals(bizType)) {
+            return "完成配制过账";
+        }
+        if ("SERVICE".equals(bizType)) {
+            return "完成服务耗料出库";
+        }
+        return "提交入库";
+    }
+
+    /** Phrase kind must match draft bizType; bare「确认」only for PURCHASE (015B compat). */
+    private static void assertConfirmKindMatchesBizType(ParsedConfirmIntent intent, String bizType, long draftId) {
+        String expected = confirmPhraseFor(bizType, draftId);
+        if (intent == null || !intent.confirm) {
+            throw new BusinessRunTimeException(400, "不是有效的确认指令，请回复「" + expected + "」");
+        }
+        if ("SIMPLE".equals(intent.kind)) {
+            if (!"PURCHASE".equals(bizType)) {
+                throw new BusinessRunTimeException(400,
+                        "请回复明确指令「" + expected + "」（配制/服务耗料不接受单独「确认」）");
+            }
+            return;
+        }
+        if (intent.kind != null && !intent.kind.equals(bizType)) {
+            throw new BusinessRunTimeException(400,
+                    "确认指令与单据类型不匹配，请回复「" + expected + "」");
+        }
+    }
+
     private static ParsedConfirmIntent parseConfirmIntent(String text) {
         ParsedConfirmIntent out = new ParsedConfirmIntent();
         if (text == null) {
             return out;
         }
+        Matcher mix = CONFIRM_MIX.matcher(text);
+        if (mix.matches()) {
+            out.confirm = true;
+            out.kind = "MIX";
+            out.draftId = Long.parseLong(mix.group(1));
+            return out;
+        }
+        Matcher service = CONFIRM_SERVICE.matcher(text);
+        if (service.matches()) {
+            out.confirm = true;
+            out.kind = "SERVICE";
+            out.draftId = Long.parseLong(service.group(1));
+            return out;
+        }
         Matcher m = CONFIRM_PURCHASE.matcher(text);
         if (m.matches()) {
             out.confirm = true;
+            out.kind = "PURCHASE";
             out.draftId = Long.parseLong(m.group(1));
             return out;
         }
         if (CONFIRM_SIMPLE.matcher(text).matches()) {
             out.confirm = true;
+            out.kind = "SIMPLE";
             return out;
         }
         return out;
@@ -1500,6 +1582,8 @@ public class AierpGatewayService {
     private static final class ParsedConfirmIntent {
         private boolean confirm;
         private Long draftId;
+        /** PURCHASE | MIX | SERVICE | SIMPLE */
+        private String kind;
     }
 
     private static class ResolvedLine {

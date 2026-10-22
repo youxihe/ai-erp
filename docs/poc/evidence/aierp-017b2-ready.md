@@ -2,7 +2,7 @@
 
 ## HEAD
 
-`2ea798f531b3c1dde85b9c2125d348f051dec689` · branch `feat/aierp-017b2-multi-purchase-draft` · 详见 `aierp-017b2-REVIEW_FIX_PUSHED.md`
+见 `aierp-017b2-REVIEW_FIX_PUSHED.md`。
 
 ## 行为
 
@@ -14,7 +14,7 @@
 
 ## 本地无过账
 
-- `aierp-017b2-multi-purchase`：**18/18 PASS**（fail=0） · at `2026-10-22T16:28:50.688Z`
+- `aierp-017b2-multi-purchase`：**18/18 PASS**（fail=0）
 
 ## 真人企微
 
