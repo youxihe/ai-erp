@@ -26,12 +26,12 @@
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | **DONE / PR #37** | **真实企微已收到 PDF 文件消息（GW-PURCHASE-119）；SOP receipt-send + 自动发送已合并，最新自动发送 / PDF 新排版仍待客户端验收** |
 
-| **AIERP-017B2** | **RELEASED / next_order #1 (CODE)** | **多张采购 Excel → 真实多草稿/批次状态；修复已审核 #119 再上传却提示待确认的重放问题** |
+| **AIERP-017B2** | **REVIEW_FIX_REQUIRED / PR #41 · next_order #1** | **多张采购 Excel → 真实多草稿/批次状态；修复已审核 #119 再上传却提示待确认的重放问题** |
 | AIERP-017C1 | PLANNED / after 017B2 | 一次可信“确认批次”→采购逐单原生入库 + 批次 XLSX 回执 |
-| **AIERP-016M** | **RELEASED / next_order #2 (CODE / independent)** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
-| **AIERP-016S** | **RELEASED / next_order #3 (CODE / independent)** | **SERVICE 客户服务耗料 SOP：确认后真实成品仓扣减，客户与回执记录** |
-| **AIERP-021A** | **RELEASED / next_order #4 (CODE / independent)** | **OpenClaw 对话新增/修改真实供应商与客户：查重、受控字段、独立本人确认，原生 ERP 持久化** |
-| **AIERP-021B** | **RELEASED / next_order #5 (CODE / independent)** | **OpenClaw 对话新增/修改原料/物料：Material+MaterialExtend 条码、单位/分类，建档时库存不变** |
+| **AIERP-016M** | **REVIEW_FIX_REQUIRED / PR #42 · next_order #2** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
+| **AIERP-016S** | **REVIEW_FIX_REQUIRED / PR #43 · next_order #3** | **SERVICE 客户服务耗料 SOP：确认后真实成品仓扣减，客户与回执记录** |
+| **AIERP-021A** | **REVIEW_FIX_REQUIRED / PR #44 · next_order #4** | **OpenClaw 对话新增/修改真实供应商与客户：查重、受控字段、独立本人确认，原生 ERP 持久化** |
+| **AIERP-021B** | **REVIEW_FIX_REQUIRED / PR #45 · next_order #5** | **OpenClaw 对话新增/修改原料/物料：Material+MaterialExtend 条码、单位/分类，建档时库存不变** |
 | AIERP-021C | PLANNED / after 021A+021B | **缺档挂起采购/配制/耗料→建档后恢复原业务，不要求用户重复讲需求** |
 | AIERP-016 | SUPERSEDED by 016M/016S | 配制与客户耗料拆分独立业务交付和 UAT |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
@@ -43,6 +43,18 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-22 23:10 · 首轮五支远端 READY 全部正式 Review，五个 P0/P1 Fix 排队
+
+远端已存在并开 PR：**#41 017B2 (525d4286)、#42 016M (d2266e7c)、#43 016S (9d816546)、#44 021A (cf509055)、#45 021B (66ea17ba)**。Cursor 本地第一波 agent 中途退出不影响：第二波已 Push，GitHub HEAD 经 ChatGPT 查验。已经对**五条 PR 全部分别提交具体 REVIEW_FIX_REQUIRED 评论**，故 NONE is approved for immediate Merge/F: deployment. 证据笔记里的 SHA 可能过期，Review 均以实际 PR HEAD 为准。
+
+- **#41 NEXT**：已有 DDL `aierp_excel_batch`（deploy/sql/04-aierp-excel.sql）无须迁移；但网关 CONFIRMED 且无原生审核单号或对应 depot_head 的情况被错误标成“已审核入库”，须按 RECONCILIATION_REQUIRED 拦截错误宣称；同文件重放批次 revision 不应自增。Review Fix 后优先合并。
+- **#42 MIX**：对话配方仅由模型参数 `recipeUserConfirmed=true` 伪称“用户已确认”不成立；需真正展示/认可配方 hash，且不得推导化学配比；与 #41 的 ExcelService/Gateway 与 #43 的确认/插件路由整合，验证采购/配制/耗料确认严格隔离。
+- **#43 SERVICE**：受控本地 1L 出库已有证据，但真人企微仍 NOT_VERIFIED；需与 #41/#42 的共享 Controller、Gateway、ExcelService、Plugin、Receipt 合并，用户/客户/仓库授权和已审核重复上传要明确。
+- **#44 PARTNER**：`commitInTx` 按 `consume_message_id` 全局查询后在归属校验前直接返回重放结果，跨身份信息泄露；必须先校验 sender/tenant/actor/binding 或移动到权限判定后。与 #45 同名 `AierpWecomMasterDataService` 文件必须拆分。
+- **#45 MATERIAL**：仅有绑定用户身份，没有校验物料创建/修改角色权限；`eventSource=null` 被 commit 接受；都必须 fail closed。与 #44 同类同路径 + `确认建档数字号`（双独立递增表）的**确认指令冲突**，须拆分服务并按实体类型明确路由。
+- **合并次序**：#41→#42→#43→#44→#45，每个分支按真实 master rebase/merge 并跑真实组合测试；#44/#45 可以并行提交修复，但后一条必须建立独立 Service/专用确认名称以避免覆盖前条。无需重跑此前已审核 GW-PURCHASE-119/本地 GW-SERVICE-136，开发测试默认非过账。
+- **F: 单运行态**：任何未 Review/合并的分支都不能直接覆盖运行中的 015B/017B1/015C Plugin。等合并+组合验收后由唯一部署责任方同步，以真实企微原文操作进行必要的**用户本人** UAT；安全边界不允许自动过账。
 
 ## 2026-10-22 · 主数据也纳入 OpenClaw 核心业务链
 
