@@ -29,7 +29,7 @@
 | **AIERP-017B2** | **RELEASED / next_order #1 (CODE)** | **多张采购 Excel → 真实多草稿/批次状态；修复已审核 #119 再上传却提示待确认的重放问题** |
 | AIERP-017C1 | PLANNED / after 017B2 | 一次可信“确认批次”→采购逐单原生入库 + 批次 XLSX 回执 |
 | **AIERP-016M** | **RELEASED / next_order #2 (CODE / independent)** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
-| **AIERP-016S** | **RELEASED / next_order #3 (CODE / independent)** | **SERVICE 客户服务耗料 SOP：确认后真实成品仓扣减，客户与回执记录** |
+| **AIERP-016S** | **READY_FOR_REVIEW / next_order #3** | **SERVICE 客户服务耗料 SOP：确认耗料{id}；非过账证据已落盘；勿 Merge、未覆盖 F:** |
 | **AIERP-021A** | **RELEASED / next_order #4 (CODE / independent)** | **OpenClaw 对话新增/修改真实供应商与客户：查重、受控字段、独立本人确认，原生 ERP 持久化** |
 | **AIERP-021B** | **RELEASED / next_order #5 (CODE / independent)** | **OpenClaw 对话新增/修改原料/物料：Material+MaterialExtend 条码、单位/分类，建档时库存不变** |
 | AIERP-021C | PLANNED / after 021A+021B | **缺档挂起采购/配制/耗料→建档后恢复原业务，不要求用户重复讲需求** |

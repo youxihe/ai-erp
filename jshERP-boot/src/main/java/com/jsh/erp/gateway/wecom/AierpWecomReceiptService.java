@@ -115,8 +115,10 @@ public class AierpWecomReceiptService {
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
             // Retry PDF once if prior generation failed (e.g. missing CJK font in container).
-            if ("PDF_FAILED".equals(String.valueOf(row.get("pdf_status")))
-                    || "NONE".equals(String.valueOf(row.get("pdf_status")))) {
+            // SERVICE stays text-only until a dedicated PDF template ships.
+            if (!isServiceBiz(confirmed, null)
+                    && ("PDF_FAILED".equals(String.valueOf(row.get("pdf_status")))
+                    || "NONE".equals(String.valueOf(row.get("pdf_status"))))) {
                 tryRetryPdf(user, row, confirmed);
                 List<Map<String, Object>> refreshed = jdbcTemplate.queryForList(
                         "SELECT * FROM aierp_gateway_receipt WHERE tenant_id=? AND bill_number=?",
@@ -143,25 +145,32 @@ public class AierpWecomReceiptService {
         String pdfSha = null;
         String pdfRef = null;
         String delivery = "TEXT_ONLY";
-        try {
-            byte[] pdf = renderPdf(facts);
-            File dir = new File(storageDir);
-            if (!dir.exists() && !dir.mkdirs()) {
-                throw new BusinessRunTimeException(500, "无法创建回执存储目录");
+        boolean serviceReceipt = isServiceBiz(confirmed, facts);
+        if (serviceReceipt) {
+            // Honest: no dedicated SERVICE PDF template yet — do not retitle purchase PDF.
+            facts.put("pdfNote", "服务耗料专用 PDF 模板尚未独立交付；当前仅文字《服务耗料出库回执》。");
+            text = renderText(facts);
+        } else {
+            try {
+                byte[] pdf = renderPdf(facts);
+                File dir = new File(storageDir);
+                if (!dir.exists() && !dir.mkdirs()) {
+                    throw new BusinessRunTimeException(500, "无法创建回执存储目录");
+                }
+                String fileName = "采购入库业务回执_" + billNumber + ".pdf";
+                File out = new File(dir, receiptId + "_" + fileName);
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    fos.write(pdf);
+                }
+                pdfSha = sha256Hex(pdf);
+                pdfRef = out.getAbsolutePath();
+                pdfStatus = "PDF_GENERATED";
+                delivery = "PDF_DELIVERY_NOT_VERIFIED";
+            } catch (Exception ex) {
+                pdfStatus = "PDF_FAILED";
+                delivery = "TEXT_ONLY";
+                facts.put("pdfError", String.valueOf(ex.getMessage()));
             }
-            String fileName = "采购入库业务回执_" + billNumber + ".pdf";
-            File out = new File(dir, receiptId + "_" + fileName);
-            try (FileOutputStream fos = new FileOutputStream(out)) {
-                fos.write(pdf);
-            }
-            pdfSha = sha256Hex(pdf);
-            pdfRef = out.getAbsolutePath();
-            pdfStatus = "PDF_GENERATED";
-            delivery = "PDF_DELIVERY_NOT_VERIFIED";
-        } catch (Exception ex) {
-            pdfStatus = "PDF_FAILED";
-            delivery = "TEXT_ONLY";
-            facts.put("pdfError", String.valueOf(ex.getMessage()));
         }
 
         jdbcTemplate.update(
@@ -601,7 +610,7 @@ public class AierpWecomReceiptService {
         String billNumber = String.valueOf(confirmed.get("billNumber"));
         List<Map<String, Object>> heads = jdbcTemplate.queryForList(
                 "SELECT h.id, h.number, h.type, h.sub_type, h.status, h.oper_time, h.create_time, h.creator, "
-                        + "h.organ_id, h.total_price, h.discount_last_money, u.login_name AS creator_login, "
+                        + "h.organ_id, h.total_price, h.discount_last_money, h.remark, u.login_name AS creator_login, "
                         + "s.supplier AS organ_name "
                         + "FROM jsh_depot_head h "
                         + "LEFT JOIN jsh_user u ON u.id=h.creator "
@@ -609,7 +618,7 @@ public class AierpWecomReceiptService {
                         + "WHERE h.number=? AND h.tenant_id=? AND IFNULL(h.delete_flag,'0')<>'1'",
                 billNumber, user.getTenantId());
         if (heads.isEmpty() || !"1".equals(String.valueOf(heads.get(0).get("status")))) {
-            throw new BusinessRunTimeException(500, "原生单据未审核成功，拒绝生成入库回执");
+            throw new BusinessRunTimeException(500, "原生单据未审核成功，拒绝生成业务回执");
         }
         Map<String, Object> head = heads.get(0);
         List<Map<String, Object>> lines = jdbcTemplate.queryForList(
@@ -621,28 +630,111 @@ public class AierpWecomReceiptService {
                         + "LEFT JOIN jsh_depot d ON d.id=i.depot_id "
                         + "WHERE i.header_id=? AND IFNULL(i.delete_flag,'0')<>'1'",
                 head.get("id"));
+        boolean service = isServiceBiz(confirmed, head);
         Map<String, Object> facts = new LinkedHashMap<String, Object>();
-        facts.put("title", "采购入库业务回执");
-        facts.put("disclaimer", "此文件仅作业务记录，不作为税务发票或付款证明。");
+        facts.put("bizType", service ? "SERVICE" : String.valueOf(confirmed.get("bizType") == null
+                ? "PURCHASE" : confirmed.get("bizType")));
+        facts.put("title", service ? "服务耗料出库回执" : "采购入库业务回执");
+        facts.put("disclaimer", "此文件仅作业务记录，不作为税务发票或付款证明。服务耗料≠销售出库/收入确认。");
         facts.put("billNumber", billNumber);
         facts.put("billStatus", "已审核");
         facts.put("operTime", String.valueOf(head.get("oper_time")));
         facts.put("creatorLogin", head.get("creator_login"));
         facts.put("partnerName", head.get("organ_name"));
+        facts.put("partnerRole", service ? "客户" : "供应商");
+        facts.put("serviceProject", resolveServiceProject(confirmed, head));
         facts.put("actorLogin", user.getLoginName());
         facts.put("lines", lines);
         facts.put("stockBefore", confirmed.get("stockBefore"));
         facts.put("stockAfter", confirmed.get("stockAfter"));
         facts.put("confirmTime", confirmed.get("confirmTime"));
         facts.put("replayed", confirmed.get("replayed"));
+        facts.put("nativeType", head.get("type"));
+        facts.put("nativeSubType", head.get("sub_type"));
         return facts;
     }
 
+    private static boolean isServiceBiz(Map<String, Object> confirmed, Map<String, Object> headOrFacts) {
+        if (confirmed != null) {
+            Object bt = confirmed.get("bizType");
+            if (bt != null && "SERVICE".equalsIgnoreCase(String.valueOf(bt))) {
+                return true;
+            }
+            Object bill = confirmed.get("billNumber");
+            if (bill != null && String.valueOf(bill).startsWith("GW-SERVICE-")) {
+                return true;
+            }
+        }
+        if (headOrFacts != null) {
+            Object bt = headOrFacts.get("bizType");
+            if (bt != null && "SERVICE".equalsIgnoreCase(String.valueOf(bt))) {
+                return true;
+            }
+            String type = headOrFacts.get("type") == null ? "" : String.valueOf(headOrFacts.get("type"));
+            String sub = headOrFacts.get("sub_type") == null
+                    ? (headOrFacts.get("nativeSubType") == null ? "" : String.valueOf(headOrFacts.get("nativeSubType")))
+                    : String.valueOf(headOrFacts.get("sub_type"));
+            if ("出库".equals(type) && "其它".equals(sub)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String resolveServiceProject(Map<String, Object> confirmed, Map<String, Object> head) {
+        if (confirmed != null && confirmed.get("serviceProject") != null
+                && String.valueOf(confirmed.get("serviceProject")).trim().length() > 0) {
+            return String.valueOf(confirmed.get("serviceProject")).trim();
+        }
+        if (confirmed != null && confirmed.get("payload") != null) {
+            Object payload = confirmed.get("payload");
+            Object sp = null;
+            if (payload instanceof Map) {
+                sp = ((Map<?, ?>) payload).get("serviceProject");
+            } else if (payload instanceof JSONObject) {
+                sp = ((JSONObject) payload).get("serviceProject");
+            } else {
+                try {
+                    JSONObject parsed = JSON.parseObject(String.valueOf(payload));
+                    if (parsed != null) {
+                        sp = parsed.get("serviceProject");
+                    }
+                } catch (Exception ignored) {
+                    // optional
+                }
+            }
+            if (sp != null && String.valueOf(sp).trim().length() > 0) {
+                return String.valueOf(sp).trim();
+            }
+        }
+        if (head != null && head.get("remark") != null) {
+            String remark = String.valueOf(head.get("remark")).trim();
+            if (remark.startsWith("服务项目：")) {
+                return remark.substring("服务项目：".length()).trim();
+            }
+            if (!remark.isEmpty() && remark.contains("服务")) {
+                return remark;
+            }
+        }
+        return null;
+    }
+
     private String renderText(Map<String, Object> facts) {
+        boolean service = isServiceBiz(null, facts) || "SERVICE".equals(String.valueOf(facts.get("bizType")));
         StringBuilder sb = new StringBuilder();
-        sb.append("采购入库已完成（已审核）\n");
-        sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
-        sb.append("供应商：").append(nullToDash(facts.get("partnerName"))).append("\n");
+        if (service) {
+            sb.append("服务耗料出库已完成（已审核）\n");
+            sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
+            sb.append("客户：").append(nullToDash(facts.get("partnerName"))).append("\n");
+            if (facts.get("serviceProject") != null) {
+                sb.append("服务项目：").append(facts.get("serviceProject")).append("\n");
+            }
+            sb.append("单据类型：出库/其它（非销售）\n");
+        } else {
+            sb.append("采购入库已完成（已审核）\n");
+            sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
+            sb.append("供应商：").append(nullToDash(facts.get("partnerName"))).append("\n");
+        }
         sb.append("操作人：").append(nullToDash(facts.get("creatorLogin"))).append("\n");
         sb.append("处理时间：").append(fmtTime(facts.get("operTime"))).append("\n");
         @SuppressWarnings("unchecked")
@@ -653,8 +745,8 @@ public class AierpWecomReceiptService {
                         .append("（").append(nullToDash(line.get("bar_code"))).append("）")
                         .append(" ").append(fmtQty(line.get("oper_number")))
                         .append(" ").append(nullToDash(line.get("material_unit")))
-                        .append(" → ").append(nullToDash(line.get("depot_name")));
-                if (line.get("all_price") != null) {
+                        .append(service ? " ← " : " → ").append(nullToDash(line.get("depot_name")));
+                if (!service && line.get("all_price") != null) {
                     sb.append(" 金额 ").append(fmtMoney(line.get("all_price")));
                 }
                 sb.append("\n");
@@ -669,7 +761,14 @@ public class AierpWecomReceiptService {
                         .append("（").append(r[4]).append("）\n");
             }
         }
-        sb.append("《采购入库业务回执》已生成（非发票）。");
+        if (service) {
+            sb.append("《服务耗料出库回执》已生成（非发票、非销售收入）。");
+            if (facts.get("pdfNote") != null) {
+                sb.append("\n").append(facts.get("pdfNote"));
+            }
+        } else {
+            sb.append("《采购入库业务回执》已生成（非发票）。");
+        }
         return sb.toString();
     }
 
@@ -896,6 +995,9 @@ public class AierpWecomReceiptService {
     }
 
     private void tryRetryPdf(User user, Map<String, Object> row, Map<String, Object> confirmed) {
+        if (isServiceBiz(confirmed, null) || String.valueOf(row.get("bill_number")).startsWith("GW-SERVICE-")) {
+            return;
+        }
         try {
             Map<String, Object> facts = buildFacts(user, confirmed);
             byte[] pdf = renderPdf(facts);

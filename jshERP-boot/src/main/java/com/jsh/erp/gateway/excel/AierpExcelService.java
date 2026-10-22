@@ -508,6 +508,10 @@ public class AierpExcelService {
         } else if ("SERVICE".equals(scene)) {
             record.put("businessKey", cell(row, headers, formatter, errors, "服务单号"));
             normalized.put("organName", cell(row, headers, formatter, errors, "客户名称"));
+            String serviceProject = optional(row, headers, formatter, errors, "服务项目");
+            if (serviceProject != null && !serviceProject.trim().isEmpty()) {
+                normalized.put("serviceProject", serviceProject.trim());
+            }
             normalized.put("remark", optional(row, headers, formatter, errors, "备注"));
             JSONArray lines = new JSONArray();
             lines.add(line(row, headers, formatter, errors, "药水编码", "出库仓库", "耗用数量", "单位", null));

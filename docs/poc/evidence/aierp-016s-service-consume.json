@@ -1,0 +1,129 @@
+{
+  "ticket": "AIERP-016S",
+  "at": "2026-10-22T10:18:48.511Z",
+  "doConfirm": true,
+  "pass": true,
+  "results": [
+    {
+      "name": "sop_registry_unit",
+      "ok": true,
+      "detail": {
+        "sopId": "service_confirm"
+      }
+    },
+    {
+      "name": "find_binding",
+      "ok": true,
+      "detail": {
+        "wecomUserIdMasked": "si***",
+        "erpUserId": "63",
+        "bindingVersion": "1",
+        "botId": "aib8ZNDXJ9jrokrIdKVFI3924mpY59TqETG"
+      }
+    },
+    {
+      "name": "real_customer",
+      "ok": true,
+      "detail": {
+        "organName": "苏州精密电子"
+      }
+    },
+    {
+      "name": "stock_snapshot_before",
+      "ok": true,
+      "detail": {
+        "fgFinished": 150,
+        "rmRaw": 250.7
+      }
+    },
+    {
+      "name": "reject_bad_customer",
+      "ok": true,
+      "detail": {
+        "code": 400,
+        "data": {
+          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792664327205"
+        }
+      }
+    },
+    {
+      "name": "reject_insufficient_stock",
+      "ok": true,
+      "detail": {
+        "code": 400,
+        "msg": "库存不足，拒绝创建服务耗料草稿：FG-101 @ 成品仓 可用 150.000000 需要 99999"
+      }
+    },
+    {
+      "name": "prepare_service_draft",
+      "ok": true,
+      "detail": {
+        "draftId": 136,
+        "phrase": "确认耗料136",
+        "status": "AWAITING_CONFIRM"
+      }
+    },
+    {
+      "name": "prepare_stock_unchanged",
+      "ok": true,
+      "detail": {
+        "nBefore": 150,
+        "nMid": 150
+      }
+    },
+    {
+      "name": "reject_purchase_phrase_on_service",
+      "ok": true,
+      "detail": {
+        "code": 400,
+        "data": {
+          "message": "确认指令与单据类型不匹配，请回复「确认耗料136」"
+        }
+      }
+    },
+    {
+      "name": "confirm_once",
+      "ok": true,
+      "detail": {
+        "billNumber": "GW-SERVICE-136",
+        "pdfStatus": "NONE",
+        "receiptSnippet": "服务耗料出库已完成（已审核）\n原生单号：GW-SERVICE-136\n客户：苏州精密电子\n服务项目：Demo C UAT 服务测试\n单据类型：出库/其它（非销售）\n操作人：jsh\n处理时间：2026-10-22 18:18:47\n- PCB清洗液（FG-101） 1 L ← 成品仓\n库存变化明细：\n- FG-101@成品仓  150 → 149（-1）\n《服"
+      }
+    },
+    {
+      "name": "confirm_stock_N_minus_1",
+      "ok": true,
+      "detail": {
+        "nBefore": 150,
+        "nAfter": 149
+      }
+    },
+    {
+      "name": "raw_depot_unchanged",
+      "ok": true,
+      "detail": {
+        "rmBefore": 250.7,
+        "rmAfter": 250.7
+      }
+    },
+    {
+      "name": "native_service_other_outbound",
+      "ok": true,
+      "detail": "GW-SERVICE-136\t出库\t其它\t1"
+    },
+    {
+      "name": "confirm_replay_no_double_outbound",
+      "ok": true,
+      "detail": {
+        "bill": "GW-SERVICE-136",
+        "nReplay": 149
+      }
+    }
+  ],
+  "uatNotes": {
+    "LIVE_WECOM_CONFIRM": "SCRIPT_CONFIRMED",
+    "next": "企微私聊发服务耗料 Excel 或对话槽位 → 待确认 → 本人回复 确认耗料{draftId} → 核对 FG-101 成品仓 -1L、原料仓不变、回执《服务耗料出库回执》",
+    "noFDeploy": true,
+    "noPluginIndexEdit": true
+  }
+}

@@ -29,6 +29,8 @@ public class AierpWecomController {
     @Resource
     private AierpWecomDraftService draftService;
     @Resource
+    private AierpWecomServiceConsumeService serviceConsumeService;
+    @Resource
     private AierpWecomExcelService excelService;
     @Resource
     private AierpWecomConfirmService confirmService;
@@ -100,6 +102,26 @@ public class AierpWecomController {
     public BaseResponseInfo purchasePrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(draftService.purchasePrepare(parse(raw)));
+    }
+
+    /**
+     * AIERP-016S: create real unposted SERVICE (其它出库) draft. No stock change until
+     * trusted DM「确认耗料{draftId}」. Never SALE / finance.
+     */
+    @PostMapping("/service/prepare")
+    public BaseResponseInfo servicePrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(serviceConsumeService.servicePrepare(parse(raw)));
+    }
+
+    /**
+     * AIERP-016S: SERVICE draft from persisted Excel preview (1 canConfirm SERVICE bill).
+     * Never posts inventory; confirm remains trusted before_dispatch「确认耗料{draftId}」.
+     */
+    @PostMapping("/service/prepare-verified")
+    public BaseResponseInfo servicePrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(serviceConsumeService.prepareVerifiedService(parse(raw)));
     }
 
     @PostMapping("/draft/status")

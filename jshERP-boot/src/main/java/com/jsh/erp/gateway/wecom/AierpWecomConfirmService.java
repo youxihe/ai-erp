@@ -35,7 +35,7 @@ public class AierpWecomConfirmService {
         }
         if (body != null && (Boolean.TRUE.equals(body.getBoolean("isGroup"))
                 || Boolean.TRUE.equals(body.getBoolean("groupChat")))) {
-            throw new BusinessRunTimeException(403, "禁止在群聊中确认采购");
+            throw new BusinessRunTimeException(403, "禁止在群聊中确认业务单据");
         }
         String rawText = trimToNull(body == null ? null : body.getString("rawText"));
         if (rawText == null) {
@@ -76,8 +76,10 @@ public class AierpWecomConfirmService {
         Map<String, Object> draftRow = gatewayService.loadOwnedDraftRow(sessionUser, draftId);
         AierpGatewayService.WecomDraftOwner liveOwner =
                 bindingService.requireLiveOwnerMatchingDraft(sessionUser, draftRow);
+        String bizType = String.valueOf(draftRow.get("biz_type"));
+        String phrase = AierpGatewayService.confirmPhraseFor(bizType, draftId);
         AierpGatewayService.ConfirmEventProof proof =
-                new AierpGatewayService.ConfirmEventProof("确认采购" + draftId, null, false, "ERP_SESSION_UI");
+                new AierpGatewayService.ConfirmEventProof(phrase, null, false, "ERP_SESSION_UI");
         Map<String, Object> confirmed = gatewayService.confirmAs(sessionUser, liveOwner, draftId, proof);
         return receiptService.enrichConfirmResult(sessionUser, liveOwner, confirmed);
     }

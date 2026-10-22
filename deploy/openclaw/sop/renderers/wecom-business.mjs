@@ -47,6 +47,63 @@ function firstStockKeyParts(obj) {
 /**
  * @param {"markdown"|"plain"} mode  — channel before_dispatch: always prefer plain
  */
+/** AIERP-016S: awaiting SERVICE draft (stock unchanged). */
+export function renderServiceDraftReady(facts, mode = "plain") {
+  const material = facts.materialName || facts.material || "物料";
+  const bar = facts.barCode ? `（${facts.barCode}）` : "";
+  const qty = fmtQty(facts.qty ?? facts.operNumber, facts.unit || "L");
+  const depot = facts.depotName || "成品仓";
+  const partner = facts.partnerName || facts.organName || "客户";
+  const project = facts.serviceProject ? `服务项目：${facts.serviceProject}` : null;
+  const phrase = facts.confirmPhrase || (facts.draftId ? `确认耗料${facts.draftId}` : "确认耗料{草稿号}");
+  const stock =
+    facts.currentStock != null
+      ? `当前库存 ${fmtQty(facts.currentStock, facts.unit || "L")}（确认前不变）`
+      : "确认前库存不变";
+  void mode;
+  return [
+    `📝 服务耗料单待确认`,
+    facts.draftId != null ? `#${facts.draftId} · 其它出库（非销售）` : `其它出库（非销售）`,
+    "",
+    `${material}${bar}  ${qty}`,
+    `${depot} · ${partner}`,
+    project,
+    stock,
+    `回复「${phrase}」完成出库`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** AIERP-016S: SERVICE confirmed — text receipt titled 服务耗料出库回执. */
+export function renderServiceConfirmed(facts, mode = "plain") {
+  const bill = facts.billNumber || facts.realBillNumber || "-";
+  const material = facts.materialName || facts.material || "物料";
+  const bar = facts.barCode ? `（${facts.barCode}）` : "";
+  const qty = fmtQty(facts.qty ?? facts.operNumber, facts.unit || "L");
+  const depot = facts.depotName || "成品仓";
+  const partner = facts.partnerName || facts.organName || "客户";
+  const project = facts.serviceProject ? `服务项目：${facts.serviceProject}` : null;
+  const before = facts.stockBefore != null ? fmtQty(facts.stockBefore, facts.unit || "L") : null;
+  const after = facts.stockAfter != null ? fmtQty(facts.stockAfter, facts.unit || "L") : null;
+  void mode;
+  const lines = [
+    `✅ 服务耗料出库完成`,
+    `${bill} · 已审核 · 其它出库（非销售）`,
+    "",
+    `${material}${bar}  ${qty}`,
+    `${depot} · ${partner}`,
+  ];
+  if (project) lines.push(project);
+  if (before && after) lines.push(`出库前 ${before} → 当前 ${after}`);
+  if (facts.pdfStatus === "PDF_GENERATED") {
+    lines.push(`回执 PDF 已随消息发送（非发票）`);
+  } else {
+    lines.push(`《服务耗料出库回执》见文字（专用 PDF 模板尚未独立交付）`);
+  }
+  return lines.join("\n");
+}
+
 export function renderPurchaseConfirmed(facts, mode = "plain") {
   const bill = facts.billNumber || facts.realBillNumber || "-";
   const material = facts.materialName || facts.material || "物料";

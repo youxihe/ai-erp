@@ -10,6 +10,8 @@ import com.jsh.erp.service.RedisService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import org.springframework.context.annotation.Lazy;
+
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -21,7 +23,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * AIERP-017A/017B1: WeCom Excel template + preview + single-purchase verified DRAFT.
+ * AIERP-017A/017B1/016S: WeCom Excel template + preview + single PURCHASE/SERVICE verified DRAFT.
  * Draft is created from persisted preview payload only (never model-guessed qty).
  */
 @Service
@@ -41,6 +43,9 @@ public class AierpWecomExcelService {
     private RedisService redisService;
     @Resource
     private JdbcTemplate jdbcTemplate;
+    @Resource
+    @Lazy
+    private AierpWecomServiceConsumeService serviceConsumeService;
 
     public Map<String, Object> template(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
@@ -70,7 +75,13 @@ public class AierpWecomExcelService {
         data.put("posted", false);
         data.put("confirmSupported", isConfirmableScene(scene));
         data.put("boundErpLoginName", ctx.user.getLoginName());
-        data.put("summary", "已生成 " + fileName + "。请填写后发回；单张合法采购单将生成待确认采购单。");
+        if ("SERVICE".equals(scene)) {
+            data.put("summary", "已生成 " + fileName + "。请填写后发回；单张合法服务耗料单将生成待确认草稿，回复「确认耗料{草稿号}」出库（非销售）。");
+        } else if ("MIX".equals(scene)) {
+            data.put("summary", "已生成 " + fileName + "。请填写后发回；配制单确认协议见 016M。");
+        } else {
+            data.put("summary", "已生成 " + fileName + "。请填写后发回；单张合法采购单将生成待确认采购单。");
+        }
         data.put("hint", data.get("summary"));
         return data;
     }
@@ -122,8 +133,17 @@ public class AierpWecomExcelService {
             try {
                 Map<String, Object> drafted = tryPrepareVerifiedPurchase(ctx,
                         String.valueOf(preview.get("previewId")), fileSha256, false);
-                if (drafted != null) {
+                if (drafted != null && Boolean.TRUE.equals(drafted.get("autoDraft"))) {
                     preview.putAll(drafted);
+                } else {
+                    // AIERP-016S: single SERVICE Excel → unposted draft (确认耗料 only).
+                    Map<String, Object> serviceDrafted = serviceConsumeService.tryPrepareVerifiedServiceFromPreview(
+                            ctx, String.valueOf(preview.get("previewId")), fileSha256, false);
+                    if (serviceDrafted != null && Boolean.TRUE.equals(serviceDrafted.get("autoDraft"))) {
+                        preview.putAll(serviceDrafted);
+                    } else if (drafted != null) {
+                        preview.putAll(drafted);
+                    }
                 }
             } catch (Exception ex) {
                 // Preview must still succeed; draft can be retried via prepare-verified.
@@ -235,14 +255,41 @@ public class AierpWecomExcelService {
         if (blocksPrepare(status)) {
             Object draftId = current.get("draftId");
             if (draftId != null && "DRAFT_READY".equals(status)) {
+                String phrase = current.get("confirmPhrase") == null
+                        ? null : String.valueOf(current.get("confirmPhrase"));
+                if (phrase == null || phrase.trim().isEmpty()) {
+                    phrase = "确认采购" + draftId;
+                }
                 throw new BusinessRunTimeException(409,
-                        "当前有待确认的 Excel 采购单 #" + draftId
-                                + "。请回复「确认采购" + draftId + "」入库，或「取消文件」后口头下单。");
+                        "当前有待确认的 Excel 单据 #" + draftId
+                                + "。请回复「" + phrase + "」完成过账，或「取消文件」后口头下单。");
             }
             throw new BusinessRunTimeException(409,
-                    "当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建采购草稿。"
+                    "当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建草稿。"
                             + "请按已核对的文件继续，或回复「取消文件」后再口头下单。");
         }
+    }
+
+    /** Package helper for AIERP-016S SERVICE verified prepare. */
+    public Map<String, Object> peekWorkflow(AierpWecomBindingService.BoundContext ctx) {
+        return getWorkflow(ctx);
+    }
+
+    /** Load preview payload owned by the bound ERP user. */
+    public JSONObject loadOwnedPreviewPayload(AierpWecomBindingService.BoundContext ctx, String previewId) {
+        return loadPreviewPayload(ctx, previewId);
+    }
+
+    public void putOwnedWorkflow(AierpWecomBindingService.BoundContext ctx, String status, String previewId,
+                                 String fileSha256, String messageMsgId, String reason, String userSummaryZh,
+                                 Object draftId, String businessKey, String confirmPhrase) {
+        putWorkflow(ctx, status, previewId, fileSha256, messageMsgId, reason, userSummaryZh,
+                draftId, businessKey, confirmPhrase);
+    }
+
+    public String shortIdempotencyKeyFor(AierpWecomBindingService.BoundContext ctx,
+                                         String fileSha256, String businessKey) {
+        return shortIdempotencyKey(ctx, fileSha256, businessKey);
     }
 
     private Map<String, Object> tryPrepareVerifiedPurchase(AierpWecomBindingService.BoundContext ctx,
@@ -338,7 +385,7 @@ public class AierpWecomExcelService {
             throw new BusinessRunTimeException(500, "草稿创建未返回单号");
         }
         long draftId = Long.parseLong(String.valueOf(draftIdObj));
-        String confirmPhrase = "确认采购" + draftId;
+        String confirmPhrase = AierpGatewayService.confirmPhraseFor("PURCHASE", draftId);
         String summaryZh = buildDraftReadySummary(businessKey, created, draftId, confirmPhrase);
         putWorkflow(ctx, "DRAFT_READY", previewId, fileSha256, null, null, summaryZh,
                 draftId, businessKey, confirmPhrase);
