@@ -35,6 +35,8 @@ public class AierpWecomController {
     @Resource
     private AierpWecomReceiptService receiptService;
     @Resource
+    private AierpWecomMasterDataService masterDataService;
+    @Resource
     private com.jsh.erp.service.UserService userService;
 
     @PostMapping("/binding/issue")
@@ -158,6 +160,26 @@ public class AierpWecomController {
     public BaseResponseInfo receiptFile(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(receiptService.fileForWecom(parse(raw)));
+    }
+
+    /**
+     * AIERP-021B: prepare material create/update challenge (no Material write yet).
+     * Rejects stock fields; commit only via trusted confirm phrase.
+     */
+    @PostMapping("/master/material/prepare")
+    public BaseResponseInfo materialPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(masterDataService.prepareMaterial(parse(raw)));
+    }
+
+    /**
+     * AIERP-021B: commit material after trusted WeCom phrase（确认建档/确认修改{申请号}）.
+     * Never posts stock; LLM must not call this tool.
+     */
+    @PostMapping("/master/material/commit")
+    public BaseResponseInfo materialCommit(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(masterDataService.commitMaterial(parse(raw)));
     }
 
     /** AIERP-017A: download xlsx template as base64 (no stock change). */

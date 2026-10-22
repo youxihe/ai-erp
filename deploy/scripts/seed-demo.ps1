@@ -58,4 +58,16 @@ docker exec aierp-mysql mysql -uroot "-p$rootPwd" --default-character-set=utf8mb
 $code = $LASTEXITCODE
 $ErrorActionPreference = $prev
 if ($code -ne 0) { exit $code }
+
+$materialSql = Join-Path $Deploy "sql\08-aierp-021b-material-master.sql"
+if (Test-Path $materialSql) {
+  Write-Host "Applying AIERP-021B material master-data schema ..."
+  $ErrorActionPreference = 'Continue'
+  docker cp $materialSql "aierp-mysql:/tmp/08-aierp-021b-material-master.sql"
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  docker exec aierp-mysql mysql -uroot "-p$rootPwd" --default-character-set=utf8mb4 jsh_erp -e "source /tmp/08-aierp-021b-material-master.sql"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  if ($code -ne 0) { exit $code }
+}
 Write-Host "Done. Captcha flag was not changed. Re-run is safe: existing demo rows are skipped."

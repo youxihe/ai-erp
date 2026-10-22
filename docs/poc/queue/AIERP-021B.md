@@ -1,6 +1,6 @@
 # AIERP-021B · 企微对话创建/修改原料与物料主数据
 
-- **状态**：RELEASED / next_order #5（独立开发；不能与 021A 或 017B2/016M/016S 多分支同时覆盖 F:）
+- **状态**：READY_FOR_REVIEW（实现完成，待 ChatGPT Review；勿 Merge；不能与 021A 或 017B2/016M/016S 多分支同时覆盖 F:）
 - **分支**：`feat/aierp-021b-material-masterdata-sop` from latest master。
 - **目标**：用户说“新原料 XXX，编码 RM-...，单位 L；加入 ERP”“把 RM-... 规格改为 ...”→ 按 ERP 的 `Material + MaterialExtend`（物料主档 + 实际条码/SKU）真实落地。添加后可直接通过 ERP 物料检索、采购 XLSX 或 MIX 配制查询使用。
 

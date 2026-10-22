@@ -1,0 +1,125 @@
+{
+  "ticket": "AIERP-021B",
+  "barCode": "RM-TEST-202610221016",
+  "materialId": 99002,
+  "wecomUserIdMasked": "aier***",
+  "results": [
+    {
+      "name": "sop_confirm_phrase",
+      "ok": true,
+      "detail": "确认建档12"
+    },
+    {
+      "name": "sop_route_material_confirm",
+      "ok": true,
+      "detail": "{\"sopId\":\"material_confirm\",\"followup\":false}"
+    },
+    {
+      "name": "sop_strip_stock",
+      "ok": true,
+      "detail": "{\"fields\":{\"name\":\"x\"},\"rejected\":[\"stock\"]}"
+    },
+    {
+      "name": "sql_table",
+      "ok": true,
+      "detail": "table"
+    },
+    {
+      "name": "bind_issue",
+      "ok": true,
+      "detail": "{\"codeLen\":8}"
+    },
+    {
+      "name": "bind_claim",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "reject_llm_self_report",
+      "ok": true,
+      "detail": "{\"code\":403}"
+    },
+    {
+      "name": "reject_group_confirm",
+      "ok": true,
+      "detail": "{\"code\":403}"
+    },
+    {
+      "name": "stock_field_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"主数据接口拒绝库存字段「stock」，请走采购/盘点等独立流程\"}}"
+    },
+    {
+      "name": "prepare_create",
+      "ok": true,
+      "detail": "{\"requestId\":2,\"phrase\":\"确认建档2\",\"summary\":\"新增原料 测试表面助剂-202610221016｜编码 RM-TEST-202610221016｜单位 L｜分类 PCB清洗物料｜规格 Demo｜备注 021B create（建档后库存为 0）\"}"
+    },
+    {
+      "name": "prepare_no_write",
+      "ok": true,
+      "detail": "{\"count\":\"0\"}"
+    },
+    {
+      "name": "commit_create",
+      "ok": true,
+      "detail": "{\"materialId\":99002,\"barCode\":\"RM-TEST-202610221016\",\"stock\":0,\"initRows\":0}"
+    },
+    {
+      "name": "extend_saved",
+      "ok": true,
+      "detail": "99002\tRM-TEST-202610221016\tL"
+    },
+    {
+      "name": "no_current_stock_rows",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "no_initial_stock_rows",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "commit_replay_idempotent",
+      "ok": true,
+      "detail": "{\"replayed\":true,\"id\":99002}"
+    },
+    {
+      "name": "single_barcode_row",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "dup_barcode_fail",
+      "ok": true,
+      "detail": "{\"code\":409,\"data\":{\"message\":\"条码已存在: RM-TEST-202610221016\"}}"
+    },
+    {
+      "name": "prepare_update_remark",
+      "ok": true,
+      "detail": "{\"updId\":3,\"updPhrase\":\"确认修改3\",\"summary\":\"修改物料 RM-TEST-202610221016｜remark 021B create → Demo 测试原料\"}"
+    },
+    {
+      "name": "commit_update_remark",
+      "ok": true,
+      "detail": "{\"remark\":\"Demo 测试原料\",\"unit\":\"L\"}"
+    },
+    {
+      "name": "remark_updated_unit_same",
+      "ok": true,
+      "detail": "Demo 测试原料\tL"
+    },
+    {
+      "name": "forbid_unit_change",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"本功能禁止修改基础单位\"}}"
+    },
+    {
+      "name": "searchable_after_create",
+      "ok": true,
+      "detail": "{\"materialName\":\"测试表面助剂-202610221016\",\"barCode\":\"RM-TEST-202610221016\",\"unit\":\"L\",\"categoryName\":\"PCB清洗物料\",\"enabled\":true}"
+    }
+  ],
+  "ok": true,
+  "at": "2026-10-22T10:16:07.564Z"
+}
