@@ -1,7 +1,9 @@
 # AIERP-016M READY_FOR_REVIEW
 
 - **Branch**: `feat/aierp-016m-mix-sop`
+- **HEAD**: `4140c2e3`
 - **Base**: `origin/master` `74b32fe8`
+- **Status**: READY_FOR_REVIEW (no merge; no F: deploy)
 - **Evidence**:
   - `docs/poc/evidence/aierp-016m-mix-prepare.json`
   - `docs/poc/evidence/aierp-016m-mix-prepare-flow.json`
