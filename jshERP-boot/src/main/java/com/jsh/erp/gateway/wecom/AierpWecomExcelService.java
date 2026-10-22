@@ -294,6 +294,10 @@ public class AierpWecomExcelService {
             }
         }
         if (!bad.isEmpty() || purchaseOk.size() != 1 || !otherOk.isEmpty()) {
+            // Soft path: pure MIX/SERVICE (no PURCHASE rows) → null so 016M/016S helpers can run.
+            if (!throwOnIneligible && bad.isEmpty() && purchaseOk.isEmpty() && !otherOk.isEmpty()) {
+                return null;
+            }
             String msg;
             if (!bad.isEmpty()) {
                 msg = String.valueOf(getWorkflow(ctx) != null ? getWorkflow(ctx).get("userSummaryZh") : null);

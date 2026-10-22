@@ -457,18 +457,21 @@ const insuffPrev = await signedPost(
   }),
 );
 const insuffHash = insuffPrev.json?.data?.recipeHash;
-const badPrep = await signedPost(
-  "/aierp/v1/wecom/mix/prepare",
-  buildMixPrepareBody({
-    wecomUserId: WECOM,
-    botId: BOT,
-    recipeHash: insuffHash,
-    idempotencyKey: `mix-insuff-${Date.now()}`,
-    finished: insuffFinished,
-    lines: insuffLines,
-    remark: "故意超量测试",
-  }),
-);
+let badPrep = { json: { code: 500, message: "skip: no recipeHash from preview" } };
+if (insuffHash) {
+  badPrep = await signedPost(
+    "/aierp/v1/wecom/mix/prepare",
+    buildMixPrepareBody({
+      wecomUserId: WECOM,
+      botId: BOT,
+      recipeHash: insuffHash,
+      idempotencyKey: `mix-insuff-${Date.now()}`,
+      finished: insuffFinished,
+      lines: insuffLines,
+      remark: "故意超量测试",
+    }),
+  );
+}
 const badCode = badPrep.json?.code;
 const badMsg = String(badPrep.json?.data?.message || badPrep.json?.message || "");
 note(

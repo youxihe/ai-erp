@@ -410,16 +410,19 @@ note(
   { code: fakeHashPrep.json?.code, msg: fakeHashPrep.json?.data?.message || fakeHashPrep.json?.message },
 );
 
-const slotBody = buildMixPrepareBody({
-  wecomUserId: WECOM,
-  botId: BOT,
-  recipeHash,
-  finished: slotFinished,
-  lines: slotLines,
-  idempotencyKey: `mix-slot-${Date.now()}`,
-  remark: "016M slot test after recipe-preview hash",
-});
-const slot = await signedPost("/aierp/v1/wecom/mix/prepare", slotBody);
+let slot = { json: { code: 500, data: { message: "skip: no recipeHash from preview" } } };
+if (recipeHash) {
+  const slotBody = buildMixPrepareBody({
+    wecomUserId: WECOM,
+    botId: BOT,
+    recipeHash,
+    finished: slotFinished,
+    lines: slotLines,
+    idempotencyKey: `mix-slot-${Date.now()}`,
+    remark: "016M slot test after recipe-preview hash",
+  });
+  slot = await signedPost("/aierp/v1/wecom/mix/prepare", slotBody);
+}
 const slotData = slot.json?.data;
 const slotId = slotData?.draftId;
 note(

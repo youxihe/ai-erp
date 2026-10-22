@@ -1,48 +1,52 @@
 # AIERP-016M REVIEW_FIX_PUSHED
 
-**Branch:** `feat/aierp-016m-mix-sop`  
-**PR:** https://github.com/youxihe/ai-erp/pull/42  
-**Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: OpenClaw overwrite; no MIX native post / stock write.  
-**HEAD:** `329722f96983ff1621e10cf91701f6ab0eaa91e2`
+- **Status**: `REVIEW_FIX_PUSHED`
+- **Branch**: `feat/aierp-016m-mix-sop`
+- **HEAD**: _(filled after push)_
+- **PR**: https://github.com/youxihe/ai-erp/pull/42
+- **Base note**: #41 not yet merged; recipe-hash fix landed on current branch (rebase later)
 
-## Round-1 fixes (ChatGPT P0/P1)
+## P0 fix (ChatGPT Round 1)
 
-### P0 — model boolean ≠ human approval
-- Slot path: `/mix/recipe-preview` registers server-side **PROPOSED** `recipeHash` + full finished/raw display.
-- `/mix/prepare` requires that **registered** `recipeHash`; `recipeUserConfirmed` / `userConfirmedRecipe` alone are rejected and never labeled「用户已确认」.
-- **Order fix:** `buildMixBodyFromSlots` (hash/boolean gate) runs **before** `assertNoBlockingWorkflow`, so an open Excel `DRAFT_READY` cannot mask the 400「布尔不能证明用户已核对」response with 409「待确认草稿」.
-- Posting remains trusted original DM「确认配制{draftId}」only (no second「确认配方」ack phrase; no `/mix/recipe-ack`).
-- Invented ratios / missing hash refused; optional client finished/lines must match stored hash.
-- Plugin `buildMixPrepareBody` mirrors Java: boolean without hash throws; hash required.
-- Evidence script probes boolean reject both while Excel draft is open and after cancel.
+Model booleans `recipeUserConfirmed` / `userConfirmedRecipe` are **never** proof of human recipe approval.
 
-### Integration
-- PURCHASE confirm + PDF paths preserved (`purchase_confirm` in registry; `runReceiptSend` / `CONFIRM_PURCHASE` intact in plugin).
-- MIX vs PURCHASE/SERVICE: Gateway parses `确认耗料` and rejects cross-type via `assertConfirmKindMatchesBiz`.
-- MIX PDF **not** implemented — text receipt only (`pdfStatus=NONE`).
-- `Dockerfile.boot` / maven-central settings **not** committed (local build convenience only).
+| Path | Behavior |
+|------|----------|
+| `/mix/recipe-preview` | Shows full finished + raw lines; registers deterministic SHA-256 `recipeHash` (PROPOSED draft) |
+| `/mix/prepare` | Requires server-registered `recipeHash`; rejects boolean-only shortcuts with explicit 400 (even if Excel DRAFT_READY is open) |
+| Excel MIX preview | Auto-draft from verified XLSX cells; binds `recipeHash`; summary never claims「用户已确认」 |
+| Confirm | Trusted WeCom `确认配制{draftId}` only; `确认采购` / `确认耗料` cross-type rejected |
+| Receipt | MIX text-only (`pdfStatus=NONE`); no fake purchase PDF |
 
-## Evidence (non-post)
+## Files changed
 
-| Check | Result |
-|--------|--------|
-| `node --check` plugin `index.js`, `mix-prepare.mjs`, both evidence scripts | **PASS** |
-| Local phrase/SOP unit (确认配制 / 确认配方≠post / boolean without hash / purchase route) | **PASS** 5/5 |
-| `deploy/scripts/aierp-016m-mix-prepare.mjs` against live boot | **PARTIAL** — earlier run on **pre-reorder** image: 18 PASS / 1 FAIL (`refuse_model_boolean_as_recipe_approval` got 409「待确认草稿#206」because workflow gate ran first). Stock unchanged; GW-PURCHASE-119 untouched. |
-| Re-run after this reorder commit | **BLOCKED_NEED_BOOT** — Docker Desktop engine pipe missing; boot timeout on `127.0.0.1:9999` |
-| `deploy/scripts/aierp-016m-mix-prepare-flow.mjs` | **BLOCKED_NEED_BOOT** (same) |
+- `jshERP-boot/.../AierpWecomMixService.java` — recipeHash / ignore model booleans
+- `jshERP-boot/.../AierpWecomController.java` — `/mix/recipe-preview`
+- `jshERP-boot/.../AierpWecomExcelService.java` — MIX soft-path not masked by PURCHASE soft-fail
+- `jshERP-boot/.../AierpGatewayService.java` — parse `确认耗料` for cross-type reject (prep for #41 rebase)
+- `jshERP-boot/.../LogCostFilter.java` — whitelist recipe-preview
+- `deploy/openclaw/**/mix-prepare.mjs` — SOP builds require `recipeHash`
+- `deploy/openclaw/workspace/skills/erp-mixing/SKILL.md`
+- `deploy/scripts/aierp-016m-mix-prepare.mjs` / `aierp-016m-mix-prepare-flow.mjs`
+- `deploy/Dockerfile.boot` + `deploy/scripts/maven-central-settings.xml` (Central-only Maven mirror)
 
-Prefer after Docker recovers: rebuild boot from **this** worktree (`deploy/docker-compose.yml` build `aierp-boot`); do **not** overwrite F: runtime; do **not** auto「确认配制」.
+## Automated results (non-post)
+
+| Suite | Result |
+|-------|--------|
+| `aierp-016m-mix-prepare.mjs` | **ALL PASS** (incl. boolean-alone reject, cross-type 确认采购/确认耗料, insufficient stock via recipeHash) |
+| `aierp-016m-mix-prepare-flow.mjs` | **25/25 PASS** (recipe-preview → prepare; no「用户已确认」) |
+
+Evidence JSON/MD: `docs/poc/evidence/aierp-016m-mix-prepare*.json|md`
 
 ## NOT_VERIFIED
 
-- Human WeCom MIX UAT (`确认配制{newId}` on a fresh draft)
-- Full non-post script PASS against boot rebuilt with this reorder
-- F: shared OpenClaw plugin deploy
-- MIX dedicated PDF (intentionally none)
+- **Real WeCom MIX post**: live private-chat `确认配制{draftId}` → native `GW-MIX-*` + stock delta (FG + raw) **not** exercised this round
+- No F:\\aierp-openclaw overwrite; no auto inventory post; no live draft confirm
+- Dedicated MIX PDF template still absent (honest text receipt only)
 
-## Hard rules honored
+## UAT tip
 
-- No Merge
-- No F: overwrite
-- No automatic native stock write / no real MIX post
+1. Upload MIX Excel (3 raw → FG-101) or recipe-preview → prepare with returned `recipeHash`
+2. Verify draft summary shows full recipe + hash, phrase `确认配制{id}`
+3. Reply exact phrase in WeCom DM; confirm stock; reject any「用户已确认」from model tools alone
