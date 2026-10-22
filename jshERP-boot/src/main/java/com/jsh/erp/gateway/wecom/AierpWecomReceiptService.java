@@ -78,7 +78,32 @@ public class AierpWecomReceiptService {
         out.put("pdfStatus", receipt.get("pdf_status"));
         out.put("deliveryStatus", receipt.get("delivery_status"));
         out.put("hint", String.valueOf(receipt.get("text_body")));
+        putDisplayFacts(out, receipt);
         return out;
+    }
+
+    /** Expose receipt_json line/stock fields so WeCom renderer can format cleanly. */
+    private void putDisplayFacts(Map<String, Object> out, Map<String, Object> receipt) {
+        try {
+            JSONObject facts = JSON.parseObject(String.valueOf(receipt.get("receipt_json")));
+            if (facts == null) {
+                return;
+            }
+            if (out.get("partnerName") == null && facts.get("partnerName") != null) {
+                out.put("partnerName", facts.get("partnerName"));
+            }
+            if (out.get("lines") == null && facts.get("lines") != null) {
+                out.put("lines", facts.get("lines"));
+            }
+            if (out.get("stockBefore") == null && facts.get("stockBefore") != null) {
+                out.put("stockBefore", facts.get("stockBefore"));
+            }
+            if (out.get("stockAfter") == null && facts.get("stockAfter") != null) {
+                out.put("stockAfter", facts.get("stockAfter"));
+            }
+        } catch (Exception ignored) {
+            // display-only
+        }
     }
 
     public Map<String, Object> ensureReceipt(User user, AierpGatewayService.WecomDraftOwner owner,
@@ -238,6 +263,8 @@ public class AierpWecomReceiptService {
         if (!"PDF_GENERATED".equals(String.valueOf(receipt.get("pdf_status")))) {
             throw new BusinessRunTimeException(404, "该回执 PDF 尚未生成，请登录 ERP 查看文本回执");
         }
+        // Refresh layout from stored facts (no re-post); keeps Demo PDF format current.
+        receipt = refreshPdfLayout(receipt);
         byte[] pdf = readPdfSecure(receipt);
         String fileName = "采购入库业务回执_" + receipt.get("bill_number") + ".pdf";
         Map<String, Object> out = new LinkedHashMap<String, Object>();
@@ -253,10 +280,86 @@ public class AierpWecomReceiptService {
         // Adapter handoff ≠ client verified open
         out.put("deliveryStatus", "PDF_DELIVERY_NOT_VERIFIED");
         out.put("userSummaryZh", buildUserSummaryZh(receipt, true));
+        putDisplayFacts(out, receipt);
         jdbcTemplate.update(
                 "UPDATE aierp_gateway_receipt SET delivery_status='PDF_ADAPTER_HANDED', updated_at=? WHERE id=?",
                 TS.format(LocalDateTime.now()), receipt.get("id"));
         return out;
+    }
+
+    /**
+     * Rebuild PDF bytes from receipt_json using current renderer (stock table, clean decimals).
+     * Never posts inventory; only rewrites the stored PDF file + hash.
+     */
+    private Map<String, Object> refreshPdfLayout(Map<String, Object> row) {
+        try {
+            JSONObject factsJson = JSON.parseObject(String.valueOf(row.get("receipt_json")));
+            if (factsJson == null) {
+                return row;
+            }
+            Map<String, Object> facts = normalizeFacts(factsJson);
+            byte[] pdf = renderPdf(facts);
+            String text = renderText(facts);
+            File dir = new File(storageDir);
+            if (!dir.exists() && !dir.mkdirs()) {
+                throw new BusinessRunTimeException(500, "无法创建回执存储目录");
+            }
+            Path root = dir.getCanonicalFile().toPath().normalize();
+            Path file;
+            Object ref = row.get("pdf_storage_ref");
+            if (ref != null && !String.valueOf(ref).trim().isEmpty()) {
+                Path candidate = new File(String.valueOf(ref)).getCanonicalFile().toPath().normalize();
+                if (candidate.startsWith(root)) {
+                    file = candidate;
+                } else {
+                    file = root.resolve(row.get("receipt_id") + "_采购入库业务回执_" + row.get("bill_number") + ".pdf");
+                }
+            } else {
+                file = root.resolve(row.get("receipt_id") + "_采购入库业务回执_" + row.get("bill_number") + ".pdf");
+            }
+            Files.createDirectories(file.getParent());
+            Files.write(file, pdf);
+            String sha = sha256Hex(pdf);
+            String now = TS.format(LocalDateTime.now());
+            jdbcTemplate.update(
+                    "UPDATE aierp_gateway_receipt SET pdf_sha256=?, pdf_storage_ref=?, text_body=?, "
+                            + "pdf_status='PDF_GENERATED', updated_at=? WHERE id=?",
+                    sha, file.toAbsolutePath().toString(), text, now, row.get("id"));
+            row.put("pdf_sha256", sha);
+            row.put("pdf_storage_ref", file.toAbsolutePath().toString());
+            row.put("text_body", text);
+            row.put("pdf_status", "PDF_GENERATED");
+            return row;
+        } catch (Exception ex) {
+            return row;
+        }
+    }
+
+    private static Map<String, Object> normalizeFacts(JSONObject src) {
+        Map<String, Object> facts = new LinkedHashMap<String, Object>();
+        for (String key : src.keySet()) {
+            if ("lines".equals(key)) {
+                continue;
+            }
+            facts.put(key, src.get(key));
+        }
+        List<Map<String, Object>> lineList = new ArrayList<Map<String, Object>>();
+        JSONArray lines = src.getJSONArray("lines");
+        if (lines != null) {
+            for (int i = 0; i < lines.size(); i++) {
+                JSONObject line = lines.getJSONObject(i);
+                if (line == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<String, Object>();
+                for (String k : line.keySet()) {
+                    row.put(k, line.get(k));
+                }
+                lineList.add(row);
+            }
+        }
+        facts.put("lines", lineList);
+        return facts;
     }
 
     private List<Map<String, Object>> queryAuthorizedReceipts(
@@ -541,27 +644,30 @@ public class AierpWecomReceiptService {
         sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
         sb.append("供应商：").append(nullToDash(facts.get("partnerName"))).append("\n");
         sb.append("操作人：").append(nullToDash(facts.get("creatorLogin"))).append("\n");
-        sb.append("处理时间：").append(nullToDash(facts.get("operTime"))).append("\n");
+        sb.append("处理时间：").append(fmtTime(facts.get("operTime"))).append("\n");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
         if (lines != null) {
             for (Map<String, Object> line : lines) {
                 sb.append("- ").append(nullToDash(line.get("material_name")))
                         .append("（").append(nullToDash(line.get("bar_code"))).append("）")
-                        .append(" ").append(nullToDash(line.get("oper_number")))
+                        .append(" ").append(fmtQty(line.get("oper_number")))
                         .append(" ").append(nullToDash(line.get("material_unit")))
                         .append(" → ").append(nullToDash(line.get("depot_name")));
                 if (line.get("all_price") != null) {
-                    sb.append(" 金额 ").append(line.get("all_price"));
+                    sb.append(" 金额 ").append(fmtMoney(line.get("all_price")));
                 }
                 sb.append("\n");
             }
         }
-        Object before = facts.get("stockBefore");
-        Object after = facts.get("stockAfter");
-        if (before != null && after != null) {
-            sb.append("库存变化：").append(JSON.toJSONString(before))
-                    .append(" → ").append(JSON.toJSONString(after)).append("\n");
+        List<String[]> stockRows = stockChangeRows(facts.get("stockBefore"), facts.get("stockAfter"));
+        if (!stockRows.isEmpty()) {
+            sb.append("库存变化明细：\n");
+            for (String[] r : stockRows) {
+                sb.append("- ").append(r[0]).append("@").append(r[1])
+                        .append("  ").append(r[2]).append(" → ").append(r[3])
+                        .append("（").append(r[4]).append("）\n");
+            }
         }
         sb.append("《采购入库业务回执》已生成（非发票）。");
         return sb.toString();
@@ -570,6 +676,7 @@ public class AierpWecomReceiptService {
     private byte[] renderPdf(Map<String, Object> facts) throws Exception {
         BaseFont bf = loadChineseFont();
         Font titleFont = new Font(bf, 16, Font.BOLD);
+        Font sectionFont = new Font(bf, 11, Font.BOLD);
         Font bodyFont = new Font(bf, 11, Font.NORMAL);
         Font smallFont = new Font(bf, 9, Font.NORMAL);
         Document doc = new Document(PageSize.A4, 48, 48, 48, 48);
@@ -595,14 +702,17 @@ public class AierpWecomReceiptService {
         addCell(meta, "操作人", bodyFont);
         addCell(meta, nullToDash(facts.get("creatorLogin")), bodyFont);
         addCell(meta, "业务时间", bodyFont);
-        addCell(meta, nullToDash(facts.get("operTime")), bodyFont);
+        addCell(meta, fmtTime(facts.get("operTime")), bodyFont);
         doc.add(meta);
         doc.add(new Paragraph(" ", bodyFont));
 
-        PdfPTable table = new PdfPTable(new float[]{3, 2, 2, 2, 2, 2});
+        Paragraph lineTitle = new Paragraph("物料明细", sectionFont);
+        lineTitle.setSpacingAfter(6);
+        doc.add(lineTitle);
+        PdfPTable table = new PdfPTable(new float[]{3, 2, 2, 1.2f, 2, 2});
         table.setWidthPercentage(100);
         for (String h : new String[]{"物料", "编码", "数量", "单位", "仓库", "金额"}) {
-            addCell(table, h, bodyFont);
+            addHeaderCell(table, h, bodyFont);
         }
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
@@ -610,16 +720,33 @@ public class AierpWecomReceiptService {
             for (Map<String, Object> line : lines) {
                 addCell(table, nullToDash(line.get("material_name")), smallFont);
                 addCell(table, nullToDash(line.get("bar_code")), smallFont);
-                addCell(table, nullToDash(line.get("oper_number")), smallFont);
+                addCell(table, fmtQty(line.get("oper_number")), smallFont);
                 addCell(table, nullToDash(line.get("material_unit")), smallFont);
                 addCell(table, nullToDash(line.get("depot_name")), smallFont);
-                addCell(table, nullToDash(line.get("all_price")), smallFont);
+                addCell(table, fmtMoney(line.get("all_price")), smallFont);
             }
         }
         doc.add(table);
-        if (facts.get("stockBefore") != null) {
-            doc.add(new Paragraph("库存变化：" + JSON.toJSONString(facts.get("stockBefore"))
-                    + " → " + JSON.toJSONString(facts.get("stockAfter")), smallFont));
+
+        List<String[]> stockRows = stockChangeRows(facts.get("stockBefore"), facts.get("stockAfter"));
+        if (!stockRows.isEmpty()) {
+            doc.add(new Paragraph(" ", bodyFont));
+            Paragraph stockTitle = new Paragraph("库存变化明细", sectionFont);
+            stockTitle.setSpacingAfter(6);
+            doc.add(stockTitle);
+            PdfPTable stock = new PdfPTable(new float[]{2.2f, 2, 2, 2, 2});
+            stock.setWidthPercentage(100);
+            for (String h : new String[]{"编码", "仓库", "入库前", "入库后", "变动"}) {
+                addHeaderCell(stock, h, bodyFont);
+            }
+            for (String[] r : stockRows) {
+                addCell(stock, r[0], smallFont);
+                addCell(stock, r[1], smallFont);
+                addCell(stock, r[2], smallFont);
+                addCell(stock, r[3], smallFont);
+                addCell(stock, r[4], smallFont);
+            }
+            doc.add(stock);
         }
         doc.close();
         return baos.toByteArray();
@@ -627,8 +754,145 @@ public class AierpWecomReceiptService {
 
     private static void addCell(PdfPTable table, String text, Font font) {
         PdfPCell cell = new PdfPCell(new Paragraph(text == null ? "-" : text, font));
-        cell.setPadding(4);
+        cell.setPadding(5);
         table.addCell(cell);
+    }
+
+    private static void addHeaderCell(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Paragraph(text == null ? "-" : text, font));
+        cell.setPadding(5);
+        cell.setGrayFill(0.92f);
+        table.addCell(cell);
+    }
+
+    /** Parse stockBefore/stockAfter maps keyed as barCode@depotName into table rows. */
+    private static List<String[]> stockChangeRows(Object beforeObj, Object afterObj) {
+        List<String[]> rows = new ArrayList<String[]>();
+        Map<String, BigDecimal> before = toDecimalMap(beforeObj);
+        Map<String, BigDecimal> after = toDecimalMap(afterObj);
+        if (before.isEmpty() && after.isEmpty()) {
+            return rows;
+        }
+        LinkedHashMap<String, Boolean> keys = new LinkedHashMap<String, Boolean>();
+        for (String k : before.keySet()) {
+            keys.put(k, Boolean.TRUE);
+        }
+        for (String k : after.keySet()) {
+            keys.put(k, Boolean.TRUE);
+        }
+        for (String key : keys.keySet()) {
+            String bar = key;
+            String depot = "-";
+            int at = key.indexOf('@');
+            if (at > 0) {
+                bar = key.substring(0, at);
+                depot = key.substring(at + 1);
+            }
+            BigDecimal b = before.get(key);
+            BigDecimal a = after.get(key);
+            BigDecimal delta = null;
+            if (b != null && a != null) {
+                delta = a.subtract(b);
+            } else if (a != null) {
+                delta = a;
+            } else if (b != null) {
+                delta = b.negate();
+            }
+            rows.add(new String[]{
+                    nullToDash(bar),
+                    nullToDash(depot),
+                    fmtQty(b),
+                    fmtQty(a),
+                    fmtSignedQty(delta)
+            });
+        }
+        return rows;
+    }
+
+    private static Map<String, BigDecimal> toDecimalMap(Object obj) {
+        Map<String, BigDecimal> out = new LinkedHashMap<String, BigDecimal>();
+        if (obj == null) {
+            return out;
+        }
+        if (obj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<Object, Object> map = (Map<Object, Object>) obj;
+            for (Map.Entry<Object, Object> e : map.entrySet()) {
+                if (e.getKey() == null) {
+                    continue;
+                }
+                out.put(String.valueOf(e.getKey()), toBigDecimal(e.getValue()));
+            }
+            return out;
+        }
+        try {
+            JSONObject json = obj instanceof JSONObject ? (JSONObject) obj : JSON.parseObject(String.valueOf(obj));
+            if (json == null) {
+                return out;
+            }
+            for (String key : json.keySet()) {
+                out.put(key, toBigDecimal(json.get(key)));
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+        return out;
+    }
+
+    private static BigDecimal toBigDecimal(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof BigDecimal) {
+            return (BigDecimal) v;
+        }
+        if (v instanceof Number) {
+            return new BigDecimal(v.toString());
+        }
+        try {
+            return new BigDecimal(String.valueOf(v).trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String fmtQty(Object v) {
+        BigDecimal n = toBigDecimal(v);
+        if (n == null) {
+            return "-";
+        }
+        return n.stripTrailingZeros().toPlainString();
+    }
+
+    private static String fmtSignedQty(Object v) {
+        BigDecimal n = toBigDecimal(v);
+        if (n == null) {
+            return "-";
+        }
+        String s = n.stripTrailingZeros().toPlainString();
+        if (n.compareTo(BigDecimal.ZERO) > 0 && !s.startsWith("+")) {
+            return "+" + s;
+        }
+        return s;
+    }
+
+    private static String fmtMoney(Object v) {
+        BigDecimal n = toBigDecimal(v);
+        if (n == null) {
+            return "-";
+        }
+        return n.setScale(2, BigDecimal.ROUND_HALF_UP).stripTrailingZeros().toPlainString();
+    }
+
+    private static String fmtTime(Object v) {
+        if (v == null) {
+            return "-";
+        }
+        String s = String.valueOf(v).trim().replace('T', ' ');
+        if (s.length() > 19) {
+            s = s.substring(0, 19);
+        }
+        return s;
     }
 
     private void tryRetryPdf(User user, Map<String, Object> row, Map<String, Object> confirmed) {

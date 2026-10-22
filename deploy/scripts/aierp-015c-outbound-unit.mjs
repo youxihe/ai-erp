@@ -46,6 +46,7 @@ const md = renderPurchaseConfirmed({
 });
 note("render_no_six_decimals", !md.includes("80.000000") && md.includes("80 L") && md.includes("¥1,600"));
 note("render_no_media_path", !/MEDIA:/i.test(md) && !/[A-Z]:\\/.test(md));
+note("render_no_font_tags", !/<font/i.test(md));
 note("fmt", fmtQty(80.0, "L") === "80 L" && fmtMoney(1600) === "¥1,600");
 
 const root = findWecomPluginRoot();

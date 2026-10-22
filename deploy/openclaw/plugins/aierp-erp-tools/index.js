@@ -254,7 +254,7 @@ function formatConfirm(data) {
   try {
     const facts = factsFromConfirm(data || {});
     if (facts.billNumber) {
-      return sanitizeForChannel(renderPurchaseConfirmed(facts, "markdown"), { markdown: true });
+      return sanitizeForChannel(renderPurchaseConfirmed(facts, "plain"), { markdown: false });
     }
   } catch {
     // fall through
@@ -262,7 +262,7 @@ function formatConfirm(data) {
   const bill = data?.billNumber || "?";
   const hint = data?.hint || data?.receiptText;
   if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
-    return String(hint).slice(0, 500);
+    return sanitizeForChannel(String(hint).slice(0, 500), { markdown: false });
   }
   return `✅ 采购入库完成\n${bill} · 已审核`;
 }
@@ -1089,7 +1089,7 @@ function registerConfirmAndExcelDispatchHook(api) {
             cfg: apiRef?.config || {},
             mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
             followup: !!route.followup || isReceiptFollowup(text),
-            markdown: true,
+            markdown: false,
           });
           return { handled: true, text: result.text || "回执处理完成。" };
         } catch (err) {
@@ -1126,7 +1126,7 @@ function registerConfirmAndExcelDispatchHook(api) {
       return { handled: true, text: cleared.replyText };
     }
 
-    if (isConfirmPhrase(text)) {
+        if (isConfirmPhrase(text)) {
       try {
         const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
           wecomUserId: senderId,
@@ -1137,7 +1137,35 @@ function registerConfirmAndExcelDispatchHook(api) {
           isGroup: false,
           eventSource: "WECOM_BEFORE_DISPATCH",
         });
-        return { handled: true, text: formatConfirm(data) };
+        let reply = formatConfirm(data);
+        const bill = data?.billNumber;
+        // Auto-send receipt PDF after successful confirm (no need for user to ask).
+        if (bill && data?.status === "CONFIRMED") {
+          try {
+            const sent = await runReceiptSend({
+              wecomUserId: senderId,
+              text: `发 ${bill} 回执`,
+              botId: botId(),
+              messageId,
+              signedPost,
+              cfg: apiRef?.config || {},
+              mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
+              followup: false,
+              markdown: false,
+            });
+            if (sent?.sent) {
+              reply = sanitizeForChannel(reply, { markdown: false });
+            } else if (sent?.text) {
+              reply = sanitizeForChannel(`${reply}\n\n${sent.text}`, { markdown: false });
+            }
+          } catch (sendErr) {
+            reply = sanitizeForChannel(
+              `${reply}\n\nPDF 暂未发送成功，请回复「重发回执」。`,
+              { markdown: false },
+            );
+          }
+        }
+        return { handled: true, text: reply };
       } catch (err) {
         return { handled: true, text: `确认未完成：${String(err?.message || err)}` };
       }

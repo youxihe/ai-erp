@@ -9,8 +9,25 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const BASE = (process.env.AIERP_ERP_BASE_URL || "http://127.0.0.1:9999/jshERP-boot").replace(/\/$/, "");
-const BOT = process.env.AIERP_WECOM_BOT_ID || "default";
 const WECOM = process.env.AIERP_TEST_WECOM_USER || "sid";
+function loadBotId() {
+  if (process.env.AIERP_WECOM_BOT_ID) return process.env.AIERP_WECOM_BOT_ID.trim();
+  try {
+    const envPath = join(__dirname, "..", ".env");
+    const line = readFileSync(envPath, "utf8")
+      .split(/\r?\n/)
+      .find((l) => l.startsWith("AIERP_WECOM_BOT_ID="));
+    if (line) {
+      const v = line.slice("AIERP_WECOM_BOT_ID=".length).trim();
+      // Demo binding for sid uses the live WeCom bot id, not the placeholder "default".
+      if (v && v !== "default") return v;
+    }
+  } catch {
+    // ignore
+  }
+  return process.env.AIERP_LIVE_WECOM_BOT_ID || "aib8ZNDXJ9jrokrIdKVFI3924mpY59TqETG";
+}
+const BOT = loadBotId();
 const BILL = "GW-PURCHASE-119";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const evidenceDir = join(__dirname, "..", "..", "docs", "poc", "evidence");

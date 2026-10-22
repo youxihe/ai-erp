@@ -80,9 +80,11 @@ services:
     volumes:
       - aierp_upload_data:/opt/jshERP/upload
       - aierp_export_data:/opt/jshERP/export
+      - aierp_receipt_data:/opt/jshERP/receipts
 
 volumes:
   aierp_mysql_data:
   aierp_redis_data:
   aierp_upload_data:
   aierp_export_data:
+  aierp_receipt_data:

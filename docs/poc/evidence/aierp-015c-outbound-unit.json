@@ -37,6 +37,10 @@
       "ok": true
     },
     {
+      "name": "render_no_font_tags",
+      "ok": true
+    },
+    {
       "name": "fmt",
       "ok": true
     },
