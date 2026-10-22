@@ -2,7 +2,7 @@
 
 ## HEAD
 
-`PENDING_COMMIT` — replace with `git rev-parse HEAD` after push.
+`416cdb442983dd8bb5fa023b69adf38a260bd495` (`feat/aierp-016m-mix-sop`)
 
 ## 行为
 
