@@ -4,7 +4,7 @@
 
 ## 本轮 Review Fix
 
-1. **禁止** `before_dispatch` 返回 `MEDIA: F:\\...` 文本；改为调用本机 WeCom 插件 `outbound.sendMedia` 发真实 PDF 文件消息。
+1. **禁止** `before_dispatch` 返回 `MEDIA: F:\\...` 文本；改为本机 WeCom 插件 **Bot WS `uploadAndSendMedia`** 发真实 PDF（拒绝 `📎` 路径文字降级）。
 2. SOP：`deploy/openclaw/plugins/aierp-erp-tools/sop/`（receipt-send / registry / wecom-outbound / wecom-business renderer）；`AGENTS.md` + `skills/erp-receipt` 只写触发时机。
 3. 「文件直接发我 / 重发」接续 `aierp-receipt-pending.json`；拦截 `erp_excel_template`。
 4. 确认/回执文案：Markdown 层级，`80 L` / `¥1,600`，无 JSON/路径。
