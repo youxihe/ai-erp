@@ -1,7 +1,7 @@
 ﻿{
   "id": "aierp-erp-tools",
   "name": "AIERP ERP Tools",
-  "description": "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm/receipt-PDF + excel template/preview",
+  "description": "WeCom trusted-identity ERP: queries + purchase/service draft + before_dispatch confirm/receipt-PDF + excel template/preview",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -19,6 +19,7 @@
       "erp_bill_detail",
       "erp_report_query",
       "erp_purchase_prepare",
+      "erp_service_prepare",
       "erp_draft_status",
       "erp_draft_cancel",
       "erp_excel_template"

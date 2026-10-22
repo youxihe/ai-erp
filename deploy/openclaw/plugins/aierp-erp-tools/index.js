@@ -582,9 +582,59 @@ function registerErpTools(api) {
     }),
   );
 
+  // AIERP-016S: SERVICE consume draft only — confirm via DM「确认耗料{id}」, never model confirm tool.
+  make(
+    "erp_service_prepare",
+    "创建真实未审核服务耗料（其它出库）草稿，不改库存、不审核、不是销售出库。需要客户、物料编码、数量、单位、出库仓库与幂等键；可选服务项目。确认请用户私聊回复「确认耗料{草稿号}」。",
+    "/aierp/v1/wecom/service/prepare",
+    {
+      type: "object",
+      properties: {
+        barCode: { type: "string", description: "耗用物料编码，如 FG-101" },
+        qty: { type: "number", description: "耗用数量" },
+        unit: { type: "string", description: "单位，如 L" },
+        depotName: { type: "string", description: "出库仓库，如 成品仓" },
+        organName: { type: "string", description: "客户名称（ERP 真实客户）" },
+        serviceProject: { type: "string", description: "服务项目（可选）" },
+        idempotencyKey: { type: "string", description: "幂等键" },
+        remark: { type: "string", description: "备注（可选）" },
+      },
+      required: ["barCode", "qty", "unit", "depotName", "organName", "idempotencyKey"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      barCode: str(p.barCode),
+      qty: num(p.qty),
+      unit: str(p.unit),
+      depotName: str(p.depotName),
+      organName: str(p.organName),
+      serviceProject: str(p.serviceProject),
+      idempotencyKey: str(p.idempotencyKey),
+      remark: str(p.remark),
+    }),
+    (data) => ({
+      text: formatServiceDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        bizType: "SERVICE",
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: !!data?.posted,
+        stockUnchanged: data?.stockUnchanged !== false,
+        summary: data?.summary || null,
+        challenge: data?.challenge || null,
+        confirmPhrase: data?.confirmPhrase || null,
+        replayed: !!data?.replayed,
+      },
+    }),
+  );
+
   make(
     "erp_draft_status",
-    "查询当前绑定用户名下采购草稿状态与摘要（只读）。",
+    "查询当前绑定用户名下采购/服务耗料草稿状态与摘要（只读）。",
     "/aierp/v1/wecom/draft/status",
     {
       type: "object",
@@ -1139,8 +1189,11 @@ function registerConfirmAndExcelDispatchHook(api) {
         });
         let reply = formatConfirm(data);
         const bill = data?.billNumber;
-        // Auto-send receipt PDF after successful confirm (no need for user to ask).
-        if (bill && data?.status === "CONFIRMED") {
+        const isServiceBill =
+          data?.bizType === "SERVICE" || String(bill || "").startsWith("GW-SERVICE-");
+        // Auto-send receipt PDF after PURCHASE confirm only.
+        // SERVICE: text《服务耗料出库回执》; dedicated PDF template not shipped.
+        if (bill && data?.status === "CONFIRMED" && !isServiceBill) {
           try {
             const sent = await runReceiptSend({
               wecomUserId: senderId,
@@ -1347,7 +1400,7 @@ const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
   description:
-    "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm/receipt-PDF + excel template/preview (no model confirm tools)",
+    "WeCom trusted-identity ERP: queries + purchase/service draft + before_dispatch confirm/receipt-PDF + excel template/preview (no model confirm tools)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);
