@@ -1,43 +1,46 @@
 # AIERP-016M REVIEW_FIX_PUSHED
 
-- Branch: `feat/aierp-016m-mix-sop`
-- PR: https://github.com/youxihe/ai-erp/pull/42
-- HEAD: *(filled after push)*
-- LIVE_WECOM: **NOT_VERIFIED**
-- Live ERP non-post suite: **NOT_RUN** (Docker Desktop engine unavailable after OOM during boot rebuild; SOP unit checks PASS)
+**Branch:** `feat/aierp-016m-mix-sop`  
+**PR:** https://github.com/youxihe/ai-erp/pull/42  
+**Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: OpenClaw overwrite; no MIX native post / stock write.  
+**HEAD:** `04b3fde46962e86c123ec950d689c02dbc1176fd`
 
-## Round-1 P0 fix
+## Round-1 fixes (ChatGPT P0/P1)
 
-Model boolean `recipeUserConfirmed` / `userConfirmedRecipe` no longer authorizes slot MIX prepare.
+### P0 — model boolean ≠ human approval
+- Slot path: `/mix/recipe-preview` registers server-side **PROPOSED** `recipeHash` + full finished/raw display.
+- `/mix/prepare` requires that **registered** `recipeHash`; `recipeUserConfirmed` / `userConfirmedRecipe` alone are rejected and never labeled「用户已确认」.
+- Posting remains trusted original DM「确认配制{draftId}」only (no second「确认配方」ack phrase; no `/mix/recipe-ack`).
+- Invented ratios / missing hash refused; optional client finished/lines must match stored hash.
+- Plugin `buildMixPrepareBody` mirrors Java: boolean without hash throws; hash required.
 
-| Gate | Behavior |
-|---|---|
-| `/mix/recipe-preview` | Registers server-side `recipeHash` + full finished/raw display (`PROPOSED`) |
-| `/mix/prepare` | Requires registered `recipeHash`; ignores model booleans; never claims「用户已确认」 |
-| Post | Trusted WeCom原文「确认配制{draftId}」only |
-| Cross-type | 「确认采购」「确认耗料」on MIX draft rejected |
+### Integration
+- PURCHASE confirm + PDF paths preserved (`registerMixConfirmDispatch` only; receipt PDF still purchase-only via `canHandleReceipt` / `runReceiptSend`).
+- MIX vs PURCHASE/SERVICE: Gateway parses `确认耗料` and rejects cross-type via `assertConfirmKindMatchesBiz`.
+- MIX PDF **not** implemented — text receipt only (`pdfStatus=NONE` honesty in SOP formatters).
+- `Dockerfile.boot` / maven-central settings **not** committed (local build convenience only).
 
-## Files
+## Evidence (non-post)
 
-- `jshERP-boot/.../AierpWecomMixService.java` — recipeHash preview + prepare verification
-- `jshERP-boot/.../AierpWecomController.java` — `POST /mix/recipe-preview`
-- `jshERP-boot/.../AierpGatewayService.java` — parse `确认耗料` for cross-type reject
-- `jshERP-boot/.../LogCostFilter.java` — allow `/mix/recipe-preview`
-- `deploy/openclaw/sop/mix-prepare.mjs` (+ plugin mirror) — hash builders; no boolean shortcut
-- `deploy/openclaw/sop/registry.mjs` (+ plugin mirror) — MIX confirm = `确认配制{id}` only
-- `deploy/openclaw/workspace/skills/erp-mixing/SKILL.md`
-- `deploy/scripts/aierp-016m-mix-prepare*.mjs` — boolean/hash/cross-type non-post checks
-- `deploy/Dockerfile.boot` + `deploy/scripts/maven-central-settings.xml` — Central-only Maven mirror for rebuilds
+| Check | Result |
+|--------|--------|
+| `node --check` on plugin `index.js`, `mix-prepare.mjs`, `registry.mjs`, both evidence scripts | **PASS** |
+| Local phrase/SOP unit (confirm配制 / reject 确认配方 as post / reject boolean without hash / hash len / purchase route) | **PASS** 8/8 |
+| `deploy/scripts/aierp-016m-mix-prepare.mjs` | **BLOCKED_NEED_BOOT** — Docker Desktop engine down (`com.docker.service` Stopped); boot unreachable on `127.0.0.1:9999` |
+| `deploy/scripts/aierp-016m-mix-prepare-flow.mjs` | **BLOCKED_NEED_BOOT** (same) |
+| `mvn compile` | **SKIPPED** — `mvn`/`java` not on PATH in this agent environment |
 
-## Tests
+Prefer after Docker recovers: rebuild boot from **this** worktree with isolated compose project name (e.g. `-p aierp016mrf`) if port 9999 contested; do **not** overwrite F: runtime.
 
-- SOP unit (no ERP): **PASS** (phrase / boolean refuse / recipeHash required / registry route)
-- Live `aierp-016m-mix-prepare*.mjs` against boot: **NOT_RUN** (Docker engine down)
-- Inventory auto-post: **not exercised**
-- F: OpenClaw overwrite: **not done**
+## NOT_VERIFIED
 
-## UAT (human)
+- Human WeCom MIX UAT (`确认配制{newId}` on a fresh draft)
+- Live non-post script PASS against rebuilt boot
+- F: shared OpenClaw plugin deploy
+- MIX dedicated PDF (intentionally none)
 
-1. recipe-preview → show full FG/RM → prepare with returned `recipeHash` → 原文「确认配制{id}」
-2. Ensure boolean-only prepare fails; 确认采购/确认耗料 on MIX draft fails
-3. MIX receipt remains text-only (`pdfStatus=NONE`); purchase PDF path untouched
+## Hard rules honored
+
+- No Merge
+- No F: overwrite
+- No automatic native stock write / no real MIX post
