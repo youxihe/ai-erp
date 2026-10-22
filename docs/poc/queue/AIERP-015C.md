@@ -1,6 +1,6 @@
 # AIERP-015C · 企业微信真实采购入库业务回执 PDF 查找与发送（客户 Demo P0）
 
-- **状态**：RELEASED / next_order #1，依赖 015B #27、017B1 #35 已合并。
+- **状态**：REVIEW_FIX_REQUIRED / PR #37（真实 PDF 后端可读，但 WeCom 客户端只看见 MEDIA: 本机路径文本，附件未发；后续「文件直接发我」误转 Excel）。
 - **分支**：`feat/aierp-015c-wecom-real-receipt-pdf`（从**最新 origin/master**建立）。
 - **要解决的真实缺陷**：真人企微采购确认 `GW-PURCHASE-119`，库存 170.7→250.7 L；用户说“《采购入库业务回执》发我”后，模型**错把回执当 Excel 模板**，回复“未入库”并发送 XLSX。现有 ERP 已生成业务回执 PDF，只有通过 session 的 `/aierp/v1/wecom/receipt/pdf`，缺可信企微读 PDF 和附件发送入口。
 - **唯一目标**：用户不用手动登录 ERP，私聊说“把刚才那张采购入库回执 PDF 发我”→ 返回真正来自已审核 ERP 原生单据的 PDF 附件，可在企微客户端打开。用户发 `发我 GW-PURCHASE-119 的回执` 同样可按已授权单号获取。
@@ -41,3 +41,7 @@
 - 先非入账自动化/Java CI，随后由用户本人在企微真实发“把 GW-PURCHASE-119 的采购入库业务回执 PDF 发给我”；Cursor 提交 `READY_FOR_REVIEW`、HEAD、脱敏测试、客户客户端真实附件 UAT 标记，绝不自行 Merge。
 
 **重要**：015C 不是“生成一个 PDF 样例”任务，目标是**真正把已存在、已审核、用户有权读取的回执 PDF 发到企微会话**。
+
+## Round 1 14:25 · 客户真实截图反证
+
+后端已经成功取 `GW-PURCHASE-119` 回执 PDF，企微文本出现原始 `MEDIA: F:\\aierp-openclaw\\...pdf`，**不是 PDF 文件消息**；第二句「文件直接发我」被模型当成采购模板，发送 XLSX。必须修正 OpenClaw 结构化附件通道而非正则多匹配几个“回执”；建立绑定最近一次 receipt 业务动作状态，并从此继续。具体实施与排版见 `docs/poc/AGENT_SOP_EXECUTION.md` 和 `docs/poc/WE_COM_BUSINESS_MESSAGE_STYLE.md`；可结合 `AIERP-020A` 把 receipt-send 直接移到 SOP 脚本，其他业务逐步迁移。**不要**把颜色、字体控制误当任意 HTML/CSS 处理，需当前 WeCom SDK 真正支持的 Markdown/Card。User-open PDF evidence required before MERGE。
