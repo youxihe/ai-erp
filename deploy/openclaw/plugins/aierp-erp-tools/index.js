@@ -1,12 +1,23 @@
 /**
  * AIERP-012A/013/015A/015B/017A OpenClaw tool plugin.
  * Trusts only ctx.requesterSenderId when ctx.messageChannel === "wecom".
- * Confirm: before_dispatch trusted inbound → Java (never LLM erp_draft_confirm).
+ * Confirm + receipt SOP (real WeCom sendMedia, not MEDIA text) → Java (never LLM erp_draft_confirm).
  * Excel: erp_excel_template (+ optional prefill rows) + inbound xlsx preview (never excel.confirm).
  */
 import { createHmac, randomBytes, createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
+import {
+  runReceiptSend,
+  canHandleReceipt,
+  getPending,
+  isReceiptFollowup,
+} from "./sop/receipt-send.mjs";
+import {
+  renderPurchaseConfirmed,
+  factsFromConfirm,
+  sanitizeForChannel,
+} from "./sop/renderers/wecom-business.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -150,6 +161,9 @@ function isConfirmPhrase(text) {
   return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t);
 }
 
+
+
+
 function formatStock(data) {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   if (!rows.length) {
@@ -237,12 +251,22 @@ function formatPurchaseDraft(data) {
 }
 
 function formatConfirm(data) {
-  if (data?.receiptText) return String(data.receiptText);
-  if (data?.hint) return String(data.hint);
-  const before = data?.stockBefore ? JSON.stringify(data.stockBefore) : "?";
-  const after = data?.stockAfter ? JSON.stringify(data.stockAfter) : "?";
-  return `采购入库已完成（已审核）\n原生单号：${data?.billNumber || "?"}\n库存：${before} → ${after}`;
+  try {
+    const facts = factsFromConfirm(data || {});
+    if (facts.billNumber) {
+      return sanitizeForChannel(renderPurchaseConfirmed(facts, "plain"), { markdown: false });
+    }
+  } catch {
+    // fall through
+  }
+  const bill = data?.billNumber || "?";
+  const hint = data?.hint || data?.receiptText;
+  if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
+    return sanitizeForChannel(String(hint).slice(0, 500), { markdown: false });
+  }
+  return `✅ 采购入库完成\n${bill} · 已审核`;
 }
+
 
 function registerErpTools(api) {
   const make = (name, description, path, paramSchema, buildBody, format) => {
@@ -620,9 +644,10 @@ function registerErpTools(api) {
     (ctx) => ({
       name: "erp_excel_template",
       description:
-        "按场景生成真实 ERP Excel 并落盘，供企微 MEDIA 发送。scene=PURCHASE|MIX|SERVICE|SALE|INITIAL|PACK。" +
+        "按场景生成真实 ERP Excel 并落盘，供企微 MEDIA 发送。scene=PURCHASE|MIX|SERVICE|SALE|INITIAL|PACK。仅用于「采购/配制模板」；用户要《采购入库业务回执》PDF 时禁止调用本工具（由渠道回执链路处理）。" +
         "用户要求「填上去/预填」时必须先查物料/往来/历史，再传入 rows（经核实的 barCode/organName/depotName/qty/unit/price 等），禁止编造。" +
-        "SALE/INITIAL 仅模板不可过账。不改变库存。禁止 excel.confirm。",
+        "SALE/INITIAL 仅模板不可过账。不改变库存。禁止 excel.confirm。" +
+        "回执PDF由渠道处理，禁止用本工具冒充回执。",
       parameters: {
         type: "object",
         properties: {
@@ -1039,6 +1064,7 @@ function registerExcelObserveHook(api) {
 }
 
 function registerConfirmAndExcelDispatchHook(api) {
+  const apiRef = api;
   const handler = async (event, ctx) => {
     const channelId = ctx?.channelId || event?.channel;
     if (channelId !== CHANNEL_ID) return;
@@ -1048,6 +1074,34 @@ function registerConfirmAndExcelDispatchHook(api) {
     const text = String(event?.content || event?.body || "").trim();
     const messageId = event?.messageId || ctx?.messageId || null;
     const sessionKey = ctx?.sessionKey || event?.sessionKey || null;
+
+    // AIERP-015C/020A: receipt SOP — real WeCom sendMedia (never MEDIA: text, never excel template)
+    {
+      const route = canHandleReceipt(text, senderId);
+      if (route) {
+        try {
+          const result = await runReceiptSend({
+            wecomUserId: senderId,
+            text,
+            botId: botId(),
+            messageId,
+            signedPost,
+            cfg: apiRef?.config || {},
+            mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
+            followup: !!route.followup || isReceiptFollowup(text),
+            markdown: false,
+          });
+          return { handled: true, text: result.text || "回执处理完成。" };
+        } catch (err) {
+          return {
+            handled: true,
+            text:
+              `暂无法发送回执：${String(err?.message || err).slice(0, 160)}。` +
+              "入库结果以已审核单为准，可稍后回复「重发回执」。",
+          };
+        }
+      }
+    }
 
     if (CANCEL_EXCEL.test(text)) {
       const cleared = {
@@ -1072,7 +1126,7 @@ function registerConfirmAndExcelDispatchHook(api) {
       return { handled: true, text: cleared.replyText };
     }
 
-    if (isConfirmPhrase(text)) {
+        if (isConfirmPhrase(text)) {
       try {
         const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
           wecomUserId: senderId,
@@ -1083,7 +1137,35 @@ function registerConfirmAndExcelDispatchHook(api) {
           isGroup: false,
           eventSource: "WECOM_BEFORE_DISPATCH",
         });
-        return { handled: true, text: formatConfirm(data) };
+        let reply = formatConfirm(data);
+        const bill = data?.billNumber;
+        // Auto-send receipt PDF after successful confirm (no need for user to ask).
+        if (bill && data?.status === "CONFIRMED") {
+          try {
+            const sent = await runReceiptSend({
+              wecomUserId: senderId,
+              text: `发 ${bill} 回执`,
+              botId: botId(),
+              messageId,
+              signedPost,
+              cfg: apiRef?.config || {},
+              mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
+              followup: false,
+              markdown: false,
+            });
+            if (sent?.sent) {
+              reply = sanitizeForChannel(reply, { markdown: false });
+            } else if (sent?.text) {
+              reply = sanitizeForChannel(`${reply}\n\n${sent.text}`, { markdown: false });
+            }
+          } catch (sendErr) {
+            reply = sanitizeForChannel(
+              `${reply}\n\nPDF 暂未发送成功，请回复「重发回执」。`,
+              { markdown: false },
+            );
+          }
+        }
+        return { handled: true, text: reply };
       } catch (err) {
         return { handled: true, text: `确认未完成：${String(err?.message || err)}` };
       }
@@ -1232,11 +1314,40 @@ function registerPrepareGate(api) {
   }
 }
 
+
+function registerReceiptExcelGate(api) {
+  const handler = async (event, ctx) => {
+    const name = event?.toolName || event?.name || event?.tool || "";
+    if (name !== "erp_excel_template") return;
+    const wecomUserId = trustedWecomUserId(ctx) || String(ctx?.senderId || "").trim();
+    if (!wecomUserId) return;
+    const pending = getPending(wecomUserId);
+    if (!pending || !pending.billNumber) return;
+    if (pending.status === "SEND_ACCEPTED" || pending.status === "FILE_READY" || pending.status === "SEND_FAILED") {
+      return {
+        block: true,
+        blockReason:
+          `当前有待发送/可重发的已审核回执 ${pending.billNumber}。` +
+          "请回复「重发回执」或「文件直接发我」，不要索取采购 Excel 模板。",
+      };
+    }
+  };
+  try {
+    api.on("before_tool_call", handler, { matcher: ["erp_excel_template"], priority: 100 });
+  } catch {
+    try {
+      api.on("before_tool_call", handler);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
   description:
-    "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm + excel template/preview (no model confirm tools)",
+    "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm/receipt-PDF + excel template/preview (no model confirm tools)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);

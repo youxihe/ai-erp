@@ -24,7 +24,7 @@
 
 | **AIERP-020A** | **RELEASED / next_order #2 (SOP/UX)** | **标准业务确定性 SOP 脚本 + 企微 Markdown/卡片渲染规范；015C P0 的 receipt-send 优先，其他按小 PR 渐进** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
-| **AIERP-015C** | **REVIEW_FIX_REQUIRED / PR #37 · next_order #1** | **真实 PDF 已可获取，但企微只输出 MEDIA: F:\\... 文本、用户「文件直接发我」反而发送 XLSX；必须真实 PDF 附件发送及会话接续** |
+| **AIERP-015C** | **REVIEW_FIX_PUSHED / PR #37** | **sendMedia 真实 PDF + SOP receipt-send + 接续「文件直接发我」+ 业务 Markdown；待企微打开验收** |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |

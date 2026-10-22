@@ -1,0 +1,91 @@
+{
+  "ticket": "AIERP-015C",
+  "kind": "intent-unit",
+  "pass": true,
+  "results": [
+    {
+      "text": "《采购入库业务回执》发我",
+      "expectReq": true,
+      "got": true,
+      "expectFu": false,
+      "fu": false,
+      "ok": true
+    },
+    {
+      "text": "把刚才的回执 PDF 发我",
+      "expectReq": true,
+      "got": true,
+      "expectFu": false,
+      "fu": false,
+      "ok": true
+    },
+    {
+      "text": "发 GW-PURCHASE-119 回执",
+      "expectReq": true,
+      "got": true,
+      "expectFu": false,
+      "fu": false,
+      "bill": "GW-PURCHASE-119",
+      "gotBill": "GW-PURCHASE-119",
+      "ok": true
+    },
+    {
+      "text": "发我 GW-PURCHASE-119 的采购入库业务回执 PDF",
+      "expectReq": true,
+      "got": true,
+      "expectFu": false,
+      "fu": false,
+      "bill": "GW-PURCHASE-119",
+      "gotBill": "GW-PURCHASE-119",
+      "ok": true
+    },
+    {
+      "text": "文件直接发我",
+      "expectReq": false,
+      "got": false,
+      "expectFu": true,
+      "fu": true,
+      "ok": true
+    },
+    {
+      "text": "再发一次",
+      "expectReq": false,
+      "got": false,
+      "expectFu": true,
+      "fu": true,
+      "ok": true
+    },
+    {
+      "text": "给我批量进货模板",
+      "expectReq": false,
+      "got": false,
+      "expectFu": false,
+      "fu": false,
+      "ok": true
+    },
+    {
+      "text": "采购入库模板",
+      "expectReq": false,
+      "got": false,
+      "expectFu": false,
+      "fu": false,
+      "ok": true
+    },
+    {
+      "text": "确认采购119",
+      "expectReq": false,
+      "got": false,
+      "expectFu": false,
+      "fu": false,
+      "ok": true
+    },
+    {
+      "text": "入库吧",
+      "expectReq": false,
+      "got": false,
+      "expectFu": false,
+      "fu": false,
+      "ok": true
+    }
+  ]
+}

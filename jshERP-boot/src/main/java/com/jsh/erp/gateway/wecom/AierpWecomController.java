@@ -143,6 +143,23 @@ public class AierpWecomController {
         response.getOutputStream().flush();
     }
 
+    /** AIERP-015C: list authorized receipts for trusted WeCom sender (HMAC). */
+    @PostMapping("/receipt/find")
+    public BaseResponseInfo receiptFind(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(receiptService.findForWecom(parse(raw)));
+    }
+
+    /**
+     * AIERP-015C: return authorized receipt PDF base64 for WeCom MEDIA send (HMAC).
+     * Read-only; never posts inventory. PDF_SENT_VERIFIED only after client open UAT.
+     */
+    @PostMapping("/receipt/file")
+    public BaseResponseInfo receiptFile(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(receiptService.fileForWecom(parse(raw)));
+    }
+
     /** AIERP-017A: download xlsx template as base64 (no stock change). */
     @PostMapping("/excel/template")
     public BaseResponseInfo excelTemplate(@RequestBody String raw, HttpServletRequest request) throws Exception {
