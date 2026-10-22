@@ -1,35 +1,35 @@
-﻿# AIERP-017B2 · REVIEW_FIX_PUSHED (PR #41)
+# AIERP-017B2 · REVIEW_FIX_PUSHED (PR #41)
+
+## Status
+
+**REVIEW_FIX_PUSHED**
 
 ## Identity
 
 | Field | Value |
 |---|---|
 | Branch | `feat/aierp-017b2-multi-purchase-draft` |
-| Base READY HEAD | `525d428663ce602dc5429b5d6dec5f6e293b4d16` |
+| Base (origin/master) | `29069d15ff6a6382f17c9925ea4d79942bd31d95` (#46) |
 | Fix commit | `a0d2fde402548953400e709998764035641db1ca` |
-| **Remote / branch tip HEAD** | `166e6b7084283ed198e516af4c64d4d09ff8f424` |
-| Review | ChatGPT Round 1 → **REVIEW_FIX_REQUIRED** |
-| This note | **REVIEW_FIX_PUSHED** |
+| **Remote HEAD (after this push)** | `PLACEHOLDER_HEAD` |
+| Review | ChatGPT Round 1 → REVIEW_FIX_REQUIRED → **REVIEW_FIX_PUSHED** |
 | Merge | **Do not merge** to master from this agent |
-
-> Tip SHA above is the pre-pin tip that carried the evidence body; after the UTF-8 restore pin below, use `git rev-parse origin/feat/aierp-017b2-multi-purchase-draft` as authoritative remote HEAD.
 
 ## Fixes
 
-### P0 — `isLiveAudited` / confirmed native verification
+### P0 — native audit before POSTED
 
-- CONFIRMED gateway draft **no longer** claims 已审核/已入库 when `bill_number` is missing or `jsh_depot_head` is missing / not `status=1`.
-- New path: `outcomeForConfirmedDraft` + `nativeAuditGapReason` → `POSTED` only when native head is audited for current tenant; else `RECONCILIATION_REQUIRED` (`MISSING_BILL` / `MISSING_NATIVE_HEAD` / `NATIVE_NOT_AUDITED`).
-- No new draft, no reconfirm, no `confirmPhrase` on reconciliation rows.
-- Workflow / summaries use 需人工对账; never strip pending wording into 已审核 for reconciliation gaps.
+- `isLiveAudited` no longer returns true when CONFIRMED draft has empty `bill_number` or missing `jsh_depot_head`.
+- `outcomeForConfirmedDraft` + `nativeAuditGapReason`:
+  - `POSTED` only when native head exists for current tenant and `status=1`
+  - else `RECONCILIATION_REQUIRED` with `MISSING_BILL` / `MISSING_NATIVE_HEAD` / `NATIVE_NOT_AUDITED`
+- No new draft, no reconfirm, no `confirmPhrase` on reconciliation.
 
-### P1 — batch revision + historical fallback
+### P1 — immutable revision + scoped historical fallback
 
-- `upsertBatch` keeps **immutable revision** on same-file/hash reupload when draft manifest fingerprint unchanged; increments only when manifest changes (`manifestHash`).
-- Historical confirmed-bill fallback scoped to **exact** `binding_id` + `binding_version` + `wecom_user_id` (nulls never match).
-- Errors still require explicit `selectedBusinessKeys`; no model `excel.confirm` tool (asserted in suite).
-
-DDL: `aierp_excel_batch` already in `deploy/sql/04-aierp-excel.sql` — **no migration**.
+- `upsertBatch` keeps immutable `revision` on same-file reupload when manifest fingerprint unchanged; increments only on manifest change (`manifestHash`).
+- Historical confirmed-bill fallback requires exact `binding_id` + `binding_version` + `wecom_user_id` (nulls never match).
+- Errors selection remains explicit (`selectedBusinessKeys`); suite asserts no model `excel.confirm`.
 
 ## Changed files
 
@@ -37,48 +37,41 @@ DDL: `aierp_excel_batch` already in `deploy/sql/04-aierp-excel.sql` — **no mig
 2. `deploy/scripts/aierp-017b2-multi-purchase.mjs`
 3. `docs/poc/evidence/aierp-017b2-multi-purchase.json`
 4. `docs/poc/evidence/aierp-017b2-ready.md`
-5. `docs/poc/evidence/aierp-017b2-REVIEW_FIX_PUSHED.md` (this file)
+5. `docs/poc/evidence/aierp-017b2-REVIEW_FIX_PUSHED.md`
 
-## Automated results (local non-posting)
+## Automated results (non-posting)
 
 Command: `node deploy/scripts/aierp-017b2-multi-purchase.mjs`  
-Boot image: `deploy-aierp-boot:017b2-review-fix` (contains `MISSING_BILL` / `RECONCILIATION_REQUIRED` / `manifestHash`)  
-At: `2026-10-22T16:08:46.504Z`
+Boot: `deploy-aierp-boot:latest` rebuilt `--no-cache` (jar contains `MISSING_BILL` / `outcomeForConfirmedDraft` / `manifestHash`)  
+At: `2026-10-22T16:28:50.688Z`
 
-**18/18 PASS** (stock unchanged 250.7 → 250.7)
+**18/18 PASS** (fail=0)
 
-| Case | Result |
-|---|---|
-| multi 2 drafts / 3 lines + idempotent | PASS |
-| idempotent reupload immutable revision | PASS (`rev` 1→1) |
-| purchase-batch-prepare API + SOP present | PASS |
-| no model `excel.confirm` | PASS |
-| #119-style valid posted (native head `status=1`) | PASS |
-| missing `bill_number` → `RECONCILIATION_REQUIRED` / `MISSING_BILL` | PASS |
-| missing native head → `MISSING_NATIVE_HEAD` | PASS |
-| unapproved head → `NATIVE_NOT_AUDITED` | PASS |
-| conflicting bill fields blocked | PASS |
-| stock unchanged | PASS |
+| `multi_template` | PASS |
+| `multi_2_drafts_3_lines` | PASS |
+| `multi_exactly_two_new_drafts` | PASS |
+| `multi_idempotent_same_two_drafts` | PASS |
+| `idempotent_reupload_immutable_revision` | PASS |
+| `purchase_batch_prepare_api` | PASS |
+| `sop_purchase_batch_prepare_present` | PASS |
+| `no_model_excel_confirm_tool` | PASS |
+| `audited_seed_draft` | PASS |
+| `audited_119_valid_posted` | PASS |
+| `audited_replay_offers_pdf_and_same_bill` | PASS |
+| `audited_replay_no_new_draft` | PASS |
+| `prepare_verified_batch_audited` | PASS |
+| `recon_missing_bill` | PASS |
+| `recon_missing_native_head` | PASS |
+| `recon_unapproved_native_head` | PASS |
+| `conflict_bill_fields_blocked` | PASS |
+| `stock_unchanged` | PASS |
 
-Did **not** re-confirm or post inventory for `GW-PURCHASE-119` or any live audited bill. Suite uses synthetic `GW-PURCHASE-{draftId}` + inserted depot heads only.
+Did **not** auto-post inventory or native-confirm real bills (#119 production). Suite uses synthetic `GW-PURCHASE-{draftId}` + inserted depot heads only.
 
-Note: An earlier run against a stale `deploy-aierp-boot:latest` (pre-rebuild, still containing 单张采购快线) failed 12/18; re-ran against tagged `017b2-review-fix` → **18/18 PASS**. Docker Desktop briefly crashed during a later no-cache rebuild attempt; recorded suite evidence is from the successful tagged-image run above.
+## NOT_VERIFIED (human / LIVE_WECOM)
 
-## LIVE_WECOM = NOT_VERIFIED
-
-- Real WeCom multi-bill XLSX upload → batch summary wording
-- Real WeCom re-upload of already-audited production file (e.g. #119) → 已审核 + PDF offer (no 待确认/未入库)
-- Real WeCom path for CONFIRMED-but-orphan native gaps → 需人工对账 (no silent POSTED)
-- OpenClaw runtime on `F:\aierp-openclaw` **not** overwritten / not redeployed by this agent
+- Real WeCom multi-bill XLSX → batch summary wording
+- Real WeCom re-upload of already-audited production file (e.g. #119) → 已审核 + PDF offer
+- Real WeCom CONFIRMED-but-orphan native gaps → 需人工对账 (no silent POSTED)
+- OpenClaw runtime on `F:\aierp-openclaw` **not** overwritten / not redeployed
 - Production inventory / live confirm of audited bills **not** exercised
-
-## Remote HEAD
-
-Authoritative after push:
-
-```
-git rev-parse origin/feat/aierp-017b2-multi-purchase-draft
-```
-
-Fix payload: `a0d2fde402548953400e709998764035641db1ca`  
-Branch tip includes this UTF-8 evidence restore pin on top of prior docs pins.

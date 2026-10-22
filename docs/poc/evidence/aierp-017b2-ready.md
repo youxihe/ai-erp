@@ -2,7 +2,7 @@
 
 ## HEAD
 
-见 `aierp-017b2-REVIEW_FIX_PUSHED.md`。
+见 `aierp-017b2-REVIEW_FIX_PUSHED.md`（push 后 `origin/feat/aierp-017b2-multi-purchase-draft` tip）。
 
 ## 行为
 
@@ -14,7 +14,7 @@
 
 ## 本地无过账
 
-- `aierp-017b2-multi-purchase`：**18/18 PASS**（fail=0）
+- `aierp-017b2-multi-purchase`：**18/18 PASS**（fail=0） · at `2026-10-22T16:28:50.688Z`
 
 ## 真人企微
 
