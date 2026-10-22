@@ -4,7 +4,7 @@
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
 - **Fix commit**: `cdb486d5abafc9ffa12bb5f31002295ead33e29c`
-- **FINAL tip HEAD**: `C:\Users\油锡贺\AppData\Local\Temp\pin-021a3.js`
+- **FINAL tip HEAD**: `635c5b821cf8ba66cdba0ccbe86e177e97bc05e8`
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no inventory auto-post)
 
 ## Coordinated naming (vs AIERP-021B / PR #45)
