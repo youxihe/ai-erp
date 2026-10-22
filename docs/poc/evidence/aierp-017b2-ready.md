@@ -2,7 +2,7 @@
 
 ## HEAD
 
-`5bc40da0d3d28188f75e4eb2e249d766da5ca45f` · branch `feat/aierp-017b2-multi-purchase-draft` · 详见 `aierp-017b2-REVIEW_FIX_PUSHED.md`
+`1b2edf6528d8be47bc7c1451e58bd92573aef6df` · branch `feat/aierp-017b2-multi-purchase-draft` · 详见 `aierp-017b2-REVIEW_FIX_PUSHED.md`
 
 ## 行为
 
