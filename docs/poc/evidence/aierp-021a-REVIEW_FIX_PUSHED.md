@@ -3,9 +3,10 @@
 - **Ticket**: AIERP-021A (PR #44 partner masterdata)
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **HEAD**: `58231960cb01860756e7e9e7d9b9be7b8ae9dccf`
-- **Fix commit**: `a811a0974d3db83483583bdc7f6b873bdada050d`
+- **Fix commit**: `a811a0974d3db83483583bdc7f6b873bdada050d` (code REVIEW_FIX)
+- **Branch tip**: use `git rev-parse origin/feat/aierp-021a-partner-masterdata-sop` after pull
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no inventory auto-post)
+
 ## Coordinated naming (vs AIERP-021B / PR #45)
 
 | Item | Chosen value |
@@ -40,12 +41,13 @@ Rejected / must not collide with material:
 
 | Test | Result |
 |---|---|
-| `node deploy/scripts/aierp-021a-partner-phrase-unit.mjs` | run at push time (offline phrase namespace) |
-| `AierpWecomPartnerMasterDataServicePhraseTest` | offline JUnit phrase rejects bare/material/typed |
-| `node deploy/scripts/aierp-021a-partner-master.mjs` | includes cross-sender / cross-tenant msgid negatives + bare/material/typed rejects; live ERP may be `NOT_VERIFIED` if boot unavailable |
+| `node deploy/scripts/aierp-021a-partner-phrase-unit.mjs` | **PASS** (offline phrase namespace) |
+| `AierpWecomPartnerMasterDataServicePhraseTest` | authored; `mvn` not on PATH → **NOT_VERIFIED** in this environment |
+| `node deploy/scripts/aierp-021a-partner-master.mjs` | includes cross-sender / cross-tenant msgid negatives + bare/material/typed rejects; live ERP → **NOT_VERIFIED** (boot returned 500 / unavailable) |
 
 ## NOT_VERIFIED
 
 - Live WeCom DM UAT / F: OpenClaw runtime deploy (explicitly out of scope)
-- Full HMAC integration against local `aierp-boot` if container not up at push time
-- Production inventory / stock (must remain unchanged; not re-verified here if ERP down)
+- Full HMAC integration against local `aierp-boot` (boot not healthy at push time)
+- JUnit via Maven (`mvn` absent on PATH)
+- Production inventory / stock (must remain unchanged; not re-verified here)
