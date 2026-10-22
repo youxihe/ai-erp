@@ -9,11 +9,12 @@
 ## 修复
 
 - SOP：`plugins/aierp-erp-tools/sop/receipt-send.mjs` + `registry.mjs` + `renderers/wecom-business.mjs` + `wecom-outbound.mjs`
-- 出站：动态加载本机 `@wecom/wecom-openclaw-plugin@2026.7.2` 的 `wecomPlugin.outbound.sendMedia`（结构化文件消息）
+- 出站：优先调用本机 `@wecom/wecom-openclaw-plugin@2026.7.2` 的 `uploadAndSendMedia` + Bot WS（真实文件消息）；**拒绝** channel `sendMedia` 失败时把 `📎 F:\...` 路径当文本发出的降级
 - pending：`state/aierp-receipt-pending.json`，支持「文件直接发我 / 重发」
 - `before_tool_call` 拦截：有 pending 回执时禁止 `erp_excel_template`
-- 确认/回执文案：Markdown 层级 + `80 L` / `¥1,600`，禁止 JSON/路径
+- 确认/回执文案：Markdown 层级 + `<font color="info">` + `80 L` / `¥1,600`，禁止 JSON/路径
 - `mediaLocalRoots` 增加 `F:/aierp-openclaw/state/media/aierp-receipt`
+- F: 已热更插件并重启 Gateway（HTTP 200）
 
 ## 自动化
 

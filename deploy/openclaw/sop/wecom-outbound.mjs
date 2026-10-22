@@ -1,50 +1,68 @@
 /**
  * Trusted WeCom file outbound via installed @wecom/wecom-openclaw-plugin@2026.7.2
- * channel.outbound.sendMedia — NOT by stuffing MEDIA: into before_dispatch text.
+ *
+ * Prefer uploadAndSendMedia + Bot WS (real file message).
+ * Never rely on before_dispatch "MEDIA:" text, and never accept the
+ * channel sendMedia path-as-text fallback (📎 F:\...).
  */
 import { pathToFileURL } from "node:url";
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
 
 const CHANNEL_ID = "wecom";
+const DEFAULT_ACCOUNT_ID = "default";
+
+function candidateStateDirs() {
+  const out = [];
+  if (process.env.OPENCLAW_STATE_DIR) out.push(process.env.OPENCLAW_STATE_DIR);
+  out.push("F:/aierp-openclaw/state");
+  out.push(join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state"));
+  return [...new Set(out.map((p) => resolve(p)))];
+}
 
 function findWecomPluginRoot() {
-  const npmProjects = join(
-    process.env.OPENCLAW_STATE_DIR || join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state"),
-    "npm",
-    "projects",
-  );
   const candidates = [];
-  if (existsSync(npmProjects)) {
+  for (const state of candidateStateDirs()) {
+    const npmProjects = join(state, "npm", "projects");
+    if (!existsSync(npmProjects)) continue;
     for (const name of readdirSync(npmProjects)) {
       if (!name.includes("wecom-wecom-openclaw-plugin")) continue;
       const pkg = join(npmProjects, name, "node_modules", "@wecom", "wecom-openclaw-plugin");
       if (existsSync(join(pkg, "dist", "src", "channel.js"))) candidates.push(pkg);
     }
   }
-  // Prefer newest by path name (generation id grows)
   candidates.sort();
   return candidates.length ? candidates[candidates.length - 1] : null;
 }
 
-let cachedPlugin = null;
+let cachedMods = null;
 
-async function loadWecomPlugin() {
-  if (cachedPlugin) return cachedPlugin;
+async function loadWecomMods() {
+  if (cachedMods) return cachedMods;
   const root = findWecomPluginRoot();
   if (!root) throw new Error("未找到本机 @wecom/wecom-openclaw-plugin，无法发送文件");
-  const mod = await import(pathToFileURL(join(root, "dist", "src", "channel.js")).href);
-  if (!mod?.wecomPlugin?.outbound?.sendMedia) {
-    throw new Error("企微插件未导出 outbound.sendMedia");
+  const channel = await import(pathToFileURL(join(root, "dist", "src", "channel.js")).href);
+  const uploader = await import(pathToFileURL(join(root, "dist", "src", "media-uploader.js")).href);
+  const state = await import(pathToFileURL(join(root, "dist", "src", "state-manager.js")).href);
+  if (!uploader?.uploadAndSendMedia || !state?.getWeComWebSocket) {
+    throw new Error("企微插件缺少 uploadAndSendMedia / getWeComWebSocket");
   }
-  cachedPlugin = mod.wecomPlugin;
-  return cachedPlugin;
+  cachedMods = {
+    root,
+    wecomPlugin: channel.wecomPlugin,
+    uploadAndSendMedia: uploader.uploadAndSendMedia,
+    getWeComWebSocket: state.getWeComWebSocket,
+  };
+  return cachedMods;
+}
+
+function looksLikePathDump(text) {
+  const t = String(text || "");
+  return /MEDIA:\s*[A-Za-z]:\\/i.test(t) || /📎\s*[A-Za-z]:\\/.test(t) || /[A-Za-z]:\\[^\n]+\.pdf/i.test(t);
 }
 
 /**
- * Send a local file as WeCom file message, then optional markdown/text separately
- * is handled by caller via before_dispatch text return.
- *
+ * Send a local file as a real WeCom file message (Bot WS upload).
  * @returns {{ ok: boolean, messageId?: string, error?: string }}
  */
 export async function sendWecomLocalFile({
@@ -52,25 +70,79 @@ export async function sendWecomLocalFile({
   mediaPath,
   mediaLocalRoots,
   cfg,
-  accountId = "default",
+  accountId = DEFAULT_ACCOUNT_ID,
   captionText,
 }) {
   if (!toUserId) return { ok: false, error: "missing wecom user id" };
-  if (!mediaPath || !existsSync(mediaPath)) return { ok: false, error: "media file missing" };
-  const roots = Array.isArray(mediaLocalRoots) ? mediaLocalRoots.filter(Boolean) : [];
-  const plugin = await loadWecomPlugin();
-  const to = `${CHANNEL_ID}:${String(toUserId).trim()}`;
+  const abs = mediaPath ? resolve(String(mediaPath)) : "";
+  if (!abs || !existsSync(abs)) return { ok: false, error: "media file missing" };
+
+  const roots = [
+    ...receiptMediaRoots(mediaLocalRoots),
+    dirname(abs),
+  ].map((p) => resolve(String(p)));
+
+  let mods;
   try {
-    const result = await plugin.outbound.sendMedia({
-      to,
-      text: captionText || undefined,
-      mediaUrl: mediaPath,
+    mods = await loadWecomMods();
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err).slice(0, 240) };
+  }
+
+  const wsClient = mods.getWeComWebSocket(accountId);
+  if (wsClient?.isConnected) {
+    try {
+      const result = await mods.uploadAndSendMedia({
+        wsClient,
+        mediaUrl: abs,
+        chatId: String(toUserId).trim(),
+        mediaLocalRoots: roots,
+      });
+      if (result?.rejected) {
+        return { ok: false, error: result.rejectReason || "media rejected" };
+      }
+      if (!result?.ok) {
+        return { ok: false, error: result?.error || "uploadAndSendMedia failed" };
+      }
+      // Optional caption as separate markdown (never include file path)
+      if (captionText && mods.wecomPlugin?.outbound?.sendText && !looksLikePathDump(captionText)) {
+        try {
+          await mods.wecomPlugin.outbound.sendText({
+            to: `${CHANNEL_ID}:${String(toUserId).trim()}`,
+            text: captionText,
+            accountId,
+            cfg: cfg || {},
+          });
+        } catch {
+          // caption optional; file already sent
+        }
+      }
+      return { ok: true, messageId: result.messageId || "sent" };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err).slice(0, 240) };
+    }
+  }
+
+  // Bot WS down: try channel sendMedia but refuse path-text fallback semantics.
+  if (!mods.wecomPlugin?.outbound?.sendMedia) {
+    return { ok: false, error: "企微 Bot WebSocket 未连接，且无 sendMedia" };
+  }
+  try {
+    const result = await mods.wecomPlugin.outbound.sendMedia({
+      to: `${CHANNEL_ID}:${String(toUserId).trim()}`,
+      text: undefined, // never pass caption that could be merged with 📎 path fallback
+      mediaUrl: abs,
       mediaLocalRoots: roots,
       accountId,
       cfg: cfg || {},
     });
     if (!result || result.rejected) {
       return { ok: false, error: result?.rejectReason || "sendMedia rejected" };
+    }
+    // Heuristic: official fallback embeds media path into text; treat as failure.
+    const blob = JSON.stringify(result);
+    if (looksLikePathDump(blob) || /📎/.test(blob)) {
+      return { ok: false, error: "sendMedia fell back to path text; refuse" };
     }
     return { ok: true, messageId: result.messageId || result.chatId || "sent" };
   } catch (err) {
@@ -79,13 +151,10 @@ export async function sendWecomLocalFile({
 }
 
 export function receiptMediaRoots(extra = []) {
-  const state =
-    process.env.OPENCLAW_STATE_DIR ||
-    join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state");
-  const receipt = join(state, "media", "aierp-receipt");
-  const excel = join(state, "media", "aierp-excel");
+  const receiptDirs = candidateStateDirs().map((s) => join(s, "media", "aierp-receipt"));
+  const excelDirs = candidateStateDirs().map((s) => join(s, "media", "aierp-excel"));
   const configured = Array.isArray(extra) ? extra : [];
-  return [...new Set([receipt, excel, ...configured])];
+  return [...new Set([...receiptDirs, ...excelDirs, ...configured].map((p) => resolve(String(p))))];
 }
 
-export { CHANNEL_ID, findWecomPluginRoot };
+export { CHANNEL_ID, findWecomPluginRoot, loadWecomMods };
