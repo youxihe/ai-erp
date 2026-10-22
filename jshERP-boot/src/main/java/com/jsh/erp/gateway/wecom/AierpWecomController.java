@@ -12,7 +12,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * WeCom adapter for AIERP-012A/013/015A/015B.
+ * WeCom adapter for AIERP-012A/013/015A/015B/021A.
  * Adapter routes require HMAC; claim / confirm-ui require logged-in ERP session.
  * Confirm inbound must carry WECOM_BEFORE_DISPATCH proof (not LLM self-report).
  */
@@ -34,6 +34,8 @@ public class AierpWecomController {
     private AierpWecomConfirmService confirmService;
     @Resource
     private AierpWecomReceiptService receiptService;
+    @Resource
+    private AierpWecomMasterDataService masterDataService;
     @Resource
     private com.jsh.erp.service.UserService userService;
 
@@ -197,6 +199,25 @@ public class AierpWecomController {
     public BaseResponseInfo excelPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(excelService.prepareVerified(parse(raw)));
+    }
+
+    /**
+     * AIERP-021A: prepare partner create/update (challenge + digest only; no jsh_supplier write).
+     */
+    @PostMapping("/master/partner/prepare")
+    public BaseResponseInfo partnerPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(masterDataService.preparePartner(parse(raw)));
+    }
+
+    /**
+     * AIERP-021A: trusted WeCom before_dispatch commit for 确认建档{id} / 确认修改{id}.
+     * Never exposed as an LLM tool.
+     */
+    @PostMapping("/master/partner/commit")
+    public BaseResponseInfo partnerCommit(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(masterDataService.commitPartner(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {

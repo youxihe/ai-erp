@@ -1,0 +1,120 @@
+{
+  "ticket": "AIERP-021A",
+  "botId": "default",
+  "wecomUserId": "aierp021a-mvjeacc8",
+  "supplierName": "测试供应商-202610221025",
+  "customerName": "测试客户-202610221025",
+  "partnerId": 913,
+  "customerId": 914,
+  "stockBefore": "463.900000",
+  "stockAfter": "463.900000",
+  "passed": 20,
+  "failed": 0,
+  "results": [
+    {
+      "name": "unbound_prepare_401",
+      "ok": true,
+      "detail": "{\"code\":401,\"data\":{\"message\":\"尚未绑定 ERP，请先发送「绑定ERP」\"}}"
+    },
+    {
+      "name": "bind_issue",
+      "ok": true,
+      "detail": "{\"codeLen\":8}"
+    },
+    {
+      "name": "bind_claim",
+      "ok": true,
+      "detail": "ACTIVE"
+    },
+    {
+      "name": "prepare_zero_db_insert",
+      "ok": true,
+      "detail": "{\"requestId\":2,\"phrase\":\"确认建档2\",\"beforeCreate\":0,\"afterPrep\":0,\"summary\":\"供应商｜名称 测试供应商-202610221025｜联系人 张工｜电话 13800001111｜地址 演示路1号\"}"
+    },
+    {
+      "name": "llm_self_confirm_rejected",
+      "ok": true,
+      "detail": "{\"code\":403,\"data\":{\"message\":\"确认事件来源必须是 WECOM_BEFORE_DISPATCH\"}}"
+    },
+    {
+      "name": "group_chat_rejected",
+      "ok": true,
+      "detail": "{\"code\":403,\"data\":{\"message\":\"禁止在群聊中确认主数据\"}}"
+    },
+    {
+      "name": "commit_create_real_id",
+      "ok": true,
+      "detail": "{\"partnerId\":913,\"row\":{\"id\":\"913\",\"supplier\":\"测试供应商-202610221025\",\"type\":\"供应商\",\"contacts\":\"张工\",\"phone_num\":\"13800001111\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"bank_name\":\"NULL\",\"account_number\":\"NULL\",\"tax_num\":\"NULL\",\"begin_need_pay\":\"0.000000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"},\"hint\":\"供应商已建档，ID=913。可用于采购/服务选择；未过账。\"}"
+    },
+    {
+      "name": "commit_stock_unchanged",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"463.900000\",\"after\":\"463.900000\"}"
+    },
+    {
+      "name": "replay_once_idempotent",
+      "ok": true,
+      "detail": "{\"nature\":\"REAL_ERP\",\"op\":\"CREATE\",\"status\":\"CONSUMED\",\"requestId\":2,\"partnerId\":913,\"type\":\"供应商\",\"idempotentReplay\":true,\"posted\":false,\"stockUnchanged\":true,\"boundErpLoginName\":\"jsh\",\"tenantId\":63,\"hint\":\"该确认已处理过，未重复建档/修改。\",\"name\":\"测试供应商-202610221025\",\"contacts\":\"张工\",\"phone\":\"13800001111\"}"
+    },
+    {
+      "name": "dup_name_rejected",
+      "ok": true,
+      "detail": "{\"code\":409,\"data\":{\"message\":\"同类型名称已存在：测试供应商-202610221025\"}}"
+    },
+    {
+      "name": "wrong_type_update_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"类型与现有记录不一致，禁止跨类型修改\"}}"
+    },
+    {
+      "name": "sensitive_field_rejected",
+      "ok": true,
+      "detail": "{\"code\":400,\"data\":{\"message\":\"禁止经聊天写入敏感字段：bankName\"}}"
+    },
+    {
+      "name": "update_prepare_diff_whitelist",
+      "ok": true,
+      "detail": "{\"updReq\":3,\"diffs\":[{\"field\":\"contacts\",\"oldValue\":\"张工\",\"newValue\":\"李工\"},{\"field\":\"phone\",\"oldValue\":\"13800001111\",\"newValue\":\"13900002222\"}],\"summary\":\"修改供应商「测试供应商-202610221025」：contacts 张工→李工；phone 13800001111→13900002222\"}"
+    },
+    {
+      "name": "update_commit_whitelist_only",
+      "ok": true,
+      "detail": "{\"afterUpd\":{\"id\":\"913\",\"supplier\":\"测试供应商-202610221025\",\"type\":\"供应商\",\"contacts\":\"李工\",\"phone_num\":\"13900002222\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"bank_name\":\"KEEP_BANK\",\"account_number\":\"KEEP_ACCT\",\"tax_num\":\"KEEP_TAX\",\"begin_need_pay\":\"12.340000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"},\"beforeUpd\":{\"id\":\"913\",\"supplier\":\"测试供应商-202610221025\",\"type\":\"供应商\",\"contacts\":\"张工\",\"phone_num\":\"13800001111\",\"address\":\"演示路1号\",\"description\":\"021a-demo\",\"b"
+    },
+    {
+      "name": "customer_prepare_zero_insert",
+      "ok": true,
+      "detail": "{\"requestId\":4}"
+    },
+    {
+      "name": "customer_commit_type_客户",
+      "ok": true,
+      "detail": "{\"cusId\":914,\"cusRow\":{\"id\":\"914\",\"supplier\":\"测试客户-202610221025\",\"type\":\"客户\",\"contacts\":\"王工\",\"phone_num\":\"\",\"address\":\"\",\"description\":\"\",\"bank_name\":\"NULL\",\"account_number\":\"NULL\",\"tax_num\":\"NULL\",\"begin_need_pay\":\"0.000000\",\"begin_need_get\":\"0.000000\",\"advance_in\":\"0.000000\",\"creator\":\"63\",\"tenant_id\":\"63\"}}"
+    },
+    {
+      "name": "same_name_cross_type_allowed_as_separate",
+      "ok": true,
+      "detail": "{\"supplier\":1,\"customer\":1}"
+    },
+    {
+      "name": "new_supplier_searchable",
+      "ok": true,
+      "detail": "{\"rowCount\":1}"
+    },
+    {
+      "name": "rebind_invalidates_pending",
+      "ok": true,
+      "detail": "{\"code\":403,\"data\":{\"message\":\"绑定已变更，旧申请已失效，请重新准备\"}}"
+    },
+    {
+      "name": "final_stock_unchanged",
+      "ok": true,
+      "detail": "{\"stockBefore\":\"463.900000\",\"after\":\"463.900000\"}"
+    }
+  ],
+  "uat": {
+    "wecomLiveClient": "NOT_RUN",
+    "note": "Automated HMAC prepare/commit against local aierp-boot. Live WeCom DM UAT deferred; plugin/index.js not wired (F: integrate later)."
+  },
+  "readyForReview": true
+}
