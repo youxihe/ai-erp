@@ -18,6 +18,11 @@ import {
   factsFromConfirm,
   sanitizeForChannel,
 } from "./sop/renderers/wecom-business.mjs";
+import {
+  CONFIRM_SERVICE,
+  formatServiceDraft,
+  formatServiceConfirmed,
+} from "./sop/service-consume.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -158,7 +163,8 @@ function num(v) {
 
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
-  return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t);
+  // 016S: 确认耗料{id} shares trusted before_dispatch confirm path (no LLM tool).
+  return CONFIRM_PURCHASE.test(t) || CONFIRM_SERVICE.test(t) || CONFIRM_SIMPLE.test(t);
 }
 
 
@@ -251,6 +257,11 @@ function formatPurchaseDraft(data) {
 }
 
 function formatConfirm(data) {
+  const bill = data?.billNumber || "";
+  const biz = String(data?.bizType || "");
+  if (biz === "SERVICE" || String(bill).startsWith("GW-SERVICE-")) {
+    return sanitizeForChannel(formatServiceConfirmed(data || {}), { markdown: false });
+  }
   try {
     const facts = factsFromConfirm(data || {});
     if (facts.billNumber) {
@@ -259,14 +270,12 @@ function formatConfirm(data) {
   } catch {
     // fall through
   }
-  const bill = data?.billNumber || "?";
   const hint = data?.hint || data?.receiptText;
   if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
     return sanitizeForChannel(String(hint).slice(0, 500), { markdown: false });
   }
-  return `✅ 采购入库完成\n${bill} · 已审核`;
+  return `✅ 采购入库完成\n${bill || "?"} · 已审核`;
 }
-
 
 function registerErpTools(api) {
   const make = (name, description, path, paramSchema, buildBody, format) => {
@@ -649,14 +658,21 @@ function registerErpTools(api) {
       draftId: num(p.draftId),
     }),
     (data) => ({
-      text: formatPurchaseDraft(data),
+      text:
+        data?.bizType === "SERVICE" || String(data?.confirmPhrase || "").startsWith("确认耗料")
+          ? formatServiceDraft(data)
+          : formatPurchaseDraft(data),
       details: {
         draftId: data?.draftId ?? null,
+        bizType: data?.bizType || null,
         status: data?.status || null,
         statusLabel: data?.statusLabel || null,
         posted: !!data?.posted,
         stockUnchanged: data?.stockUnchanged !== false,
         summary: data?.summary || null,
+        challenge: data?.challenge || null,
+        confirmPhrase: data?.confirmPhrase || null,
+        replayed: !!data?.replayed,
       },
     }),
   );
