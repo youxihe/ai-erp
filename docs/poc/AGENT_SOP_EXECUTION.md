@@ -49,3 +49,11 @@ deploy/openclaw/
 - 不把 `tools.alsoAllow` 设置为全部企微业务工具；仅按最小需要连接特定 channel media sender。
 - 不将密钥、企微 sender 原文、报表敏感信息、PDF 存储路径放进 Git 日志或对话。
 - 不承诺“生成了 PDF”即“用户已收到”，必须通道结果+客户端验收。
+
+## 主数据 SOP（021A/021B）及业务续办（021C）
+
+- 新增 `partner-upsert.mjs` 与 `material-upsert.mjs` 独立可导入模块，`AGENTS.md` 仅写“新建/修改供应商、客户、原料→这些 SOP”，不把原生 MaterialController/SupplierController 直接交给 LLM Tool。
+- LLM 只收集安全白名单字段；Java ERP 依据绑定当前 actor / tenant / 当前功能权限查重、正则/枚举、幂等及修改前版本。由可信企微**原始本人单独确认**提交，模型无 master commit Tool。
+- `确认建档{requestId}` 与 `确认采购/确认配制/确认耗料{draftId}` 是**不同授权**；前者不会调整库存/金额，后者是业务真实过账。客户和供应商名称相同也需要类型明确，物料编码 `MaterialExtend.bar_code` 不可与别的 SKU 冲突。
+- 原生 jshERP MaterialService 传 `stock` 能写或重置期初库存/当前库存，SupplierService 的隐式 getCurrentUser/Request 日志不能直接从没有 Session 的企微套用。需明确身份安全 facade 和原生实体一致性。
+- 021C 实施业务缺档挂起/恢复，读取此前 server-authoritative 文件/槽位，完成建档后重新校验并**只继续创建未审核草稿**，绝不能自动确认入库/配制/耗料。测试清单 `docs/poc/DEMO_UAT_MASTERDATA_CHAT.md`。
