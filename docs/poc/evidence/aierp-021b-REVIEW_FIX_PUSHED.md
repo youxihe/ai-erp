@@ -3,7 +3,8 @@
 - **Ticket**: AIERP-021B (PR #45 material masterdata)
 - **Branch**: `feat/aierp-021b-material-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **Remote HEAD**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
+- **Fix commit**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
+- **FINAL tip HEAD**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5` _(updated by tip-pin commit if present)_
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no stock/initStock writes, did not touch #44 / `PartnerMasterDataService`)
 
 ## Coordinated naming (vs AIERP-021A / PR #44 @ 7acd8008)
@@ -33,14 +34,15 @@ Rejected / must not collide with partner:
 2. **Zero stock**: create path never inserts `jsh_material_current_stock` / `jsh_material_initial_stock`; post-check counts must be 0 for every warehouse.
 3. **No historical bill mutation**: update whitelist is name/standard/brand/remark only; bar_code / base unit / depot_head / depot_item untouched.
 
-## Changed files (this push)
+## Changed files
 
-- `jshERP-boot/.../MaterialMasterDataService.java` (new; replaces `AierpWecomMasterDataService`)
-- `jshERP-boot/.../AierpWecomController.java` (inject MaterialMasterDataService)
-- `deploy/openclaw/sop/material-upsert.mjs` + plugin copy (namespaced `MATERIAL_CONFIRM`)
-- `deploy/scripts/aierp-021b-material-master-flow.mjs` (low-role / null eventSource / cross-binding / race / zero-stock)
-- `deploy/scripts/aierp-021b-material-phrase-unit.mjs` (offline phrase namespace)
-- docs: queue / ready / this evidence
+- `jshERP-boot/.../MaterialMasterDataService.java` (rename/split from `AierpWecomMasterDataService`)
+- `jshERP-boot/.../AierpWecomController.java`
+- `deploy/openclaw/sop/material-upsert.mjs` + plugin copy
+- `deploy/scripts/aierp-021b-material-master-flow.mjs`
+- `deploy/scripts/aierp-021b-material-phrase-unit.mjs`
+- `docs/poc/queue/AIERP-021B.md`, `docs/poc/evidence/aierp-021b-ready.md`, this file
+- `deploy/openclaw/workspace/AGENTS.md`
 
 ## Automation
 
@@ -55,7 +57,3 @@ Rejected / must not collide with partner:
 - Live WeCom DM UAT / F: OpenClaw runtime deploy (explicitly out of scope)
 - Production inventory / stock (must remain unchanged)
 - Concurrent barcode race under production load (code + flow cover local dual-commit)
-
----
-
-**Exact remote HEAD after push**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
