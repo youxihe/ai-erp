@@ -1,8 +1,10 @@
 # AIERP-021A READY_FOR_REVIEW
 
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
+- **HEAD**: see tip of `feat/aierp-021a-partner-masterdata-sop` after this push
 - **Base**: `origin/master` @ `74b32fe8`
 - **Scope**: WeCom prepare→confirm create/update of ERP `Supplier` (供应商|客户). No stock / purchase / mix / service post.
+- **No merge / no F:** plugin `index.js` not wired; shared OpenClaw runtime untouched.
 
 ## Deliverables
 
