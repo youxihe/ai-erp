@@ -3,11 +3,11 @@
 - **Ticket**: AIERP-021B (PR #45 material masterdata)
 - **Branch**: `feat/aierp-021b-material-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **Fix commit**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
-- **FINAL tip HEAD**: `c193fe959ea9baa31c924380418f2fc67193d0a1`
+- **Fix commit (code)**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
+- **Remote tip**: use `git rev-parse origin/feat/aierp-021b-material-masterdata-sop` (docs pin commits may trail the tip SHA embedded here)
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no stock/initStock writes, did not touch #44 / `PartnerMasterDataService`)
 
-## Coordinated naming (vs AIERP-021A / PR #44 @ 7acd8008)
+## Coordinated naming (vs AIERP-021A / PR #44)
 
 | Item | Chosen value |
 |---|---|
@@ -48,12 +48,12 @@ Rejected / must not collide with partner:
 
 | Test | Result |
 |---|---|
-| `node deploy/scripts/aierp-021b-material-phrase-unit.mjs` | PASS (offline) |
-| `node deploy/scripts/aierp-021b-material-master-flow.mjs` | **NOT_VERIFIED** (local ERP `127.0.0.1:9999` unreachable at push time) |
+| `node deploy/scripts/aierp-021b-material-phrase-unit.mjs` | **PASS** (offline; rejects bare/partner/确认物料建档) |
+| `node deploy/scripts/aierp-021b-material-master-flow.mjs` | **NOT_VERIFIED** — Docker Desktop engine unavailable (RPC EOF / pipe missing) at delivery; `aierp-boot` not rebuilt with tip |
 
 ## NOT_VERIFIED
 
-- Live HMAC flow against rebuilt `aierp-boot` (ERP down at push)
+- Live HMAC prepare/commit / low-role / null eventSource / barcode-race against rebuilt `aierp-boot`
 - Live WeCom DM UAT / F: OpenClaw runtime deploy (explicitly out of scope)
 - Production inventory / stock (must remain unchanged)
-- Concurrent barcode race under production load (code + flow cover local dual-commit)
+- Concurrent barcode race under production load

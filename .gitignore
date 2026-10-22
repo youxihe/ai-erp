@@ -23,3 +23,5 @@ jshERP-web/dist/
 *.log
 .DS_Store
 Thumbs.db
+# Local Maven cache from failed docker builds
+deploy/.m2-repo/
