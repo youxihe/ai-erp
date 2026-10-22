@@ -3,7 +3,7 @@
 - **Ticket**: AIERP-021A (PR #44 partner masterdata)
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **Remote HEAD**: see tip after this push (`git rev-parse origin/feat/aierp-021a-partner-masterdata-sop`)
+- **Remote HEAD**: `718fc3f9475990c5330edf1505f5b4d38a7dc5ac`
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no inventory auto-post)
 
 ## Coordinated naming (vs AIERP-021B / PR #45)
