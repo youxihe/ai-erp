@@ -1,7 +1,7 @@
 {
   "ticket": "AIERP-016S",
   "suite": "REVIEW_FIX non-post",
-  "at": "2026-10-22T16:59:22.348Z",
+  "at": "2026-10-22T17:40:11.074Z",
   "doConfirm": false,
   "pass": true,
   "results": [
@@ -49,7 +49,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792688359954"
+          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792690808541"
         }
       }
     },
@@ -66,7 +66,7 @@
       "ok": true,
       "detail": {
         "code": 403,
-        "msg": "当前用户无权使用仓库: 禁仓mvjsd3h5"
+        "msg": "当前用户无权使用仓库: 禁仓mvjttkuz"
       }
     },
     {
@@ -82,8 +82,8 @@
       "name": "prepare_service_draft",
       "ok": true,
       "detail": {
-        "draftId": 226,
-        "phrase": "确认耗料226",
+        "draftId": 246,
+        "phrase": "确认耗料246",
         "status": "AWAITING_CONFIRM"
       }
     },
@@ -101,7 +101,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配（PURCHASE≠SERVICE），请回复「确认耗料226」"
+          "message": "确认指令与单据类型不匹配（PURCHASE≠SERVICE），请回复「确认耗料246」"
         }
       }
     },
@@ -111,7 +111,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配（MIX≠SERVICE），请回复「确认耗料226」"
+          "message": "确认指令与单据类型不匹配（MIX≠SERVICE），请回复「确认耗料246」"
         }
       }
     },
@@ -119,14 +119,14 @@
       "name": "no_post_after_prepare",
       "ok": true,
       "detail": {
-        "draftId": 226
+        "draftId": 246
       }
     },
     {
       "name": "reject_cross_owner_confirm",
       "ok": true,
       "detail": {
-        "other": "ai***",
+        "other": "m1***",
         "code": 401
       }
     },
@@ -135,8 +135,8 @@
       "ok": true,
       "detail": {
         "reason": "set AIERP_016S_CONFIRM=1 to post FG-101 -1L (do not repost GW-SERVICE-136)",
-        "draftId": 226,
-        "confirmPhrase": "确认耗料226",
+        "draftId": 246,
+        "confirmPhrase": "确认耗料246",
         "LIVE_WECOM_CONFIRM": "PENDING_USER",
         "NOT_VERIFIED": "human WeCom UAT"
       }
@@ -145,23 +145,23 @@
       "name": "cancel_unposted_test_draft",
       "ok": true,
       "detail": {
-        "draftId": 226
+        "draftId": 246
       }
     },
     {
       "name": "reject_service_phrase_on_purchase",
       "ok": true,
       "detail": {
-        "draftId": 227,
+        "draftId": 247,
         "code": 400,
-        "msg": "确认指令与单据类型不匹配（SERVICE≠PURCHASE），请回复「确认采购227」"
+        "msg": "确认指令与单据类型不匹配（SERVICE≠PURCHASE），请回复「确认采购247」"
       }
     },
     {
       "name": "cancel_purchase_cross_type_fixture",
       "ok": true,
       "detail": {
-        "draftId": 227
+        "draftId": 247
       }
     },
     {
