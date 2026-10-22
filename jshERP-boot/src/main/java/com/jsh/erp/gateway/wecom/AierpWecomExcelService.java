@@ -136,10 +136,12 @@ public class AierpWecomExcelService {
                 if (drafted != null && Boolean.TRUE.equals(drafted.get("autoDraft"))) {
                     preview.putAll(drafted);
                 } else {
-                    // AIERP-016S: single SERVICE Excel → unposted draft (确认耗料 only).
+                    // AIERP-016S: single SERVICE Excel → unposted draft or audited CONFIRMED replay.
                     Map<String, Object> serviceDrafted = serviceConsumeService.tryPrepareVerifiedServiceFromPreview(
                             ctx, String.valueOf(preview.get("previewId")), fileSha256, false);
-                    if (serviceDrafted != null && Boolean.TRUE.equals(serviceDrafted.get("autoDraft"))) {
+                    if (serviceDrafted != null && (Boolean.TRUE.equals(serviceDrafted.get("autoDraft"))
+                            || Boolean.TRUE.equals(serviceDrafted.get("posted"))
+                            || Boolean.TRUE.equals(serviceDrafted.get("replayed")))) {
                         preview.putAll(serviceDrafted);
                     } else if (drafted != null) {
                         preview.putAll(drafted);
@@ -228,8 +230,16 @@ public class AierpWecomExcelService {
         return data;
     }
 
-    /** Clear Excel workflow after native confirm so verbal purchase is unblocked. */
+    /** Clear Excel workflow after native confirm so verbal purchase/service is unblocked. */
     public void markWorkflowPosted(AierpWecomBindingService.BoundContext ctx, long draftId) {
+        markWorkflowPosted(ctx, draftId, null);
+    }
+
+    /**
+     * Mark Excel workflow POSTED after native confirm.
+     * PURCHASE keeps「已入库」; SERVICE uses「已出库」— do not retitle purchase/PDF paths.
+     */
+    public void markWorkflowPosted(AierpWecomBindingService.BoundContext ctx, long draftId, String bizType) {
         Map<String, Object> current = getWorkflow(ctx);
         if (current == null || current.get("draftId") == null) {
             return;
@@ -237,11 +247,16 @@ public class AierpWecomExcelService {
         if (!String.valueOf(draftId).equals(String.valueOf(current.get("draftId")))) {
             return;
         }
+        String phrase = current.get("confirmPhrase") == null ? "" : String.valueOf(current.get("confirmPhrase"));
+        boolean service = "SERVICE".equals(bizType) || phrase.startsWith("确认耗料");
+        String summary = service
+                ? ("服务耗料单 #" + draftId + " 已出库。")
+                : ("采购单 #" + draftId + " 已入库。");
         putWorkflow(ctx, "POSTED",
                 current.get("previewId") == null ? null : String.valueOf(current.get("previewId")),
                 current.get("fileSha256") == null ? null : String.valueOf(current.get("fileSha256")),
                 null, "CONFIRMED",
-                "采购单 #" + draftId + " 已入库。",
+                summary,
                 draftId, current.get("businessKey") == null ? null : String.valueOf(current.get("businessKey")),
                 null);
     }
@@ -508,12 +523,18 @@ public class AierpWecomExcelService {
             Map<String, Object> st = gatewayService.draftStatusAs(ctx.user, draftId, toOwner(ctx));
             String status = String.valueOf(st.get("status"));
             if ("CONFIRMED".equals(status)) {
+                String biz = String.valueOf(st.get("bizType"));
+                String phrase = current.get("confirmPhrase") == null ? "" : String.valueOf(current.get("confirmPhrase"));
+                boolean service = "SERVICE".equals(biz) || phrase.startsWith("确认耗料");
+                String summary = service
+                        ? ("服务耗料单 #" + draftId + " 已出库。")
+                        : ("采购单 #" + draftId + " 已入库。");
                 current.put("status", "POSTED");
-                current.put("userSummaryZh", "采购单 #" + draftId + " 已入库。");
+                current.put("userSummaryZh", summary);
                 putWorkflow(ctx, "POSTED",
                         current.get("previewId") == null ? null : String.valueOf(current.get("previewId")),
                         current.get("fileSha256") == null ? null : String.valueOf(current.get("fileSha256")),
-                        null, "CONFIRMED", String.valueOf(current.get("userSummaryZh")),
+                        null, "CONFIRMED", summary,
                         draftId,
                         current.get("businessKey") == null ? null : String.valueOf(current.get("businessKey")),
                         null);

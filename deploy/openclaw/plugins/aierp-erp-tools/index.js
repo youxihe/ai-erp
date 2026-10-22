@@ -29,6 +29,7 @@ const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
 const MIN_SECRET_LEN = 32;
 const BANNED_SECRET_SNIPPETS = ["change-me", "changeme", "example", "placeholder", "aierp-local-wecom-adapter"];
 const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[：:#＃]?\s*(\d+)\s*$/;
+const CONFIRM_MIX = /^\s*确认\s*配制\s*[：:#＃]?\s*(\d+)\s*$/;
 const CONFIRM_SIMPLE = /^\s*确认\s*$/;
 
 function emptyPluginConfigSchema() {
@@ -163,8 +164,14 @@ function num(v) {
 
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
-  // 016S: 确认耗料{id} shares trusted before_dispatch confirm path (no LLM tool).
-  return CONFIRM_PURCHASE.test(t) || CONFIRM_SERVICE.test(t) || CONFIRM_SIMPLE.test(t);
+  // Trusted phrases only: PURCHASE / SERVICE / MIX (+ bare「确认」→ Java rejects on non-PURCHASE).
+  // Cross-type mismatch is rejected by Gateway assertConfirmKindMatchesBiz (not LLM).
+  return (
+    CONFIRM_PURCHASE.test(t) ||
+    CONFIRM_SERVICE.test(t) ||
+    CONFIRM_MIX.test(t) ||
+    CONFIRM_SIMPLE.test(t)
+  );
 }
 
 

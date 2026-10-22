@@ -13,6 +13,8 @@ import com.jsh.erp.service.DepotItemService;
 import com.jsh.erp.service.DepotService;
 import com.jsh.erp.service.MaterialExtendService;
 import com.jsh.erp.service.MaterialService;
+import com.jsh.erp.service.SystemConfigService;
+import com.jsh.erp.service.UserBusinessService;
 import com.jsh.erp.service.UserService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -74,6 +76,10 @@ public class AierpGatewayService {
     private DepotItemService depotItemService;
     @Resource
     private DepotHeadService depotHeadService;
+    @Resource
+    private SystemConfigService systemConfigService;
+    @Resource
+    private UserBusinessService userBusinessService;
     @Resource
     private PlatformTransactionManager transactionManager;
 
@@ -272,11 +278,10 @@ public class AierpGatewayService {
         if (user == null || user.getId() == null || user.getTenantId() == null) {
             throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
         }
+        assertGatewayBizType(bizType);
         assertFunction(user, functionOf(bizType), BTN_ADD, bizType);
         String key = required(body, "idempotencyKey");
-        JSONObject normalized = normalize(bizType, body, user);
-        String payload = normalized.toJSONString();
-        String payloadHash = sha256Hex(payload);
+        // Look up before normalize so CONFIRMED replay is not blocked by post-outbound stock drift.
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
                 "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, "
                         + "binding_bound_at, binding_version, draft_version, payload_hash "
@@ -285,6 +290,19 @@ public class AierpGatewayService {
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
             assertWecomOwnerMatches(row, wecomOwner);
+            // Already posted: return audited bill even if live stock snapshot would fail normalize.
+            if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
+                if (!bizType.equals(String.valueOf(row.get("biz_type")))) {
+                    throw new BusinessRunTimeException(409, "幂等键已用于其他业务类型，拒绝覆盖");
+                }
+                return draftFlags(draftView(row, true), row);
+            }
+        }
+        JSONObject normalized = normalize(bizType, body, user);
+        String payload = normalized.toJSONString();
+        String payloadHash = sha256Hex(payload);
+        if (!existing.isEmpty()) {
+            Map<String, Object> row = existing.get(0);
             if (!payload.equals(String.valueOf(row.get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
@@ -321,6 +339,12 @@ public class AierpGatewayService {
                 throw ex;
             }
             assertWecomOwnerMatches(raced.get(0), wecomOwner);
+            if ("CONFIRMED".equals(String.valueOf(raced.get(0).get("status")))) {
+                if (!bizType.equals(String.valueOf(raced.get(0).get("biz_type")))) {
+                    throw new BusinessRunTimeException(409, "幂等键已用于其他业务类型，拒绝覆盖");
+                }
+                return draftFlags(draftView(raced.get(0), true), raced.get(0));
+            }
             if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
@@ -641,6 +665,7 @@ public class AierpGatewayService {
     private Map<String, Object> confirmLockedRowAs(User user, Map<String, Object> row,
                                                    HttpServletRequest request) throws Exception {
         String bizType = String.valueOf(row.get("biz_type"));
+        assertGatewayBizType(bizType);
         assertFunction(user, functionOf(bizType), BTN_AUDIT, bizType);
         if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
             Map<String, Object> replay = confirmView(row, user, true);
@@ -768,6 +793,7 @@ public class AierpGatewayService {
         if (actor == null || actor.getId() == null || actor.getTenantId() == null) {
             throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份，无法过账");
         }
+        assertGatewayBizType(bizType);
         JSONObject info = new JSONObject();
         info.put("operTime", LocalDateTime.now().format(TS));
         info.put("number", number);
@@ -920,7 +946,8 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(400, "草稿行缺失");
         }
         Long depotId = line.getLong("depotId");
-        if (depotId == null || !allowed.contains(depotId)) {
+        // Confirm/post path: empty UserDepot or revoked depot must deny (recheck, not draft-time cache).
+        if (depotId == null || allowed == null || allowed.isEmpty() || !allowed.contains(depotId)) {
             throw new BusinessRunTimeException(403, "当前用户无权使用仓库: " + line.getString("depotName"));
         }
         Depot depot = depotService.getDepot(depotId);
@@ -930,6 +957,18 @@ public class AierpGatewayService {
         Material material = materialService.getMaterial(line.getLong("materialId"));
         if (material == null || material.getTenantId() == null || !material.getTenantId().equals(user.getTenantId())) {
             throw new BusinessRunTimeException(400, "物料不存在或不属于当前租户: " + line.getString("barCode"));
+        }
+    }
+
+    /**
+     * Gateway only posts PURCHASE / MIX / SERVICE (其它出库). Never SALE/SALES/AR.
+     */
+    private static void assertGatewayBizType(String bizType) {
+        if ("SALE".equals(bizType) || "SALES".equals(bizType) || "AR".equals(bizType)) {
+            throw new BusinessRunTimeException(400, "禁止销售出库/应收过账；服务耗料仅走其它出库");
+        }
+        if (!"PURCHASE".equals(bizType) && !"MIX".equals(bizType) && !"SERVICE".equals(bizType)) {
+            throw new BusinessRunTimeException(400, "未知业务类型");
         }
     }
 
@@ -1024,6 +1063,11 @@ public class AierpGatewayService {
             if (n == null || n != 1) {
                 throw new BusinessRunTimeException(400, "确认时" + organType + "不可用或不属于当前租户");
             }
+            // SERVICE: UserCustomer visibility (native customerFlag), not tenant-only.
+            if ("SERVICE".equals(bizType)) {
+                String organName = payload.getString("organName");
+                assertCustomerVisible(user, organId, organName == null ? String.valueOf(organId) : organName);
+            }
         }
         if ("PURCHASE".equals(bizType)) {
             Long accountId = payload.getLong("accountId");
@@ -1033,6 +1077,10 @@ public class AierpGatewayService {
             if (n == null || n != 1) {
                 throw new BusinessRunTimeException(400, "确认时结算账户不可用或不属于当前租户");
             }
+        }
+        // Never AR / sales posting from gateway confirm.
+        if ("SALE".equals(bizType) || "SALES".equals(bizType)) {
+            throw new BusinessRunTimeException(400, "网关不支持销售出库/应收过账");
         }
     }
 
@@ -1206,9 +1254,7 @@ public class AierpGatewayService {
             throw new BusinessRunTimeException(400, "单位不匹配: " + barCode + " 需要 " + expected + " 实际 " + unit);
         }
         Depot depot = findDepot(user, depotName.trim());
-        if (!allowedDepotIds(user).contains(depot.getId())) {
-            throw new BusinessRunTimeException(403, "当前用户无权使用仓库: " + depotName);
-        }
+        assertDepotAllowed(user, depot.getId(), depotName);
         ResolvedLine line = new ResolvedLine();
         line.barCode = ext.getBarCode();
         line.materialId = material.getId();
@@ -1245,7 +1291,55 @@ public class AierpGatewayService {
         if (ids.isEmpty()) {
             throw new BusinessRunTimeException(400, "未找到当前租户下的" + type + ": " + name);
         }
-        return ids.get(0);
+        Long organId = ids.get(0);
+        if ("客户".equals(type)) {
+            assertCustomerVisible(user, organId, name);
+        }
+        return organId;
+    }
+
+    /**
+     * Match native ERP customer pickers: when system customerFlag=1 (role restricts), organ must
+     * appear in UserCustomer for this user — not tenant-only. When flag=0, any enabled tenant
+     * customer is allowed. Used by prepare + confirm reassert and Excel SERVICE preview.
+     */
+    public void assertCustomerVisible(User user, Long organId, String name) {
+        if (user == null || user.getId() == null || organId == null) {
+            throw new BusinessRunTimeException(403, "客户权限校验缺少用户或客户");
+        }
+        boolean customerFlag;
+        try {
+            customerFlag = systemConfigService.getCustomerFlag();
+        } catch (Exception ex) {
+            throw new BusinessRunTimeException(500, "读取客户权限开关失败");
+        }
+        if (!customerFlag) {
+            return;
+        }
+        String ubValue;
+        try {
+            ubValue = userBusinessService.getUBValueByTypeAndKeyId("UserCustomer", String.valueOf(user.getId()));
+        } catch (Exception ex) {
+            throw new BusinessRunTimeException(500, "读取 UserCustomer 失败");
+        }
+        // Missing / empty UserCustomer assignment while flag restricts → deny (not tenant-only).
+        if (ubValue == null || ubValue.trim().isEmpty() || !ubValue.contains("[" + organId + "]")) {
+            throw new BusinessRunTimeException(403, "当前用户无权使用客户: " + name);
+        }
+    }
+
+    /**
+     * Re-check UserDepot at prepare/confirm: empty assignment or missing depot id → deny.
+     */
+    public void assertDepotAllowed(User user, Long depotId, String depotName) {
+        if (user == null || user.getId() == null || depotId == null) {
+            throw new BusinessRunTimeException(403, "仓库权限校验缺少用户或仓库");
+        }
+        List<Long> allowed = allowedDepotIds(user);
+        if (allowed.isEmpty() || !allowed.contains(depotId)) {
+            throw new BusinessRunTimeException(403,
+                    "当前用户无权使用仓库: " + (depotName == null ? String.valueOf(depotId) : depotName));
+        }
     }
 
     private Long defaultAccountId(User user) {
@@ -1547,9 +1641,10 @@ public class AierpGatewayService {
             }
             return;
         }
+        // PURCHASE / SERVICE / MIX trusted phrases must reject cross-type mismatch.
         if (intent.kind != null && !intent.kind.equals(bizType)) {
             throw new BusinessRunTimeException(400,
-                    "确认指令与单据类型不匹配，请回复「" + expectedPhrase + "」");
+                    "确认指令与单据类型不匹配（" + intent.kind + "≠" + bizType + "），请回复「" + expectedPhrase + "」");
         }
     }
 

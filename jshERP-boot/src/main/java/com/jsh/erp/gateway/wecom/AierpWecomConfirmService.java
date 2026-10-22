@@ -54,9 +54,10 @@ public class AierpWecomConfirmService {
                 new AierpGatewayService.ConfirmEventProof(rawText, messageMsgId, false, source);
         Map<String, Object> confirmed = gatewayService.confirmAs(ctx.user, owner, draftId, proof);
         try {
-            excelService.markWorkflowPosted(ctx, draftId);
+            String bizType = confirmed.get("bizType") == null ? null : String.valueOf(confirmed.get("bizType"));
+            excelService.markWorkflowPosted(ctx, draftId, bizType);
         } catch (Exception ignore) {
-            // workflow cleanup is best-effort
+            // workflow cleanup is best-effort; preserve PURCHASE PDF media + SERVICE text paths
         }
         return receiptService.enrichConfirmResult(ctx.user, owner, confirmed);
     }

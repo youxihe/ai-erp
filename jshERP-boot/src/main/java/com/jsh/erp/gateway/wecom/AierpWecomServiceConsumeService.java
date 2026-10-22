@@ -78,10 +78,46 @@ public class AierpWecomServiceConsumeService {
                                                           boolean throwOnIneligible) throws Exception {
         Map<String, Object> wf = excelService.peekWorkflow(ctx);
         String activeStatus = wf == null ? "" : String.valueOf(wf.get("status"));
-        if (wf == null || !("PREVIEWED".equals(activeStatus) || "DRAFT_READY".equals(activeStatus))
-                || previewId == null || !previewId.equals(String.valueOf(wf.get("previewId")))
-                || fileSha256 == null || !fileSha256.matches("[0-9a-fA-F]{64}")
-                || !fileSha256.equalsIgnoreCase(String.valueOf(wf.get("fileSha256")))) {
+        boolean sameFile = wf != null
+                && previewId != null && previewId.equals(String.valueOf(wf.get("previewId")))
+                && fileSha256 != null && fileSha256.matches("[0-9a-fA-F]{64}")
+                && fileSha256.equalsIgnoreCase(String.valueOf(wf.get("fileSha256")));
+        if (wf == null || !sameFile) {
+            if (throwOnIneligible) {
+                throw new BusinessRunTimeException(409, "文件核对结果已改变，请按最新 Excel 核对结果办理。");
+            }
+            return null;
+        }
+
+        // Audited replay: same XLSX after confirm → show posted bill, never another DRAFT.
+        if (("POSTED".equals(activeStatus) || "DRAFT_READY".equals(activeStatus)) && wf.get("draftId") != null) {
+            long existingId = Long.parseLong(String.valueOf(wf.get("draftId")));
+            Map<String, Object> status = gatewayService.draftStatusAs(ctx.user, existingId, toOwner(ctx));
+            if ("SERVICE".equals(String.valueOf(status.get("bizType")))
+                    && "CONFIRMED".equals(String.valueOf(status.get("status")))) {
+                Map<String, Object> out = enrichServiceView(ctx.user, status);
+                out.put("autoDraft", false);
+                out.put("replayed", true);
+                out.put("posted", true);
+                out.put("stockUnchanged", true);
+                out.put("businessKey", wf.get("businessKey"));
+                String summary = wf.get("userSummaryZh") == null
+                        ? ("服务耗料单 #" + existingId + " 已出库。")
+                        : String.valueOf(wf.get("userSummaryZh"));
+                if (!summary.contains("已出库") && status.get("billNumber") != null) {
+                    summary = "服务耗料单 #" + existingId + " 已出库（" + status.get("billNumber") + "）。";
+                }
+                out.put("userSummaryZh", summary);
+                out.put("hintZh", summary);
+                excelService.putOwnedWorkflow(ctx, "POSTED", previewId, fileSha256, null, "CONFIRMED",
+                        summary, existingId,
+                        wf.get("businessKey") == null ? null : String.valueOf(wf.get("businessKey")),
+                        null);
+                return out;
+            }
+        }
+
+        if (!("PREVIEWED".equals(activeStatus) || "DRAFT_READY".equals(activeStatus))) {
             if (throwOnIneligible) {
                 throw new BusinessRunTimeException(409, "文件核对结果已改变，请按最新 Excel 核对结果办理。");
             }
@@ -179,8 +215,28 @@ public class AierpWecomServiceConsumeService {
             throw new BusinessRunTimeException(500, "草稿创建未返回单号");
         }
         long draftId = Long.parseLong(String.valueOf(draftIdObj));
-        String confirmPhrase = AierpGatewayService.confirmPhraseFor(BIZ, draftId);
         Map<String, Object> enriched = enrichServiceView(ctx.user, created);
+
+        // Same file idempotency hit an already-CONFIRMED draft → audited replay, not a new DRAFT.
+        if ("CONFIRMED".equals(String.valueOf(created.get("status")))) {
+            String bill = created.get("billNumber") == null ? "" : String.valueOf(created.get("billNumber"));
+            String summaryZh = "服务耗料单 #" + draftId + " 已出库"
+                    + (bill.isEmpty() ? "。" : ("（" + bill + "）。"));
+            excelService.putOwnedWorkflow(ctx, "POSTED", previewId, fileSha256, null, "CONFIRMED",
+                    summaryZh, draftId, businessKey, null);
+            Map<String, Object> out = new LinkedHashMap<String, Object>();
+            out.putAll(enriched);
+            out.put("autoDraft", false);
+            out.put("replayed", true);
+            out.put("posted", true);
+            out.put("stockUnchanged", true);
+            out.put("businessKey", businessKey);
+            out.put("userSummaryZh", summaryZh);
+            out.put("hintZh", summaryZh);
+            return out;
+        }
+
+        String confirmPhrase = AierpGatewayService.confirmPhraseFor(BIZ, draftId);
         String summaryZh = buildDraftReadySummary(businessKey, enriched, draftId, confirmPhrase);
         excelService.putOwnedWorkflow(ctx, "DRAFT_READY", previewId, fileSha256, null, null, summaryZh,
                 draftId, businessKey, confirmPhrase);
