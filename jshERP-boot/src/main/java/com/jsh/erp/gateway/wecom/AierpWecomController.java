@@ -35,6 +35,8 @@ public class AierpWecomController {
     @Resource
     private AierpWecomReceiptService receiptService;
     @Resource
+    private AierpWecomPurchaseBatchService purchaseBatchService;
+    @Resource
     private com.jsh.erp.service.UserService userService;
 
     @PostMapping("/binding/issue")
@@ -190,13 +192,31 @@ public class AierpWecomController {
     }
 
     /**
-     * AIERP-017B1: create/reuse unposted PURCHASE draft from persisted Excel preview.
+     * AIERP-017B1/017B2: create/reuse unposted PURCHASE draft(s) from persisted Excel preview.
      * Never posts inventory; confirm remains trusted before_dispatch only.
      */
     @PostMapping("/excel/prepare-verified")
     public BaseResponseInfo excelPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(excelService.prepareVerified(parse(raw)));
+    }
+
+    /**
+     * AIERP-017B2: multi-purchase verified draft batch from authoritative preview payload_json.
+     * Optional selectedBusinessKeys after explicit user choice when some rows have errors.
+     * Never posts inventory; no excel.confirm / no LLM confirm tool.
+     */
+    @PostMapping("/excel/prepare-verified-batch")
+    public BaseResponseInfo excelPrepareVerifiedBatch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.prepareVerifiedBatch(parse(raw)));
+    }
+
+    /** AIERP-017B2 controlled SOP entry (HMAC). Same semantics as prepare-verified-batch. */
+    @PostMapping("/excel/purchase-batch-prepare")
+    public BaseResponseInfo excelPurchaseBatchPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(purchaseBatchService.prepare(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {
