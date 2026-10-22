@@ -4,7 +4,7 @@
 - **Branch**: `feat/aierp-021b-material-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
 - **Fix commit**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
-- **FINAL tip HEAD**: `6cd59150c990b39c74fd96b41e01e9ec0ef56335`
+- **FINAL tip HEAD**: `c193fe959ea9baa31c924380418f2fc67193d0a1`
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no stock/initStock writes, did not touch #44 / `PartnerMasterDataService`)
 
 ## Coordinated naming (vs AIERP-021A / PR #44 @ 7acd8008)
