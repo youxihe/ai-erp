@@ -2,7 +2,7 @@
 
 ## HEAD
 
-`ae0d79c6db108dfd2478c00ede2ec612354e477c` on `feat/aierp-021b-material-masterdata-sop`。
+Branch tip on `feat/aierp-021b-material-masterdata-sop` (use `git rev-parse HEAD` / GitHub branch tip).
 
 ## 行为
 
