@@ -223,12 +223,17 @@ async function main() {
       && Number(commit.json.data?.currentStockTotal) === 0
       && Number(commit.json.data?.initialStockRows || commit.json.data?.material?.initialStockRows) === 0,
     {
+      code: commit.json?.code,
       materialId,
       barCode: commit.json?.data?.barCode,
       stock: commit.json?.data?.currentStockTotal,
       initRows: commit.json?.data?.initialStockRows ?? commit.json?.data?.material?.initialStockRows,
+      err: commit.json?.data || commit.json,
     },
   );
+  if (!materialId) {
+    throw new Error(`commit_create missing materialId: ${JSON.stringify(commit.json)}`);
+  }
 
   const ext = mysql(
     `SELECT material_id, bar_code, commodity_unit FROM jsh_material_extend WHERE bar_code='${BAR}' AND IFNULL(delete_flag,'0')<>'1'`,
