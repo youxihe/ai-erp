@@ -6,11 +6,11 @@
 |---|---|
 | Branch | `feat/aierp-017b2-multi-purchase-draft` |
 | Base READY HEAD | `525d428663ce602dc5429b5d6dec5f6e293b4d16` |
+| Fix commit | `a0d2fde402548953400e709998764035641db1ca` |
+| **Remote / branch tip HEAD** | `ff4506ddfcd538277866b0aab48bb782d7a6e4ab` |
 | Review | ChatGPT Round 1 → **REVIEW_FIX_REQUIRED** |
 | This note | **REVIEW_FIX_PUSHED** |
 | Merge | **Do not merge** to master from this agent |
-
-> Post-fix HEAD: `a0d2fde402548953400e709998764035641db1ca`
 
 ## Fixes
 
@@ -60,6 +60,8 @@ At: `2026-10-22T16:08:46.504Z`
 
 Did **not** re-confirm or post inventory for `GW-PURCHASE-119` or any live audited bill. Suite uses synthetic `GW-PURCHASE-{draftId}` + inserted depot heads only.
 
+Note: An earlier run against a stale `deploy-aierp-boot:latest` (pre-rebuild, still containing 单张采购快线) failed 12/18; re-ran against tagged `017b2-review-fix` → **18/18 PASS**. Docker Desktop briefly crashed during a later no-cache rebuild attempt; recorded suite evidence is from the successful tagged-image run above.
+
 ## LIVE_WECOM = NOT_VERIFIED
 
 - Real WeCom multi-bill XLSX upload → batch summary wording
@@ -71,7 +73,7 @@ Did **not** re-confirm or post inventory for `GW-PURCHASE-119` or any live audit
 ## Remote HEAD
 
 ```
-a0d2fde402548953400e709998764035641db1ca
+ff4506ddfcd538277866b0aab48bb782d7a6e4ab
 ```
 
-Branch tip after push: `origin/feat/aierp-017b2-multi-purchase-draft` @ above sha.
+Branch tip: `origin/feat/aierp-017b2-multi-purchase-draft` @ above sha (includes fix `a0d2fde4` + this evidence pin).
