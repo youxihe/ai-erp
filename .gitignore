@@ -23,3 +23,7 @@ jshERP-web/dist/
 *.log
 .DS_Store
 Thumbs.db
+# Local Maven cache from docker maven builds (hot-reload-boot.ps1)
+deploy/.m2-repo/
+# Hot-reload boot jar / lock / backups (see deploy/scripts/hot-reload-boot.ps1)
+deploy/runtime/

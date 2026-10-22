@@ -1,0 +1,15 @@
+# Overlay: bind-mount host jar over image jar so Java review-fix loops
+# do NOT require `docker compose build aierp-boot` every time.
+#
+# Usage:
+#   powershell -File deploy/scripts/hot-reload-boot.ps1
+#   # or manually:
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose.boot-hot.yml up -d aierp-boot
+#
+# Requires deploy/runtime/app.jar (created by hot-reload-boot.ps1).
+# Runtime dir is gitignored; never commit jars or .hot-reload.lock.
+
+services:
+  aierp-boot:
+    volumes:
+      - ./runtime/app.jar:/app/app.jar:ro
