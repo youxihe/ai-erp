@@ -3,7 +3,7 @@
 - **Ticket**: AIERP-021B (PR #45 material masterdata)
 - **Branch**: `feat/aierp-021b-material-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **Remote HEAD**: _(filled after push — see footer)_
+- **Remote HEAD**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no stock/initStock writes, did not touch #44 / `PartnerMasterDataService`)
 
 ## Coordinated naming (vs AIERP-021A / PR #44 @ 7acd8008)
@@ -58,4 +58,4 @@ Rejected / must not collide with partner:
 
 ---
 
-**Exact remote HEAD after push**: `PLACEHOLDER_SHA`
+**Exact remote HEAD after push**: `38eae8e725ef194ddcaa551067ee25fe98c2fed5`
