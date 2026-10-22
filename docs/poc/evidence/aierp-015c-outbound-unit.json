@@ -1,0 +1,53 @@
+{
+  "ticket": "AIERP-015C",
+  "kind": "outbound-unit",
+  "pass": true,
+  "wecomPluginRoot": "F:\\aierp-openclaw\\state\\npm\\projects\\wecom-wecom-openclaw-plugin-18f843d908__openclaw-generation__g-7568b6c00499b705\\node_modules\\@wecom\\wecom-openclaw-plugin",
+  "results": [
+    {
+      "name": "intent_receipt_bill",
+      "ok": true
+    },
+    {
+      "name": "intent_receipt_cn",
+      "ok": true
+    },
+    {
+      "name": "followup_file",
+      "ok": true
+    },
+    {
+      "name": "followup_resend",
+      "ok": true
+    },
+    {
+      "name": "not_template",
+      "ok": true
+    },
+    {
+      "name": "canHandle_followup_without_pending",
+      "ok": true
+    },
+    {
+      "name": "render_no_six_decimals",
+      "ok": true
+    },
+    {
+      "name": "render_no_media_path",
+      "ok": true
+    },
+    {
+      "name": "fmt",
+      "ok": true
+    },
+    {
+      "name": "wecom_plugin_discovered",
+      "ok": true,
+      "detail": "F:\\aierp-openclaw\\state\\npm\\projects\\wecom-wecom-openclaw-plugin-18f843d908__openclaw-generation__g-7568b6c00499b705\\node_modules\\@wecom\\wecom-openclaw-plugin"
+    },
+    {
+      "name": "receipt_render",
+      "ok": true
+    }
+  ]
+}

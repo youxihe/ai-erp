@@ -21,8 +21,10 @@
 | AIERP-015A | **DONE / PR #24** | 企业微信真实生成采购 DRAFT #106，12 工具集成；25/25 本地测试，未入库 |
 | AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
 | AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
+
+| **AIERP-020A** | **RELEASED / next_order #2 (SOP/UX)** | **标准业务确定性 SOP 脚本 + 企微 Markdown/卡片渲染规范；015C P0 的 receipt-send 优先，其他按小 PR 渐进** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
-| **AIERP-015C** | **READY_FOR_REVIEW** | **HMAC receipt/find+file + before_dispatch 回执意图 → MEDIA PDF；#119 只读 PASS；客户端打开待 UAT** |
+| **AIERP-015C** | **REVIEW_FIX_PUSHED / PR #37** | **sendMedia 真实 PDF + SOP receipt-send + 接续「文件直接发我」+ 业务 Markdown；待企微打开验收** |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
@@ -34,6 +36,20 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-22 14:25 · PDF 真机发送失败与 SOP/业务排版整改（本轮最新）
+
+用户企微截图已证实：机器人确认 GW-PURCHASE-119 已审核、读出 PDF 后，**把本机 `MEDIA: F:\\aierp-openclaw\\...` 路径作为普通文本输出**，并未附带文件；用户随后回复“文件直接发我”，模型竟发了采购 XLSX 模板。这次 **PDF_OUTBOUND=FAILED**，不能仅称“PENDING_USER”。Java HMAC `receipt/file`、PDF SHA256、库存不变与 8/8 意图单测仍有效，但**不能等价于企微附件真正送达**。
+
+已建立 **PR #37 AIERP-015C REVIEW_FIX_REQUIRED**。源代码 `before_dispatch` 返回 `{handled:true,text:"...\\nMEDIA: <WindowsPath>"}` 是错误投递路径：OpenClaw 普通插件/Hook 文本不保证把媒体指令变成文件。按当前 **`@wecom/wecom-openclaw-plugin`** 的版本使用结构化附件 payload 或可信 SDK 发送接口/支持的 channel sender，至少在 PC 端真实收到并打开 `采购入库业务回执_GW-PURCHASE-119.pdf`，且在一句“文件直接发我/重发”时延续**服务端绑定的回执待发送状态**、绝不回退 Excel 模板；不触碰已审核库存、不重复过账。
+
+用户还要求提高**业务文字的视觉层级**、明确加粗/颜色等实际支持方式，以及“标准 SOP 写为脚本、OpenClaw MD 只描述何时调用脚本”，避免模型逐个动态推理底层业务 API。新增 `AIERP-020A`（RELEASED SOP/UX，独立小棒）与：
+- `docs/poc/AGENT_SOP_EXECUTION.md`
+- `docs/poc/WE_COM_BUSINESS_MESSAGE_STYLE.md`
+- `deploy/openclaw/workspace/skills/erp-receipt/SKILL.md`
+- `docs/poc/queue/AIERP-020A.md`
+
+实施优先级：**015C 可实际发 PDF 第一**，020A 同轮可将 receipt-send 脚本化及格式渲染集成，但**不得为了大规模 SOP 重构而阻塞真实 PDF**。其余库存/采购/生产/服务 SOP 逐个迁移。企业微信插件官方支持 Markdown/模板卡片，但字号/颜色受渠道限制，必须以本机已安装版本/客户端验收，不可模拟 HTML CSS 或在文本内硬加颜色标签。
 
 ## 2026-10-22 13:35 · 017B1 已验收，PDF 回执交付成为下一 P0
 

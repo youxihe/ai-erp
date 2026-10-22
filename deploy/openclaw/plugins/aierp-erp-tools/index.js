@@ -1,12 +1,23 @@
 /**
  * AIERP-012A/013/015A/015B/017A OpenClaw tool plugin.
  * Trusts only ctx.requesterSenderId when ctx.messageChannel === "wecom".
- * Confirm + receipt PDF: before_dispatch trusted inbound → Java (never LLM erp_draft_confirm).
+ * Confirm + receipt SOP (real WeCom sendMedia, not MEDIA text) → Java (never LLM erp_draft_confirm).
  * Excel: erp_excel_template (+ optional prefill rows) + inbound xlsx preview (never excel.confirm).
  */
 import { createHmac, randomBytes, createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
+import {
+  runReceiptSend,
+  canHandleReceipt,
+  getPending,
+  isReceiptFollowup,
+} from "./sop/receipt-send.mjs";
+import {
+  renderPurchaseConfirmed,
+  factsFromConfirm,
+  sanitizeForChannel,
+} from "./sop/renderers/wecom-business.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -151,63 +162,6 @@ function isConfirmPhrase(text) {
 }
 
 
-function isReceiptRequest(text) {
-  const t = String(text || "").trim();
-  if (!t) return false;
-  // Template / Excel asks without 回执 → not receipt
-  if (/(模板|excel|\.xlsx|批量进货|进货模板)/i.test(t) && !/回执/.test(t)) return false;
-  return /(?:采购入库业务回执|业务回执|入库回执|回执\s*PDF|PDF\s*(?:回执|凭证)|(?:发|给我|把|再发|要|下载).{0,40}回执|回执.{0,12}(?:发我|给我|发一下|PDF))/i.test(
-    t,
-  );
-}
-
-function extractReceiptBillNumber(text) {
-  const m = String(text || "").match(/\b(GW-PURCHASE-\d+)\b/i);
-  if (!m) return undefined;
-  return m[1].toUpperCase();
-}
-
-function receiptMediaDir() {
-  const state =
-    process.env.OPENCLAW_STATE_DIR ||
-    join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state");
-  const dir = join(state, "media", "aierp-receipt");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function writeReceiptPdfFile(fileName, base64) {
-  const safe = basename(String(fileName || "receipt.pdf")).replace(/[^\w.\u4e00-\u9fff-]+/g, "_");
-  const path = join(receiptMediaDir(), `${Date.now()}_${safe}`);
-  writeFileSync(path, Buffer.from(base64, "base64"));
-  return path;
-}
-
-async function handleReceiptRequest(senderId, text, messageId) {
-  const billNumber = extractReceiptBillNumber(text);
-  const data = await signedPost("/aierp/v1/wecom/receipt/file", {
-    wecomUserId: senderId,
-    botId: botId(),
-    channel: CHANNEL_ID,
-    billNumber: billNumber || undefined,
-    messageMsgId: messageId || undefined,
-    isGroup: false,
-    eventSource: "WECOM_BEFORE_DISPATCH",
-  });
-  if (data?.needChoice || (data?.ambiguous && Array.isArray(data?.candidates) && data.candidates.length > 1)) {
-    return { handled: true, text: String(data.userSummaryZh || "找到多张回执，请回复单号。") };
-  }
-  if (!data?.found || !data?.fileBase64) {
-    return {
-      handled: true,
-      text: String(data?.userSummaryZh || "暂未找到可访问的已审核采购入库回执。"),
-    };
-  }
-  const mediaPath = writeReceiptPdfFile(data.fileName || `采购入库业务回执_${data.billNumber || "bill"}.pdf`, data.fileBase64);
-  const summary = String(data.userSummaryZh || `已找到采购单 ${data.billNumber}，已审核。`);
-  // Channel strips MEDIA: and sends the file (same path as Excel templates).
-  return { handled: true, text: `${summary}\nMEDIA: ${mediaPath}` };
-}
 
 
 function formatStock(data) {
@@ -297,12 +251,22 @@ function formatPurchaseDraft(data) {
 }
 
 function formatConfirm(data) {
-  if (data?.receiptText) return String(data.receiptText);
-  if (data?.hint) return String(data.hint);
-  const before = data?.stockBefore ? JSON.stringify(data.stockBefore) : "?";
-  const after = data?.stockAfter ? JSON.stringify(data.stockAfter) : "?";
-  return `采购入库已完成（已审核）\n原生单号：${data?.billNumber || "?"}\n库存：${before} → ${after}`;
+  try {
+    const facts = factsFromConfirm(data || {});
+    if (facts.billNumber) {
+      return sanitizeForChannel(renderPurchaseConfirmed(facts, "markdown"), { markdown: true });
+    }
+  } catch {
+    // fall through
+  }
+  const bill = data?.billNumber || "?";
+  const hint = data?.hint || data?.receiptText;
+  if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
+    return String(hint).slice(0, 500);
+  }
+  return `✅ 采购入库完成\n${bill} · 已审核`;
 }
+
 
 function registerErpTools(api) {
   const make = (name, description, path, paramSchema, buildBody, format) => {
@@ -1100,6 +1064,7 @@ function registerExcelObserveHook(api) {
 }
 
 function registerConfirmAndExcelDispatchHook(api) {
+  const apiRef = api;
   const handler = async (event, ctx) => {
     const channelId = ctx?.channelId || event?.channel;
     if (channelId !== CHANNEL_ID) return;
@@ -1110,18 +1075,31 @@ function registerConfirmAndExcelDispatchHook(api) {
     const messageId = event?.messageId || ctx?.messageId || null;
     const sessionKey = ctx?.sessionKey || event?.sessionKey || null;
 
-
-    // AIERP-015C: trusted receipt PDF request (never excel template / never re-post)
-    if (isReceiptRequest(text)) {
-      try {
-        return await handleReceiptRequest(senderId, text, messageId);
-      } catch (err) {
-        return {
-          handled: true,
-          text:
-            `暂无法发送回执：${String(err?.message || err).slice(0, 160)}。` +
-            "入库结果以已审核单为准，可稍后重试或登录 ERP 下载回执。",
-        };
+    // AIERP-015C/020A: receipt SOP — real WeCom sendMedia (never MEDIA: text, never excel template)
+    {
+      const route = canHandleReceipt(text, senderId);
+      if (route) {
+        try {
+          const result = await runReceiptSend({
+            wecomUserId: senderId,
+            text,
+            botId: botId(),
+            messageId,
+            signedPost,
+            cfg: apiRef?.config || {},
+            mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
+            followup: !!route.followup || isReceiptFollowup(text),
+            markdown: true,
+          });
+          return { handled: true, text: result.text || "回执处理完成。" };
+        } catch (err) {
+          return {
+            handled: true,
+            text:
+              `暂无法发送回执：${String(err?.message || err).slice(0, 160)}。` +
+              "入库结果以已审核单为准，可稍后回复「重发回执」。",
+          };
+        }
       }
     }
 
@@ -1299,6 +1277,35 @@ function registerPrepareGate(api) {
   };
   try {
     api.on("before_tool_call", handler, { matcher: ["erp_purchase_prepare"], priority: 100 });
+  } catch {
+    try {
+      api.on("before_tool_call", handler);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+
+function registerReceiptExcelGate(api) {
+  const handler = async (event, ctx) => {
+    const name = event?.toolName || event?.name || event?.tool || "";
+    if (name !== "erp_excel_template") return;
+    const wecomUserId = trustedWecomUserId(ctx) || String(ctx?.senderId || "").trim();
+    if (!wecomUserId) return;
+    const pending = getPending(wecomUserId);
+    if (!pending || !pending.billNumber) return;
+    if (pending.status === "SEND_ACCEPTED" || pending.status === "FILE_READY" || pending.status === "SEND_FAILED") {
+      return {
+        block: true,
+        blockReason:
+          `当前有待发送/可重发的已审核回执 ${pending.billNumber}。` +
+          "请回复「重发回执」或「文件直接发我」，不要索取采购 Excel 模板。",
+      };
+    }
+  };
+  try {
+    api.on("before_tool_call", handler, { matcher: ["erp_excel_template"], priority: 100 });
   } catch {
     try {
       api.on("before_tool_call", handler);
