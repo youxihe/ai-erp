@@ -35,7 +35,7 @@ public class AierpWecomController {
     @Resource
     private AierpWecomReceiptService receiptService;
     @Resource
-    private AierpWecomPartnerMasterDataService partnerMasterDataService;
+    private PartnerMasterDataService partnerMasterDataService;
     @Resource
     private com.jsh.erp.service.UserService userService;
 
@@ -211,7 +211,8 @@ public class AierpWecomController {
     }
 
     /**
-     * AIERP-021A: trusted WeCom before_dispatch commit for 确认伙伴建档{id} / 确认伙伴修改{id}.
+     * AIERP-021A: trusted WeCom before_dispatch commit for
+     * 确认建档供应商/客户{id} / 确认修改供应商/客户{id}.
      * Never exposed as an LLM tool. Partner-only — material uses separate service/phrases.
      */
     @PostMapping("/master/partner/commit")

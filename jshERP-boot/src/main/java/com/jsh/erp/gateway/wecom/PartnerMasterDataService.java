@@ -34,11 +34,12 @@ import java.util.regex.Pattern;
 /**
  * AIERP-021A: WeCom partner (供应商/客户) master-data prepare + trusted commit.
  * Writes use explicit {@link User} actor via JDBC — no fake HttpServletRequest / admin session.
- * Confirm phrases are partner-namespaced: 确认伙伴建档{requestId} / 确认伙伴修改{requestId}
- * (never bare 确认建档{id} / 确认修改{id} used by material 021B).
+ * Confirm phrases are type-namespaced:
+ * 确认建档供应商{id} / 确认修改供应商{id} / 确认建档客户{id} / 确认修改客户{id}
+ * (never bare 确认建档{id}; never 确认建档物料{id} from AIERP-021B).
  */
 @Service
-public class AierpWecomPartnerMasterDataService {
+public class PartnerMasterDataService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -58,12 +59,12 @@ public class AierpWecomPartnerMasterDataService {
             "advanceIn", "advance_in", "enabled", "deleteFlag", "delete_flag", "isystem",
             "fax", "email", "sort", "allNeedPay", "allNeedGet", "phoneNum", "telephone"));
 
-    /** Partner-namespaced: 确认伙伴建档{requestId} — never bare 确认建档{id}. */
+    /** Type-namespaced: 确认建档供应商{id} / 确认建档客户{id} — never bare 确认建档{id}. */
     private static final Pattern CONFIRM_CREATE = Pattern.compile(
-            "^\\s*确认\\s*伙伴\\s*建档\\s*[：:#＃]?\\s*(\\d+)\\s*$");
-    /** Partner-namespaced: 确认伙伴修改{requestId} — never bare 确认修改{id}. */
+            "^\\s*确认\\s*建档\\s*(供应商|客户)\\s*[：:#＃]?\\s*(\\d+)\\s*$");
+    /** Type-namespaced: 确认修改供应商{id} / 确认修改客户{id}. */
     private static final Pattern CONFIRM_UPDATE = Pattern.compile(
-            "^\\s*确认\\s*伙伴\\s*修改\\s*[：:#＃]?\\s*(\\d+)\\s*$");
+            "^\\s*确认\\s*修改\\s*(供应商|客户)\\s*[：:#＃]?\\s*(\\d+)\\s*$");
     private static final Pattern PHONE_OK = Pattern.compile("^[0-9+\\-\\s()]{5,32}$");
 
     @Resource
@@ -133,7 +134,7 @@ public class AierpWecomPartnerMasterDataService {
             supersedePriorPending(ctx, op, partnerType, finalPartnerId);
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime exp = now.plusSeconds(REQUEST_TTL_SEC);
-            String phrasePrefix = phrasePrefixFor(op);
+            String phrasePrefix = phrasePrefixFor(op, partnerType);
             // phrase filled after insert with auto id
             KeyHolder keys = new GeneratedKeyHolder();
             jdbcTemplate.update(con -> {
@@ -184,7 +185,7 @@ public class AierpWecomPartnerMasterDataService {
         challenge.put("requestId", requestId);
         challenge.put("challengeId", challengeId);
         challenge.put("expiresInSec", REQUEST_TTL_SEC);
-        String phrase = phrasePrefixFor(op) + requestId;
+        String phrase = phrasePrefixFor(op, partnerType) + requestId;
         challenge.put("phrase", phrase);
         challenge.put("hint", "请本人私聊回复「" + phrase + "」生效；群聊或模型自称确认无效。");
 
@@ -316,13 +317,16 @@ public class AierpWecomPartnerMasterDataService {
         }
         String op = String.valueOf(req.get("op_type"));
         String partnerType = String.valueOf(req.get("partner_type"));
+        if (!partnerType.equals(parsed.partnerType)) {
+            throw new BusinessRunTimeException(400, "确认原文类型与申请不一致，须为「" + expected + "」");
+        }
         if ("CREATE".equals(op) && !"CREATE".equals(parsed.op)) {
             throw new BusinessRunTimeException(400,
-                    "该申请需回复「" + phrasePrefixFor("CREATE") + parsed.requestId + "」");
+                    "该申请需回复「" + phrasePrefixFor("CREATE", partnerType) + parsed.requestId + "」");
         }
         if ("UPDATE".equals(op) && !"UPDATE".equals(parsed.op)) {
             throw new BusinessRunTimeException(400,
-                    "该申请需回复「" + phrasePrefixFor("UPDATE") + parsed.requestId + "」");
+                    "该申请需回复「" + phrasePrefixFor("UPDATE", partnerType) + parsed.requestId + "」");
         }
 
         assertPartnerPermission(ctx.user, partnerType, op);
@@ -1007,30 +1011,33 @@ public class AierpWecomPartnerMasterDataService {
         if (m1.matches()) {
             ParsedConfirm p = new ParsedConfirm();
             p.op = "CREATE";
-            p.requestId = Long.parseLong(m1.group(1));
-            p.phrase = phrasePrefixFor("CREATE") + p.requestId;
+            p.partnerType = m1.group(1);
+            p.requestId = Long.parseLong(m1.group(2));
+            p.phrase = phrasePrefixFor("CREATE", p.partnerType) + p.requestId;
             return p;
         }
         Matcher m2 = CONFIRM_UPDATE.matcher(rawText);
         if (m2.matches()) {
             ParsedConfirm p = new ParsedConfirm();
             p.op = "UPDATE";
-            p.requestId = Long.parseLong(m2.group(1));
-            p.phrase = phrasePrefixFor("UPDATE") + p.requestId;
+            p.partnerType = m2.group(1);
+            p.requestId = Long.parseLong(m2.group(2));
+            p.phrase = phrasePrefixFor("UPDATE", p.partnerType) + p.requestId;
             return p;
         }
         throw new BusinessRunTimeException(400,
-                "不是有效的往来单位确认指令，请回复「确认伙伴建档{申请号}」或「确认伙伴修改{申请号}」"
+                "不是有效的往来单位确认指令，请回复「确认建档供应商/客户{申请号}」或「确认修改供应商/客户{申请号}」"
                         + "（勿用裸「确认建档{号}」或物料确认语）");
     }
 
-    /** Partner-namespaced confirm prefix (coordinated with AIERP-021B material phrases). */
-    static String phrasePrefixFor(String op) {
+    /** Type-namespaced confirm prefix (coordinated with AIERP-021B material phrases). */
+    static String phrasePrefixFor(String op, String partnerType) {
+        String type = normalizePartnerType(partnerType);
         if ("CREATE".equals(op)) {
-            return "确认伙伴建档";
+            return "确认建档" + type;
         }
         if ("UPDATE".equals(op)) {
-            return "确认伙伴修改";
+            return "确认修改" + type;
         }
         throw new BusinessRunTimeException(400, "未知操作");
     }
@@ -1240,6 +1247,7 @@ public class AierpWecomPartnerMasterDataService {
 
     static final class ParsedConfirm {
         String op;
+        String partnerType;
         long requestId;
         String phrase;
     }

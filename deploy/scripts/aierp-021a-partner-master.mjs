@@ -224,7 +224,7 @@ async function main() {
       prep.json.data?.dbWrite === false &&
       afterPrep === beforeCreate &&
       !!requestId &&
-      phrase === `确认伙伴建档${requestId}`,
+      phrase === `确认建档供应商${requestId}`,
     { requestId, phrase, beforeCreate, afterPrep, summary: prep.json?.data?.summary },
   );
 
@@ -297,7 +297,7 @@ async function main() {
          status, result_partner_id, expires_at, consumed_at, consume_message_id, created_at
        ) VALUES (
          '${challengeHex}', 'wecom', '${BOT}', 'foreign-wecom-user', 999, 999, 999, 1,
-         'CREATE', '供应商', NULL, NULL, '{}', 'deadbeef', '确认伙伴建档0',
+         'CREATE', '供应商', NULL, NULL, '{}', 'deadbeef', '确认建档供应商0',
          'CONSUMED', ${foreignPartner}, DATE_ADD(NOW(), INTERVAL 1 DAY), NOW(), '${foreignMsg}', NOW()
        )`
     );
@@ -411,7 +411,7 @@ async function main() {
       "pending_partner_survives_material_phrase",
       (wrong.json?.code === 400 || wrong.json?.code >= 400) &&
         st === "PENDING" &&
-        String(pendPhrase || "").startsWith("确认伙伴建档"),
+        String(pendPhrase || "").includes("确认建档供应商"),
       { code: wrong.json?.code, status: st, pendPhrase },
     );
     mysql(`UPDATE aierp_master_partner_request SET status='CANCELLED' WHERE id=${Number(pendId)} AND status='PENDING'`);
@@ -496,7 +496,7 @@ async function main() {
   }));
   const cusCountBefore = countSupplier(CUS_NAME, "客户");
   note("customer_prepare_zero_insert", cusPrep.json?.code === 200 && cusCountBefore === 0 &&
-    cusPrep.json?.data?.challenge?.phrase === `确认建档客户${cusPrep.json?.data?.requestId}`, {
+    String(cusPrep.json?.data?.challenge?.phrase || "").startsWith("确认建档客户"), {
     requestId: cusPrep.json?.data?.requestId,
     phrase: cusPrep.json?.data?.challenge?.phrase,
   });

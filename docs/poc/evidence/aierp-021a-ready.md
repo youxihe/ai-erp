@@ -9,8 +9,8 @@
 
 | Area | Path |
 |---|---|
-| Java facade | `AierpWecomMasterDataService` (`createPartnerAs` / `updatePartnerAs` + prepare/commit) |
-| API | `POST /aierp/v1/wecom/master/partner/prepare` · `.../commit` |
+| Java facade | `PartnerMasterDataService` (`createPartnerAs` / `updatePartnerAs` + prepare/commit) |
+| API | `POST /aierp/v1/wecom/master/partner/prepare` ï¿½ `.../commit` |
 | Auth filter allowlist | `LogCostFilter` (annotation + explicit doFilter) |
 | Schema | `deploy/sql/08-aierp-021a-partner-master.sql` (+ seed-demo) |
 | SOP | `sop/partner-upsert.mjs` + registry priority `partner_confirm` |
@@ -25,7 +25,7 @@ Covered: prepare zero `jsh_supplier` insert; commit real id/type/tenant/creator;
 
 ## Live WeCom UAT
 
-`NOT_RUN` — F: unified plugin deploy deferred. Local HMAC + DB facts verified (20/20).
+`NOT_RUN` ï¿½ F: unified plugin deploy deferred. Local HMAC + DB facts verified (20/20).
 
 ## Gaps
 
