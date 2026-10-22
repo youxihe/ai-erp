@@ -22,11 +22,11 @@
 | AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
 | AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
-| AIERP-015C | PLANNED / after 015B | 企微 PDF 附件发送实测、回执再次领取、确认指令标点兼容 |
+| **AIERP-015C** | **RELEASED / next_order #1 (CODE)** | **按已审核单号/最近一次确认查询真实采购回执，并把 PDF 原文件发送至本人企微；修复误发采购模板** |
 
 | AIERP-016 | PLANNED | 配制/服务耗料多轮草稿与确认；复用 015 通用确认协议 |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
-| **AIERP-017B1** | **RELEASED / next_order #1 (CODE)** | **企微 Excel 预览 → 安全绑定真实采购草稿 → 用户一次本人确认原生入库 → 文本回执；最高客户 Demo P0** |
+| AIERP-017B1 | **DONE / PR #35** | **企微真实 Excel 80 L / ¥1,600 → DRAFT #119 → 原生已审核 GW-PURCHASE-119，库存 170.7→250.7 L；11/11 本地 + 真人 UAT** |
 | AIERP-017B | PLANNED / after 017A | **采购入库、配制生产、服务耗料出库批量 DRAFT；销售出库接口差异补齐** |
 | AIERP-017C | PLANNED / after 017B + 015B | **批次可信确认 → 原生多单过账 → XLSX/PDF 回执发送** |
 | AIERP-017 | SUPERSEDED by 017A–017C | Excel 批量业务成为客户 Demo 核心，不是普通文件功能 |
@@ -34,6 +34,16 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-22 13:35 · 017B1 已验收，PDF 回执交付成为下一 P0
+
+**真人企微验收已完成**：Excel 实际单据 `CG-20261021-230716-ACC9`、RM-A001 80 L、华东化工、原料仓、单价 20 元 → ERP 真实草稿 #119 → 本人回复 `确认采购119` → 原生已审核单据 `GW-PURCHASE-119`，库存 **170.7→250.7 L**（+80 L），文字回执成功。PR #35 已 ChatGPT Review 并合并 `e3ef4c86`。GitHub Review 附加三项 Java 安全强化：server 自算上传文件 SHA；prepare-verified 匹配当前授权预览 ID + file hash；改文件时旧草稿取消失败立即停止新建。Cursor 下一次部署前跑非过账测试/Java build，**不要重跑已成功的 80 L 入库**。
+
+**本次 Demo P0 体验缺陷**：确认后用户说“《采购入库业务回执》发我”，Agent **错误调用采购模板**，回复“未入库”并发出 XLSX。这与真实已审核单据事实冲突。后端已经有 `aierp_gateway_receipt` 记录和服务端生成的 PDF，另有 ERP 登录 `POST /aierp/v1/wecom/receipt/pdf` 仅供 Session；但**没有可信企微 Bot 只读回执文件领取和稳定发送通道**。
+
+**新任务 AIERP-015C 正式 RELEASED**：从已合并的 master 独立 `feat/aierp-015c-wecom-real-receipt-pdf`，优先匹配明确回执请求 → 检索最后一笔本账号确认的**已审核**采购 `GW-PURCHASE-119`/用户指定原生单号 → ERP 授权 PDF bytes → 企微正确 PDF 文件附件（不能发 Excel 模板），服务端审计发送状态。附件成功可打开才算 `PDF_SENT_VERIFIED`；失败不能改已完成的库存、不能说未入库或发送成功。禁止模型任意磁盘/HTTP 读文件，不使用管理员 session；从最近的绑定 user + bot + wecom sender + binding version 实时鉴权。详见 `docs/poc/queue/AIERP-015C.md`。
+
+**后续排序**：015C 成功 → 017B 多业务采购/配制/服务耗料批次 → 017C 批次确认和 XLSX/PDF 回执。019B 通用动态 ERP Gateway 和 016 拓展按用户 Demo 需要安排；先不要争抢单一 F: 运行态插件。
 
 ## 2026-10-22 07:12 · 017A 已 DONE，017B1 立即开工
 
