@@ -14,7 +14,8 @@
 | Pre-integration tip | `63ff11a764f23d48ca4584cec2f7086bc087e21b` |
 | Merged `origin/master` (#41) | `db13699fc743debe06665aca4d043ba526844ddc` |
 | Merge commit | `d60480744612abd21a27093395a38d270bc5ee3c` |
-| **Remote HEAD** | `588d50bc1fa4124059802bbc074cb9be93c01176` |
+| Evidence/suite tip | `588d50bc1fa4124059802bbc074cb9be93c01176` (INTEGRATION doc + suite JSON) |
+| **Remote HEAD** | `c3fd7d50d8a1511b164e4888988b5f79b63cdc64` |
 | Merge | **Do not self-merge** to master from this agent |
 | F: / stock | No F: OpenClaw overwrite; no auto stock post |
 
