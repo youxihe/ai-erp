@@ -3,9 +3,9 @@
   "kind": "non-post-mix-prepare",
   "pass": true,
   "wecomUserIdMasked": "m16-mv***",
-  "draftId": 222,
-  "businessKey": "PZ-016M-MVJS76WY",
-  "confirmPhrase": "确认配制222",
+  "draftId": 229,
+  "businessKey": "PZ-016M-MVJSFKXQ",
+  "confirmPhrase": "确认配制229",
   "stockBefore": {
     "RM-A001": 250.7,
     "RM-B002": 4.8,
@@ -53,12 +53,12 @@
     {
       "name": "preview_auto_mix_draft",
       "ok": true,
-      "detail": "{\"draftId\":222,\"confirmPhrase\":\"确认配制222\",\"recipeHash\":\"e248f607c73d621e\",\"summary\":\"配制单 PZ-016M-MVJS76WY\\n待确认单 #222（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制222」（模型布尔无效）\"}"
+      "detail": "{\"draftId\":229,\"confirmPhrase\":\"确认配制229\",\"recipeHash\":\"e248f607c73d621e\",\"summary\":\"配制单 PZ-016M-MVJSFKXQ\\n待确认单 #229（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制229」（模型布尔无效）\"}"
     },
     {
       "name": "one_bill_three_raw_lines",
       "ok": true,
-      "detail": "{\"rawLineCount\":3,\"businessKey\":\"PZ-016M-MVJS76WY\"}"
+      "detail": "{\"rawLineCount\":3,\"businessKey\":\"PZ-016M-MVJSFKXQ\"}"
     },
     {
       "name": "posted_false_on_prepare",
@@ -73,7 +73,7 @@
     {
       "name": "replay_idempotent_same_draft",
       "ok": true,
-      "detail": "{\"draftId1\":222,\"draftId2\":222,\"replayed\":true}"
+      "detail": "{\"draftId1\":229,\"draftId2\":229,\"replayed\":true}"
     },
     {
       "name": "replay_stock_still_unchanged",
@@ -88,12 +88,12 @@
     {
       "name": "reject_purchase_phrase_on_mix_draft",
       "ok": true,
-      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制222」\"}"
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制229」\"}"
     },
     {
       "name": "reject_service_phrase_on_mix_draft",
       "ok": true,
-      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制222」\"}"
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制229」\"}"
     },
     {
       "name": "never_auto_confirm_purchase_119",
