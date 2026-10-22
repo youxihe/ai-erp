@@ -3,7 +3,7 @@
 **Branch:** `feat/aierp-016s-service-outbound-sop`  
 **PR:** https://github.com/youxihe/ai-erp/pull/43  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: plugin overwrite; no re-post of `GW-SERVICE-136`.  
-**HEAD:** `af7d740dc5ea0ed6a8c60a53eea3db45cba0e345`  
+**HEAD:** `cdeb067efcf9cd962ac6f1f60ef35dd4b4bd482c`  
 **Code fix:** `48fecfef`
 
 ## Round-1 fixes
