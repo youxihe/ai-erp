@@ -21,8 +21,17 @@
 # 首次：复制环境变量模板（勿提交真实密钥）
 copy deploy\.env.example deploy\.env
 
-# 启动 MySQL + Redis + Boot（含镜像构建）
+# 启动 MySQL + Redis + Boot（含镜像构建；首次或改 Dockerfile 时才需要 build）
 powershell -File deploy\scripts\start-all.ps1
+
+# 日常改 Java：只编译 jar + 重启容器（不 rebuild 镜像，约 1–3 分钟）
+# 脚本会：mvn package → app.jar.building → 替换 deploy/runtime/app.jar → 重启 aierp-boot
+# 编译失败不覆盖旧 jar；启动失败自动从 app.jar.bak 回滚；并发用 .hot-reload.lock
+powershell -File deploy\scripts\hot-reload-boot.ps1
+
+# 手动回滚（若自动回滚后仍异常）：
+# Copy-Item deploy\runtime\app.jar.bak deploy\runtime\app.jar -Force
+# docker compose --env-file deploy\.env -f deploy\docker-compose.yml -f deploy\docker-compose.boot-hot.yml up -d aierp-boot
 
 # 仅种子 PCB 主数据（可重复执行）
 powershell -File deploy\scripts\seed-demo.ps1

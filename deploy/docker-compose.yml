@@ -48,6 +48,9 @@ services:
       timeout: 5s
       retries: 20
 
+  # Java iteration: prefer `powershell -File deploy/scripts/hot-reload-boot.ps1`
+  # (compose + docker-compose.boot-hot.yml bind-mounts deploy/runtime/app.jar).
+  # Full `docker compose build aierp-boot` only when Dockerfile/JRE/fonts change.
   aierp-boot:
     build:
       context: ..
