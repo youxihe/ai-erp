@@ -1,9 +1,9 @@
-﻿# AIERP-016S REVIEW_FIX_PUSHED
+# AIERP-016S REVIEW_FIX_PUSHED
 
 **Branch:** `feat/aierp-016s-service-outbound-sop`  
 **PR:** https://github.com/youxihe/ai-erp/pull/43  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: plugin overwrite; no re-post of `GW-SERVICE-136`.  
-**Remote HEAD (tip):** see `git rev-parse origin/feat/aierp-016s-service-outbound-sop` after push  
+**HEAD:** `ed85bae560017b62123d546798bba0f67bf0b238`  
 **Code fix:** `48fecfef`  
 **Evidence UTF-8:** `6237390e` · **JSON suite:** `9993cc85`
 
