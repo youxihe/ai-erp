@@ -3,7 +3,7 @@
 **Branch:** `feat/aierp-016m-mix-sop`  
 **PR:** https://github.com/youxihe/ai-erp/pull/42  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: OpenClaw overwrite; no MIX native post / stock write.  
-**HEAD:** `3c2e01a4a7cd38e437cc6bb6cece76ef9975b5eb`
+**HEAD:** `329722f96983ff1621e10cf91701f6ab0eaa91e2`
 
 ## Round-1 fixes (ChatGPT P0/P1)
 
