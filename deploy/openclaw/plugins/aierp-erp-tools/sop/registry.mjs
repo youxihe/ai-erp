@@ -1,13 +1,24 @@
 /**
  * SOP registry — priority routing for trusted WeCom inbound.
- * receipt_request/followup > purchase_confirm > excel cancel/followup > excel file > fallback LLM
+ * receipt_request/followup > purchase_confirm > purchase_batch_prepare >
+ * excel cancel/followup > excel file > fallback LLM
+ *
+ * Note: wiring into plugin/index.js before_dispatch is deferred to avoid expanding
+ * the shared plugin surface during 017B2; preview auto-prepare + HMAC batch API cover the path.
  */
 import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
+import {
+  SOP_ID as PURCHASE_BATCH_SOP,
+  canHandlePurchaseBatchFollowup,
+  runPurchaseBatchPrepare,
+  formatPurchaseBatchReply,
+} from "./purchase-batch-prepare.mjs";
 
 export const SOP_PRIORITY = [
   "receipt_request",
   "receipt_followup",
   "purchase_confirm",
+  "purchase_batch_prepare",
   "excel_cancel",
   "excel_followup",
   "excel_file",
@@ -32,6 +43,9 @@ export function routeTrustedInbound({ text, wecomUserId, isConfirmPhrase, isExce
   if (typeof isConfirmPhrase === "function" && isConfirmPhrase(t)) {
     return { sopId: "purchase_confirm" };
   }
+  if (canHandlePurchaseBatchFollowup(t)) {
+    return { sopId: PURCHASE_BATCH_SOP };
+  }
   if (typeof isExcelCancel === "function" && isExcelCancel(t)) {
     return { sopId: "excel_cancel" };
   }
@@ -41,4 +55,11 @@ export function routeTrustedInbound({ text, wecomUserId, isConfirmPhrase, isExce
   return null;
 }
 
-export { isReceiptRequest, isReceiptFollowup };
+export {
+  isReceiptRequest,
+  isReceiptFollowup,
+  canHandlePurchaseBatchFollowup,
+  runPurchaseBatchPrepare,
+  formatPurchaseBatchReply,
+  PURCHASE_BATCH_SOP,
+};
