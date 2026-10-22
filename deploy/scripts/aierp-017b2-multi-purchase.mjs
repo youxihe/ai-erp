@@ -1,9 +1,11 @@
 /**
- * AIERP-017B2 non-posting suite:
+ * AIERP-017B2 non-posting suite (REVIEW_FIX):
  * 1) 2 businessKeys / 3 lines → exactly 2 DRAFTs, stock unchanged, idempotent re-upload
- * 2) Audited #119-style re-upload → 已审核 + GW bill / PDF offer; never 未入库/待确认; no new draft
- * 3) Same businessKey conflicting suppliers → blocked
- * 4) purchase-batch-prepare API + SOP module present
+ * 2) Audited #119-style re-upload with verified native head → POSTED / 已审核 + PDF; no new draft
+ * 3) CONFIRMED gaps → RECONCILIATION_REQUIRED (missing bill / missing head / unapproved head); no new draft
+ * 4) Idempotent reupload keeps immutable batch revision
+ * 5) Same businessKey conflicting bill fields → blocked; errors selection explicit
+ * 6) purchase-batch-prepare API + SOP module present; no model excel.confirm
  */
 import { createHmac, randomBytes, createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -206,6 +208,8 @@ note(
   },
 );
 
+const batchRev1 = Number(md?.revision || 0);
+
 const multiPrev2 = await signedPost("/aierp/v1/wecom/excel/preview", {
   wecomUserId: WECOM,
   botId: BOT,
@@ -224,6 +228,13 @@ note(
     ids2.length === 2 &&
     ids2.join(",") === uniqueDraftIds.map(String).sort().join(","),
   { first: uniqueDraftIds, second: ids2 },
+);
+
+const batchRev2 = Number(md2?.revision || 0);
+note(
+  "idempotent_reupload_immutable_revision",
+  batchRev1 >= 1 && batchRev2 === batchRev1 && String(md2?.batchId) === String(md?.batchId),
+  { batchRev1, batchRev2, batchId1: md?.batchId, batchId2: md2?.batchId },
 );
 
 const batchApi = await signedPost("/aierp/v1/wecom/excel/purchase-batch-prepare", {
@@ -254,6 +265,16 @@ note("sop_purchase_batch_prepare_present", existsSync(sopPlugin) && existsSync(s
   sopPlugin: existsSync(sopPlugin),
   sopMirror: existsSync(sopMirror),
 });
+const pluginIndex = join(root, "deploy", "openclaw", "plugins", "aierp-erp-tools", "index.js");
+const pluginSrc = existsSync(pluginIndex) ? readFileSync(pluginIndex, "utf8") : "";
+note(
+  "no_model_excel_confirm_tool",
+  existsSync(pluginIndex) &&
+    !/registerTool\s*\(\s*['\"]excel\.confirm['\"]/.test(pluginSrc) &&
+    !/name:\s*['\"]excel\.confirm['\"]/.test(pluginSrc) &&
+    !/erp_excel_confirm/.test(pluginSrc),
+  { pluginIndex: existsSync(pluginIndex) },
+);
 
 await signedPost("/aierp/v1/wecom/excel/workflow/cancel", {
   wecomUserId: WECOM,
@@ -309,6 +330,13 @@ mysql(
 mysql(
   `UPDATE aierp_gateway_confirm_challenge SET status='CANCELLED' WHERE draft_id=${Number(auditedDraftId)} AND status='PENDING'`,
 );
+// Verified native audited head required for POSTED (P0 #119 valid path).
+mysql(
+  `DELETE FROM jsh_depot_head WHERE number='${fakeBill}' AND tenant_id=63 AND IFNULL(delete_flag,'0')<>'1'`,
+);
+mysql(
+  `INSERT INTO jsh_depot_head (type, sub_type, number, status, tenant_id, delete_flag, remark, create_time, oper_time) VALUES ('入库','采购','${fakeBill}','1',63,'0','017b2-review-fix-audited',NOW(),NOW())`,
+);
 
 const auditedReplay = await signedPost("/aierp/v1/wecom/excel/preview", {
   wecomUserId: WECOM,
@@ -322,18 +350,23 @@ const auditedReplay = await signedPost("/aierp/v1/wecom/excel/preview", {
 });
 const ar = auditedReplay.json?.data;
 const arSummary = String(ar?.userSummaryZh || "");
-const noPendingWords = !/未入库|待确认|尚未入库/.test(arSummary);
+const noPendingWords = !/未入库|待确认|尚未入库|需人工对账/.test(arSummary);
 const hasAudited = /已审核/.test(arSummary) && arSummary.includes(fakeBill);
 const draftsOpenAfter = Number(
   mysql(
-    `SELECT COUNT(*) FROM aierp_gateway_draft WHERE tenant_id=63 AND status IN ('DRAFT','AWAITING_CONFIRM') AND id<>${Number(auditedDraftId)} AND remark LIKE '%017b2-audited%'`,
+    `SELECT COUNT(*) FROM aierp_gateway_draft WHERE tenant_id=63 AND status IN ('DRAFT','AWAITING_CONFIRM') AND id<>${Number(auditedDraftId)} AND (payload_json LIKE '%017b2-audited%' OR remark LIKE '%017b2-audited%')`,
   ) || 0,
 );
 const sameDraft = String(ar?.draftId || ar?.drafts?.[0]?.draftId) === String(auditedDraftId);
 note(
-  "audited_replay_no_pending_wording",
-  auditedReplay.json?.code === 200 && noPendingWords && hasAudited && String(ar?.statusLabel || "").includes("已审核"),
-  { summary: arSummary.slice(0, 240), statusLabel: ar?.statusLabel, billNumber: ar?.billNumber },
+  "audited_119_valid_posted",
+  auditedReplay.json?.code === 200 &&
+    noPendingWords &&
+    hasAudited &&
+    String(ar?.statusLabel || "").includes("已审核") &&
+    String(ar?.drafts?.[0]?.state || "") === "POSTED" &&
+    Number(ar?.reconciliationRequired || 0) === 0,
+  { summary: arSummary.slice(0, 240), statusLabel: ar?.statusLabel, billNumber: ar?.billNumber, state: ar?.drafts?.[0]?.state },
 );
 note(
   "audited_replay_offers_pdf_and_same_bill",
@@ -354,7 +387,7 @@ const abSummary = String(auditedBatch.json?.data?.userSummaryZh || "");
 note(
   "prepare_verified_batch_audited",
   auditedBatch.json?.code === 200 &&
-    !/未入库|待确认/.test(abSummary) &&
+    !/未入库|待确认|需人工对账/.test(abSummary) &&
     /已审核/.test(abSummary) &&
     abSummary.includes(fakeBill),
   abSummary.slice(0, 220),
@@ -365,6 +398,184 @@ await signedPost("/aierp/v1/wecom/excel/workflow/cancel", {
   botId: BOT,
   channel: "wecom",
 });
+
+// --- P0 reconciliation: missing bill / missing head / unapproved head ---
+async function seedConfirmedDraft(tag) {
+  await signedPost("/aierp/v1/wecom/excel/workflow/cancel", {
+    wecomUserId: WECOM,
+    botId: BOT,
+    channel: "wecom",
+  });
+  const biz = `CG-B2RC-${tag}-${stamp}`;
+  const tpl = await signedPost("/aierp/v1/wecom/excel/template", {
+    wecomUserId: WECOM,
+    botId: BOT,
+    channel: "wecom",
+    scene: "PURCHASE",
+    rows: [
+      {
+        businessKey: biz,
+        date: "2026-10-22",
+        organName: "华东化工",
+        barCode: "RM-A001",
+        name: "表面活性剂",
+        depotName: "原料仓",
+        qty: "2",
+        unit: "L",
+        price: "20",
+        remark: `017b2-recon-${tag}`,
+      },
+    ],
+  });
+  const b64 = tpl.json?.data?.fileBase64;
+  if (!b64) {
+    throw new Error(`seedConfirmedDraft(${tag}) template failed: ${JSON.stringify(tpl.json || tpl).slice(0, 400)}`);
+  }
+  const bytes = Buffer.from(b64, "base64");
+  const sha = createHash("sha256").update(bytes).digest("hex");
+  const prev = await signedPost("/aierp/v1/wecom/excel/preview", {
+    wecomUserId: WECOM,
+    botId: BOT,
+    channel: "wecom",
+    fileName: `采购-recon-${tag}.xlsx`,
+    fileBase64: b64,
+    fileSha256: sha,
+    messageMsgId: `b2-rc-${tag}-${Date.now()}`,
+    openWorkflow: true,
+  });
+  const draftId = prev.json?.data?.draftId;
+  if (!draftId) {
+    throw new Error(`seedConfirmedDraft(${tag}) preview failed: ${JSON.stringify(prev.json || prev).slice(0, 400)}`);
+  }
+  return { biz, sha, fileBase64: b64, draftId, previewId: prev.json?.data?.previewId };
+}
+
+function openDraftCountExcept(draftId) {
+  return Number(
+    mysql(
+      `SELECT COUNT(*) FROM aierp_gateway_draft WHERE tenant_id=63 AND status IN ('DRAFT','AWAITING_CONFIRM') AND id<>${Number(draftId)} AND payload_json LIKE '%017b2-recon%'`,
+    ) || 0,
+  );
+}
+
+// missing bill
+{
+  const seed = await seedConfirmedDraft("nobill");
+  mysql(
+    `UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number=NULL, confirm_time=NOW() WHERE id=${Number(seed.draftId)} AND tenant_id=63`,
+  );
+  mysql(
+    `UPDATE aierp_gateway_confirm_challenge SET status='CANCELLED' WHERE draft_id=${Number(seed.draftId)} AND status='PENDING'`,
+  );
+  const replay = await signedPost("/aierp/v1/wecom/excel/preview", {
+    wecomUserId: WECOM,
+    botId: BOT,
+    channel: "wecom",
+    fileName: "采购-recon-nobill.xlsx",
+    fileBase64: seed.fileBase64,
+    fileSha256: seed.sha,
+    messageMsgId: `b2-rc-nobill2-${Date.now()}`,
+    openWorkflow: true,
+  });
+  const d = replay.json?.data;
+  const state = String(d?.drafts?.[0]?.state || d?.statusLabel || "");
+  const summary = String(d?.userSummaryZh || "");
+  const reason = String(d?.reconciliationReason || d?.drafts?.[0]?.reconciliationReason || "");
+  note(
+    "recon_missing_bill",
+    replay.json?.code === 200 &&
+      String(d?.drafts?.[0]?.state || "") === "RECONCILIATION_REQUIRED" &&
+      reason === "MISSING_BILL" &&
+      (state.includes("RECONCILIATION") || String(d?.statusLabel || "").includes("对账")) &&
+      !/已审核、已入库/.test(String(d?.statusLabel || "")) &&
+      !/待确认/.test(summary) &&
+      Number(d?.alreadyPosted || 0) === 0 &&
+      openDraftCountExcept(seed.draftId) === 0,
+    {
+      state,
+      statusLabel: d?.statusLabel,
+      reason,
+      summary: summary.slice(0, 200),
+    },
+  );
+  await signedPost("/aierp/v1/wecom/excel/workflow/cancel", { wecomUserId: WECOM, botId: BOT, channel: "wecom" });
+}
+
+// missing native head
+{
+  const seed = await seedConfirmedDraft("nohead");
+  const bill = `GW-PURCHASE-${seed.draftId}`;
+  mysql(
+    `UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number='${bill}', confirm_time=NOW() WHERE id=${Number(seed.draftId)} AND tenant_id=63`,
+  );
+  mysql(
+    `UPDATE aierp_gateway_confirm_challenge SET status='CANCELLED' WHERE draft_id=${Number(seed.draftId)} AND status='PENDING'`,
+  );
+  mysql(`DELETE FROM jsh_depot_head WHERE number='${bill}' AND tenant_id=63`);
+  const replay = await signedPost("/aierp/v1/wecom/excel/preview", {
+    wecomUserId: WECOM,
+    botId: BOT,
+    channel: "wecom",
+    fileName: "采购-recon-nohead.xlsx",
+    fileBase64: seed.fileBase64,
+    fileSha256: seed.sha,
+    messageMsgId: `b2-rc-nohead2-${Date.now()}`,
+    openWorkflow: true,
+  });
+  const d = replay.json?.data;
+  const reason = String(d?.reconciliationReason || d?.drafts?.[0]?.reconciliationReason || "");
+  note(
+    "recon_missing_native_head",
+    replay.json?.code === 200 &&
+      String(d?.drafts?.[0]?.state || "") === "RECONCILIATION_REQUIRED" &&
+      reason === "MISSING_NATIVE_HEAD" &&
+      !String(d?.statusLabel || "").includes("已审核") &&
+      Number(d?.alreadyPosted || 0) === 0 &&
+      openDraftCountExcept(seed.draftId) === 0,
+    { reason, statusLabel: d?.statusLabel, summary: String(d?.userSummaryZh || "").slice(0, 200) },
+  );
+  await signedPost("/aierp/v1/wecom/excel/workflow/cancel", { wecomUserId: WECOM, botId: BOT, channel: "wecom" });
+}
+
+// unapproved native head
+{
+  const seed = await seedConfirmedDraft("unapp");
+  const bill = `GW-PURCHASE-${seed.draftId}`;
+  mysql(
+    `UPDATE aierp_gateway_draft SET status='CONFIRMED', bill_number='${bill}', confirm_time=NOW() WHERE id=${Number(seed.draftId)} AND tenant_id=63`,
+  );
+  mysql(
+    `UPDATE aierp_gateway_confirm_challenge SET status='CANCELLED' WHERE draft_id=${Number(seed.draftId)} AND status='PENDING'`,
+  );
+  mysql(`DELETE FROM jsh_depot_head WHERE number='${bill}' AND tenant_id=63`);
+  mysql(
+    `INSERT INTO jsh_depot_head (type, sub_type, number, status, tenant_id, delete_flag, remark, create_time, oper_time) VALUES ('入库','采购','${bill}','0',63,'0','017b2-review-fix-unapproved',NOW(),NOW())`,
+  );
+  const replay = await signedPost("/aierp/v1/wecom/excel/preview", {
+    wecomUserId: WECOM,
+    botId: BOT,
+    channel: "wecom",
+    fileName: "采购-recon-unapp.xlsx",
+    fileBase64: seed.fileBase64,
+    fileSha256: seed.sha,
+    messageMsgId: `b2-rc-unapp2-${Date.now()}`,
+    openWorkflow: true,
+  });
+  const d = replay.json?.data;
+  const reason = String(d?.reconciliationReason || d?.drafts?.[0]?.reconciliationReason || "");
+  note(
+    "recon_unapproved_native_head",
+    replay.json?.code === 200 &&
+      String(d?.drafts?.[0]?.state || "") === "RECONCILIATION_REQUIRED" &&
+      reason === "NATIVE_NOT_AUDITED" &&
+      !String(d?.statusLabel || "").includes("已审核") &&
+      Number(d?.alreadyPosted || 0) === 0 &&
+      openDraftCountExcept(seed.draftId) === 0,
+    { reason, statusLabel: d?.statusLabel, summary: String(d?.userSummaryZh || "").slice(0, 200) },
+  );
+  mysql(`DELETE FROM jsh_depot_head WHERE number='${bill}' AND tenant_id=63 AND remark='017b2-review-fix-unapproved'`);
+  await signedPost("/aierp/v1/wecom/excel/workflow/cancel", { wecomUserId: WECOM, botId: BOT, channel: "wecom" });
+}
 
 // --- Same businessKey with conflicting bill-level fields (dates) ---
 const conflictBiz = `CG-B2CF-${stamp}`;
@@ -443,24 +654,24 @@ const out = {
   results,
   pass: results.filter((x) => x.ok).length,
   fail: results.filter((x) => !x.ok).length,
-  note: "Non-posting. Audited replay simulated via CONFIRMED status + fake bill_number (no native stock delta).",
+  note: "Non-posting. POSTED only with verified native depot_head status=1; gaps → RECONCILIATION_REQUIRED; revision immutable on same-file reupload.",
 };
 writeFileSync(join(evidenceDir, "aierp-017b2-multi-purchase.json"), JSON.stringify(out, null, 2));
 writeFileSync(
   join(evidenceDir, "aierp-017b2-ready.md"),
-  `# AIERP-017B2 READY_FOR_REVIEW
+  `# AIERP-017B2 READY_FOR_REVIEW (post REVIEW_FIX)
 
 ## HEAD
 
-见 push 后最新 commit。
+见 \`aierp-017b2-REVIEW_FIX_PUSHED.md\`。
 
 ## 行为
 
-1. 多张采购 Excel（2 businessKey / 3 行）→ 恰好 2 个未审核 DRAFT，库存不变；同文件重传幂等。
-2. 已审核单重传（#119 类）→ 回复「已审核」+ 原生单号 / 可领 PDF；禁止「未入库」「待确认」；不新建草稿。
-3. 同 businessKey 供应商冲突 → 校验阻断，不建草稿。
-4. API：\`/excel/prepare-verified-batch\`、\`/excel/purchase-batch-prepare\`；SOP：\`sop/purchase-batch-prepare.mjs\`（未扩 plugin/index.js）。
-5. 批次确认留 017C1；仍可用逐张「确认采购{draftId}」。
+1. 多张采购 Excel（2 businessKey / 3 行）→ 恰好 2 个未审核 DRAFT，库存不变；同文件重传幂等且 **revision 不变**。
+2. 已审核单重传（#119 类）→ 仅当原生 \`jsh_depot_head.status=1\` 核验通过才报「已审核」+ PDF；禁止「未入库」「待确认」；不新建草稿。
+3. CONFIRMED 但缺 bill / 缺原生头 / 未审核头 → **RECONCILIATION_REQUIRED**，不新建草稿、不诱导再确认。
+4. 同 businessKey 单据字段冲突 → 校验阻断；错误不可静默，须显式 selectedBusinessKeys。
+5. API：\`/excel/prepare-verified-batch\`、\`/excel/purchase-batch-prepare\`；SOP：\`sop/purchase-batch-prepare.mjs\`；**无**模型 \`excel.confirm\`。
 
 ## 本地无过账
 

@@ -394,6 +394,8 @@ public class AierpWecomExcelService {
         List<Map<String, Object>> draftRows = new ArrayList<Map<String, Object>>();
         int alreadyPosted = 0;
         int awaiting = 0;
+        int reconciling = 0;
+        int rowErrors = 0;
         for (JSONObject record : purchaseOk) {
             Map<String, Object> one = prepareOnePurchase(ctx, fileSha256, record);
             draftRows.add(one);
@@ -402,10 +404,16 @@ public class AierpWecomExcelService {
                 alreadyPosted++;
             } else if ("DRAFT_READY".equals(state)) {
                 awaiting++;
+            } else if ("RECONCILIATION_REQUIRED".equals(state)) {
+                reconciling++;
+            } else if ("ERROR".equals(state) || "CANCELLED".equals(state)) {
+                rowErrors++;
             }
         }
+        int problemCount = reconciling + rowErrors;
 
-        String batchId = upsertBatch(ctx, previewId, fileSha256, draftRows);
+        Map<String, Object> batchMeta = upsertBatch(ctx, previewId, fileSha256, draftRows);
+        String batchId = String.valueOf(batchMeta.get("batchId"));
         Object primaryDraftId = draftRows.size() == 1 ? draftRows.get(0).get("draftId") : null;
         String primaryBiz = draftRows.size() == 1 ? String.valueOf(draftRows.get(0).get("businessKey")) : null;
         boolean singleAwaiting = draftRows.size() == 1 && awaiting == 1
@@ -418,19 +426,24 @@ public class AierpWecomExcelService {
                     Long.parseLong(String.valueOf(primaryDraftId)), confirmPhrase);
         } else if (draftRows.size() == 1 && alreadyPosted == 1) {
             summaryZh = postedSummaryZh(primaryBiz, draftRows.get(0));
+        } else if (draftRows.size() == 1 && reconciling == 1) {
+            summaryZh = reconciliationSummaryZh(primaryBiz, draftRows.get(0));
         } else {
-            summaryZh = buildBatchSummaryZh(purchaseOk.size(), draftRows, alreadyPosted, awaiting, 0);
+            summaryZh = buildBatchSummaryZh(purchaseOk.size(), draftRows, alreadyPosted, awaiting, problemCount);
         }
         // Audited replay must never surface 待确认 / 未入库 (AIERP-017B2 P0 #119).
-        if (alreadyPosted > 0 && awaiting == 0) {
+        // Only strip when every row is verified POSTED — never mask reconciliation.
+        if (alreadyPosted > 0 && awaiting == 0 && problemCount == 0) {
             summaryZh = stripPendingWording(summaryZh);
         }
 
         String wfStatus;
-        if (awaiting == 0 && alreadyPosted > 0) {
+        if (awaiting == 0 && alreadyPosted > 0 && problemCount == 0) {
             wfStatus = "POSTED";
         } else if (awaiting > 0) {
             wfStatus = "DRAFT_READY";
+        } else if (reconciling > 0) {
+            wfStatus = "RECONCILIATION_REQUIRED";
         } else {
             wfStatus = "PREVIEWED";
         }
@@ -438,27 +451,33 @@ public class AierpWecomExcelService {
                 primaryDraftId, primaryBiz, confirmPhrase, batchId, draftRows);
 
         Map<String, Object> out = new LinkedHashMap<String, Object>();
-        out.put("autoDraft", awaiting > 0 || alreadyPosted > 0);
+        out.put("autoDraft", awaiting > 0 || alreadyPosted > 0 || reconciling > 0);
         out.put("batchId", batchId);
+        out.put("revision", batchMeta.get("revision"));
         out.put("previewId", previewId);
         out.put("fileSha256", fileSha256);
         out.put("drafts", draftRows);
         out.put("totalBills", purchaseOk.size());
-        out.put("validBills", purchaseOk.size());
-        out.put("errorBills", 0);
+        out.put("validBills", awaiting + alreadyPosted);
+        out.put("errorBills", problemCount);
         out.put("awaitingDrafts", awaiting);
         out.put("alreadyPosted", alreadyPosted);
+        out.put("reconciliationRequired", reconciling);
         out.put("userSummaryZh", summaryZh);
         out.put("hintZh", summaryZh);
-        out.put("posted", awaiting == 0 && alreadyPosted > 0);
+        out.put("posted", awaiting == 0 && alreadyPosted > 0 && problemCount == 0);
         out.put("stockUnchanged", true);
-        if (primaryDraftId != null) {
-            out.put("draftId", primaryDraftId);
+        if (primaryDraftId != null || (draftRows.size() == 1 && reconciling == 1)) {
+            Map<String, Object> first = draftRows.get(0);
+            if (primaryDraftId != null) {
+                out.put("draftId", primaryDraftId);
+            } else if (first.get("draftId") != null) {
+                out.put("draftId", first.get("draftId"));
+            }
             out.put("businessKey", primaryBiz);
             if (confirmPhrase != null) {
                 out.put("confirmPhrase", confirmPhrase);
             }
-            Map<String, Object> first = draftRows.get(0);
             out.put("replayed", first.get("replayed"));
             out.put("challenge", first.get("challenge"));
             if ("POSTED".equals(String.valueOf(first.get("state")))) {
@@ -467,13 +486,20 @@ public class AierpWecomExcelService {
                 out.put("receiptHint", first.get("receiptHint"));
                 // Never leave confirmPhrase on audited replay.
                 out.remove("confirmPhrase");
+            } else if ("RECONCILIATION_REQUIRED".equals(String.valueOf(first.get("state")))) {
+                out.put("statusLabel", "需人工对账");
+                out.put("billNumber", first.get("nativeBillNumber"));
+                out.put("reconciliationReason", first.get("reconciliationReason"));
+                out.remove("confirmPhrase");
             } else if ("DRAFT_READY".equals(String.valueOf(first.get("state")))) {
                 out.put("statusLabel", "待确认、未入库");
             } else {
                 out.put("statusLabel", String.valueOf(first.get("state")));
             }
-        } else if (alreadyPosted > 0 && awaiting == 0) {
+        } else if (alreadyPosted > 0 && awaiting == 0 && problemCount == 0) {
             out.put("statusLabel", "已审核、已入库");
+        } else if (reconciling > 0 && awaiting == 0) {
+            out.put("statusLabel", "需人工对账");
         } else if (awaiting > 0) {
             out.put("statusLabel", "待确认、未入库");
         } else {
@@ -490,8 +516,11 @@ public class AierpWecomExcelService {
             throw new BusinessRunTimeException(400, "预览缺少规范化明细");
         }
         Map<String, Object> existing = findExistingByIdemOrBusinessKey(ctx, fileSha256, businessKey);
-        if (existing != null && isLiveAudited(ctx, existing)) {
-            return alreadyPostedRow(ctx, businessKey, existing, true);
+        if (existing != null) {
+            Map<String, Object> confirmedOutcome = outcomeForConfirmedDraft(ctx, businessKey, existing, true);
+            if (confirmedOutcome != null) {
+                return confirmedOutcome;
+            }
         }
         if (existing != null && "CANCELLED".equals(String.valueOf(existing.get("status")))) {
             // Fall through to create a fresh draft under same idempotency only if payload matches create path.
@@ -526,8 +555,11 @@ public class AierpWecomExcelService {
         } catch (BusinessRunTimeException ex) {
             // Idempotent key occupied (payload drift vs already-audited) — never invent a new draft.
             Map<String, Object> again = findExistingByIdemOrBusinessKey(ctx, fileSha256, businessKey);
-            if (again != null && isLiveAudited(ctx, again)) {
-                return alreadyPostedRow(ctx, businessKey, again, true);
+            if (again != null) {
+                Map<String, Object> confirmedOutcome = outcomeForConfirmedDraft(ctx, businessKey, again, true);
+                if (confirmedOutcome != null) {
+                    return confirmedOutcome;
+                }
             }
             Map<String, Object> fail = new LinkedHashMap<String, Object>();
             fail.put("businessKey", businessKey);
@@ -544,7 +576,13 @@ public class AierpWecomExcelService {
             row.put("draftId", created.get("draftId"));
             row.put("status", "CONFIRMED");
             row.put("bill_number", created.get("billNumber"));
-            return alreadyPostedRow(ctx, businessKey, row, created.get("replayed"));
+            Map<String, Object> confirmedOutcome = outcomeForConfirmedDraft(
+                    ctx, businessKey, row, created.get("replayed"));
+            if (confirmedOutcome != null) {
+                return confirmedOutcome;
+            }
+            // Gateway claimed CONFIRMED/posted but native audit could not be verified.
+            return reconciliationRow(businessKey, row, "NATIVE_NOT_AUDITED");
         }
 
         Object draftIdObj = created.get("draftId");
@@ -663,14 +701,21 @@ public class AierpWecomExcelService {
                         + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND idempotency_key=? LIMIT 1",
                 ctx.user.getTenantId(), ctx.user.getId(), idem);
         if (!byIdem.isEmpty()) {
+            // Idempotency key is already scoped to binding generation + file + businessKey.
             return byIdem.get(0);
         }
-        // Fallback: same bound actor + businessKey already confirmed (legacy remark / businessKey field).
+        // Historical fallback: exact sender + binding generation only (never cross-generation).
+        if (ctx.binding.get("id") == null || ctx.binding.get("binding_version") == null
+                || ctx.wecomUserId == null || ctx.wecomUserId.trim().isEmpty()) {
+            return null;
+        }
         List<Map<String, Object>> byBiz = jdbcTemplate.queryForList(
                 "SELECT id AS draftId, status, bill_number, payload_json, binding_id, binding_version, wecom_user_id "
                         + "FROM aierp_gateway_draft WHERE tenant_id=? AND user_id=? AND status='CONFIRMED' "
+                        + "AND binding_id=? AND binding_version=? AND wecom_user_id=? "
                         + "AND (payload_json LIKE ? OR payload_json LIKE ?) ORDER BY id DESC LIMIT 8",
                 ctx.user.getTenantId(), ctx.user.getId(),
+                ctx.binding.get("id"), ctx.binding.get("binding_version"), ctx.wecomUserId,
                 "%\"businessKey\":\"" + escapeLike(businessKey) + "\"%",
                 "%企微Excel采购 " + escapeLike(businessKey) + "%");
         for (Map<String, Object> row : byBiz) {
@@ -681,6 +726,7 @@ public class AierpWecomExcelService {
         return null;
     }
 
+    /** Exact binding id + generation + WeCom sender — nulls never match. */
     private boolean sameBoundActor(AierpWecomBindingService.BoundContext ctx, Map<String, Object> row) {
         if (row.get("binding_id") == null || ctx.binding.get("id") == null) {
             return false;
@@ -688,15 +734,16 @@ public class AierpWecomExcelService {
         if (!String.valueOf(ctx.binding.get("id")).equals(String.valueOf(row.get("binding_id")))) {
             return false;
         }
-        if (row.get("binding_version") != null && ctx.binding.get("binding_version") != null
-                && !String.valueOf(ctx.binding.get("binding_version")).equals(String.valueOf(row.get("binding_version")))) {
+        if (row.get("binding_version") == null || ctx.binding.get("binding_version") == null) {
             return false;
         }
-        if (row.get("wecom_user_id") != null
-                && !ctx.wecomUserId.equals(String.valueOf(row.get("wecom_user_id")))) {
+        if (!String.valueOf(ctx.binding.get("binding_version")).equals(String.valueOf(row.get("binding_version")))) {
             return false;
         }
-        return true;
+        if (row.get("wecom_user_id") == null || ctx.wecomUserId == null || ctx.wecomUserId.trim().isEmpty()) {
+            return false;
+        }
+        return ctx.wecomUserId.equals(String.valueOf(row.get("wecom_user_id")));
     }
 
     private static boolean payloadMentionsBusinessKey(Map<String, Object> row, String businessKey) {
@@ -707,23 +754,44 @@ public class AierpWecomExcelService {
         return payload.contains("企微Excel采购 " + businessKey);
     }
 
-    /** Live CONFIRMED draft + native depot head audited (status=1). */
-    private boolean isLiveAudited(AierpWecomBindingService.BoundContext ctx, Map<String, Object> draftRow) {
+    /**
+     * For CONFIRMED gateway drafts: POSTED only when native depot_head status=1 for current tenant.
+     * Missing bill / missing head / unapproved head → RECONCILIATION_REQUIRED (no new draft).
+     * Non-CONFIRMED → null (caller continues).
+     */
+    private Map<String, Object> outcomeForConfirmedDraft(AierpWecomBindingService.BoundContext ctx,
+                                                         String businessKey, Map<String, Object> draftRow,
+                                                         Object replayed) {
         if (!"CONFIRMED".equals(String.valueOf(draftRow.get("status")))) {
-            return false;
+            return null;
         }
-        Object bill = draftRow.get("bill_number");
-        if (bill == null || String.valueOf(bill).trim().isEmpty()) {
-            return true; // confirmed gateway row without bill still treated as done
+        String reason = nativeAuditGapReason(ctx, draftRow);
+        if (reason == null) {
+            return alreadyPostedRow(ctx, businessKey, draftRow, replayed);
         }
+        return reconciliationRow(businessKey, draftRow, reason);
+    }
+
+    /**
+     * @return null when verified native audited (POSTED-eligible); otherwise gap reason code.
+     */
+    private String nativeAuditGapReason(AierpWecomBindingService.BoundContext ctx, Map<String, Object> draftRow) {
+        Object billObj = draftRow.get("bill_number");
+        if (billObj == null || String.valueOf(billObj).trim().isEmpty()) {
+            return "MISSING_BILL";
+        }
+        String bill = String.valueOf(billObj).trim();
         List<Map<String, Object>> heads = jdbcTemplate.queryForList(
                 "SELECT number, status FROM jsh_depot_head WHERE number=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1' LIMIT 1",
-                String.valueOf(bill), ctx.user.getTenantId());
+                bill, ctx.user.getTenantId());
         if (heads.isEmpty()) {
-            return true;
+            return "MISSING_NATIVE_HEAD";
         }
         // Native audited flag in jshERP is status='1'
-        return "1".equals(String.valueOf(heads.get(0).get("status")));
+        if (!"1".equals(String.valueOf(heads.get(0).get("status")))) {
+            return "NATIVE_NOT_AUDITED";
+        }
+        return null;
     }
 
     private Map<String, Object> alreadyPostedRow(AierpWecomBindingService.BoundContext ctx,
@@ -742,6 +810,39 @@ public class AierpWecomExcelService {
         one.put("receiptHint", postedSummaryZh(businessKey, one));
         one.put("statusLabel", "已审核、已入库");
         return one;
+    }
+
+    private Map<String, Object> reconciliationRow(String businessKey, Map<String, Object> draftRow, String reason) {
+        Object draftId = draftRow.get("draftId") != null ? draftRow.get("draftId") : draftRow.get("id");
+        String bill = draftRow.get("bill_number") == null ? null : String.valueOf(draftRow.get("bill_number"));
+        Map<String, Object> one = new LinkedHashMap<String, Object>();
+        one.put("businessKey", businessKey);
+        one.put("draftId", draftId);
+        one.put("state", "RECONCILIATION_REQUIRED");
+        one.put("confirmPhrase", null);
+        one.put("nativeBillNumber", bill);
+        one.put("reconciliationReason", reason);
+        one.put("error", "网关已确认但原生单据未核对成功（" + reason + "），请人工对账，勿重复确认或新建草稿。");
+        one.put("replayed", Boolean.TRUE);
+        one.put("statusLabel", "需人工对账");
+        return one;
+    }
+
+    private static String reconciliationSummaryZh(String businessKey, Map<String, Object> draftRow) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("采购单 ");
+        if (businessKey != null && !businessKey.trim().isEmpty()) {
+            sb.append(businessKey.trim());
+        } else if (draftRow.get("draftId") != null) {
+            sb.append("#").append(draftRow.get("draftId"));
+        }
+        sb.append(" 需人工对账");
+        Object reason = draftRow.get("reconciliationReason");
+        if (reason != null) {
+            sb.append("（").append(reason).append("）");
+        }
+        sb.append("：网关已确认但原生已审核单据未核验成功，未新建草稿、请勿再次确认入库。");
+        return sb.toString();
     }
 
     /** User-facing audited replay: always 已审核 + native bill / PDF offer; never 未入库/待确认. */
@@ -792,16 +893,18 @@ public class AierpWecomExcelService {
         return one;
     }
 
-    private String upsertBatch(AierpWecomBindingService.BoundContext ctx, String previewId,
-                               String fileSha256, List<Map<String, Object>> draftRows) {
+    private Map<String, Object> upsertBatch(AierpWecomBindingService.BoundContext ctx, String previewId,
+                                            String fileSha256, List<Map<String, Object>> draftRows) {
         String batchKey = "wb:" + sha256Hex(
                 String.valueOf(ctx.binding.get("id")) + "|"
                         + String.valueOf(ctx.binding.get("binding_version")) + "|"
                         + fileSha256.toLowerCase(Locale.ROOT)).substring(0, 32);
+        String newManifest = batchManifestFingerprint(draftRows);
         JSONObject result = new JSONObject(true);
         result.put("batchId", batchKey);
         result.put("previewId", previewId);
         result.put("fileSha256", fileSha256);
+        result.put("manifestHash", newManifest);
         result.put("revision", 1);
         result.put("botId", ctx.botId);
         result.put("wecomUserIdMasked", mask(ctx.wecomUserId));
@@ -814,12 +917,21 @@ public class AierpWecomExcelService {
         result.put("stockUnchanged", true);
         result.put("updatedAt", System.currentTimeMillis());
 
+        int rev = 1;
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
                 "SELECT id, result_json FROM aierp_excel_batch WHERE tenant_id=? AND user_id=? AND batch_key=?",
                 ctx.user.getTenantId(), ctx.user.getId(), batchKey);
         if (!existing.isEmpty()) {
             JSONObject prev = JSON.parseObject(String.valueOf(existing.get(0).get("result_json")));
-            int rev = prev == null || prev.get("revision") == null ? 1 : prev.getIntValue("revision") + 1;
+            int prevRev = prev == null || prev.get("revision") == null ? 1 : prev.getIntValue("revision");
+            if (prevRev <= 0) {
+                prevRev = 1;
+            }
+            String prevManifest = prev != null && prev.getString("manifestHash") != null
+                    ? prev.getString("manifestHash")
+                    : batchManifestFingerprint(prev == null ? null : prev.get("drafts"));
+            // Idempotent same-file reupload: keep immutable revision unless draft manifest changed.
+            rev = prevManifest.equals(newManifest) ? prevRev : prevRev + 1;
             result.put("revision", rev);
             jdbcTemplate.update(
                     "UPDATE aierp_excel_batch SET preview_key=?, result_json=? WHERE id=?",
@@ -830,7 +942,81 @@ public class AierpWecomExcelService {
                             + "VALUES (?,?,?,?,?,NOW())",
                     batchKey, previewId, ctx.user.getTenantId(), ctx.user.getId(), result.toJSONString());
         }
-        return batchKey;
+        Map<String, Object> meta = new LinkedHashMap<String, Object>();
+        meta.put("batchId", batchKey);
+        meta.put("revision", rev);
+        meta.put("manifestHash", newManifest);
+        return meta;
+    }
+
+    /** Stable fingerprint of batch draft rows (excludes previewId / updatedAt / volatile challenge). */
+    private static String batchManifestFingerprint(Object draftsObj) {
+        List<JSONObject> sorted = new ArrayList<JSONObject>();
+        if (draftsObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<?> list = (List<?>) draftsObj;
+            for (Object item : list) {
+                JSONObject src;
+                if (item instanceof JSONObject) {
+                    src = (JSONObject) item;
+                } else if (item instanceof Map) {
+                    src = new JSONObject(true);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> map = (Map<String, Object>) item;
+                    src.putAll(map);
+                } else {
+                    continue;
+                }
+                sorted.add(manifestDraftRow(src));
+            }
+        } else if (draftsObj instanceof JSONArray) {
+            JSONArray arr = (JSONArray) draftsObj;
+            for (int i = 0; i < arr.size(); i++) {
+                JSONObject src = arr.getJSONObject(i);
+                if (src != null) {
+                    sorted.add(manifestDraftRow(src));
+                }
+            }
+        } else if (draftsObj != null) {
+            JSONArray arr = JSON.parseArray(JSON.toJSONString(draftsObj));
+            if (arr != null) {
+                for (int i = 0; i < arr.size(); i++) {
+                    JSONObject src = arr.getJSONObject(i);
+                    if (src != null) {
+                        sorted.add(manifestDraftRow(src));
+                    }
+                }
+            }
+        }
+        sorted.sort(new java.util.Comparator<JSONObject>() {
+            @Override
+            public int compare(JSONObject a, JSONObject b) {
+                String ka = a.getString("businessKey") == null ? "" : a.getString("businessKey");
+                String kb = b.getString("businessKey") == null ? "" : b.getString("businessKey");
+                int c = ka.compareTo(kb);
+                if (c != 0) {
+                    return c;
+                }
+                String da = a.getString("draftId") == null ? "" : a.getString("draftId");
+                String db = b.getString("draftId") == null ? "" : b.getString("draftId");
+                return da.compareTo(db);
+            }
+        });
+        JSONArray out = new JSONArray();
+        out.addAll(sorted);
+        return sha256Hex(out.toJSONString());
+    }
+
+    private static JSONObject manifestDraftRow(JSONObject src) {
+        JSONObject row = new JSONObject(true);
+        row.put("businessKey", src.get("businessKey"));
+        row.put("draftId", src.get("draftId") == null ? null : String.valueOf(src.get("draftId")));
+        row.put("state", src.get("state"));
+        row.put("nativeBillNumber", src.get("nativeBillNumber"));
+        row.put("normalizedHash", src.get("normalizedHash"));
+        row.put("error", src.get("error"));
+        row.put("reconciliationReason", src.get("reconciliationReason"));
+        return row;
     }
 
     private String buildBatchSummaryZh(int total, List<Map<String, Object>> drafts,
@@ -876,7 +1062,7 @@ public class AierpWecomExcelService {
             sb.append("、").append(alreadyPosted).append(" 张已完成");
         }
         if (errors > 0) {
-            sb.append("、").append(errors).append(" 张有错");
+            sb.append("、").append(errors).append(" 张需处理");
         }
         sb.append("。\n");
         int shown = 0;
@@ -888,11 +1074,17 @@ public class AierpWecomExcelService {
             shown++;
             String state = String.valueOf(d.get("state"));
             sb.append(d.get("businessKey"));
-            if (d.get("draftId") != null && !"POSTED".equals(state)) {
+            if ("DRAFT_READY".equals(state) && d.get("draftId") != null) {
                 sb.append("｜待确认 #").append(d.get("draftId"));
             }
             if ("POSTED".equals(state) && d.get("nativeBillNumber") != null) {
                 sb.append("｜已完成 ").append(d.get("nativeBillNumber"));
+            }
+            if ("RECONCILIATION_REQUIRED".equals(state)) {
+                sb.append("｜需人工对账");
+                if (d.get("reconciliationReason") != null) {
+                    sb.append(" ").append(d.get("reconciliationReason"));
+                }
             }
             if (d.get("amountHint") != null) {
                 sb.append("｜").append(d.get("amountHint"));

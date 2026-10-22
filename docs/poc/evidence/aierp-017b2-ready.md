@@ -1,20 +1,20 @@
-# AIERP-017B2 READY_FOR_REVIEW
+# AIERP-017B2 READY_FOR_REVIEW (post REVIEW_FIX)
 
 ## HEAD
 
-`60067efb50085c2fd533b50f4a488f985c9c0460` · branch `feat/aierp-017b2-multi-purchase-draft` · **READY_FOR_REVIEW**（勿 merge）
+见 `aierp-017b2-REVIEW_FIX_PUSHED.md`。
 
 ## 行为
 
-1. 多张采购 Excel（2 businessKey / 3 行）→ 恰好 2 个未审核 DRAFT，库存不变；同文件重传幂等。
-2. 已审核单重传（#119 类）→ 回复「已审核」+ 原生单号 / 可领 PDF；禁止「未入库」「待确认」；不新建草稿。
-3. 同 businessKey 供应商冲突 → 校验阻断，不建草稿。
-4. API：`/excel/prepare-verified-batch`、`/excel/purchase-batch-prepare`；SOP：`sop/purchase-batch-prepare.mjs`（未扩 plugin/index.js）。
-5. 批次确认留 017C1；仍可用逐张「确认采购{draftId}」。
+1. 多张采购 Excel（2 businessKey / 3 行）→ 恰好 2 个未审核 DRAFT，库存不变；同文件重传幂等且 **revision 不变**。
+2. 已审核单重传（#119 类）→ 仅当原生 `jsh_depot_head.status=1` 核验通过才报「已审核」+ PDF；禁止「未入库」「待确认」；不新建草稿。
+3. CONFIRMED 但缺 bill / 缺原生头 / 未审核头 → **RECONCILIATION_REQUIRED**，不新建草稿、不诱导再确认。
+4. 同 businessKey 单据字段冲突 → 校验阻断；错误不可静默，须显式 selectedBusinessKeys。
+5. API：`/excel/prepare-verified-batch`、`/excel/purchase-batch-prepare`；SOP：`sop/purchase-batch-prepare.mjs`；**无**模型 `excel.confirm`。
 
 ## 本地无过账
 
-- `aierp-017b2-multi-purchase`：**13/13 PASS**（fail=0）
+- `aierp-017b2-multi-purchase`：**18/18 PASS**（fail=0）
 
 ## 真人企微
 

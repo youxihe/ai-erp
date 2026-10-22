@@ -1,13 +1,13 @@
 {
   "suite": "aierp-017b2-multi-purchase",
-  "at": "2026-10-22T10:22:25.619Z",
+  "at": "2026-10-22T16:08:46.504Z",
   "wecomMasked": "b2-m***",
   "multiDraftIds": [
-    "154",
-    "155"
+    "182",
+    "183"
   ],
-  "auditedDraftId": 156,
-  "auditedBill": "GW-PURCHASE-156",
+  "auditedDraftId": 184,
+  "auditedBill": "GW-PURCHASE-184",
   "stockBefore": 250.7,
   "stockAfter": 250.7,
   "results": [
@@ -19,22 +19,27 @@
     {
       "name": "multi_2_drafts_3_lines",
       "ok": true,
-      "detail": "{\"totalBills\":2,\"awaitingDrafts\":2,\"draftIds\":[\"154\",\"155\"],\"summary\":\"批量采购已核对：2 张 / 3 行；2 张可办理。\\nCG-B2A-MVJE6KIT｜待确认 #154｜15L／300 元\\nCG-B2B-MVJE6KIT｜待确认 #155｜3L／60 元\\n库存未变化。\\n请逐张回复「确认采购{数字草稿号}」完成入库（整批确认尚未开通）\",\"batchId\":\"wb:9114d306c47f5c80f0eb5f79a555cf3e\"}"
+      "detail": "{\"totalBills\":2,\"awaitingDrafts\":2,\"draftIds\":[\"182\",\"183\"],\"summary\":\"批量采购已核对：2 张 / 3 行；2 张可办理。\\nCG-B2A-MVJQJ7F8｜待确认 #182｜15L／300 元\\nCG-B2B-MVJQJ7F8｜待确认 #183｜3L／60 元\\n库存未变化。\\n请逐张回复「确认采购{数字草稿号}」完成入库（整批确认尚未开通）\",\"batchId\":\"wb:092fdc1458043a72d70dd8af61c6ecd2\"}"
     },
     {
       "name": "multi_exactly_two_new_drafts",
       "ok": true,
-      "detail": "{\"draftsBefore\":38,\"draftsAfterMulti\":40,\"openOfPair\":2,\"uniqueDraftIds\":[\"154\",\"155\"]}"
+      "detail": "{\"draftsBefore\":42,\"draftsAfterMulti\":44,\"openOfPair\":2,\"uniqueDraftIds\":[\"182\",\"183\"]}"
     },
     {
       "name": "multi_idempotent_same_two_drafts",
       "ok": true,
-      "detail": "{\"first\":[\"154\",\"155\"],\"second\":[\"154\",\"155\"]}"
+      "detail": "{\"first\":[\"182\",\"183\"],\"second\":[\"182\",\"183\"]}"
+    },
+    {
+      "name": "idempotent_reupload_immutable_revision",
+      "ok": true,
+      "detail": "{\"batchRev1\":1,\"batchRev2\":1,\"batchId1\":\"wb:092fdc1458043a72d70dd8af61c6ecd2\",\"batchId2\":\"wb:092fdc1458043a72d70dd8af61c6ecd2\"}"
     },
     {
       "name": "purchase_batch_prepare_api",
       "ok": true,
-      "detail": "{\"code\":200,\"awaiting\":2,\"batchId\":\"wb:9114d306c47f5c80f0eb5f79a555cf3e\"}"
+      "detail": "{\"code\":200,\"awaiting\":2,\"batchId\":\"wb:092fdc1458043a72d70dd8af61c6ecd2\"}"
     },
     {
       "name": "sop_purchase_batch_prepare_present",
@@ -42,34 +47,54 @@
       "detail": "{\"sopPlugin\":true,\"sopMirror\":true}"
     },
     {
-      "name": "audited_seed_draft",
+      "name": "no_model_excel_confirm_tool",
       "ok": true,
-      "detail": "{\"draftId\":156,\"summary\":\"采购单 CG-B2AUD-MVJE6KIT｜华东化工\\n表面活性剂 RM-A001｜原料仓｜7L × 20 元＝140 元\\n未入库\\n待确认单 #156\\n请回复「确认采购156」完成入库\"}"
+      "detail": "{\"pluginIndex\":true}"
     },
     {
-      "name": "audited_replay_no_pending_wording",
+      "name": "audited_seed_draft",
       "ok": true,
-      "detail": "{\"summary\":\"采购单 CG-B2AUD-MVJE6KIT 已审核完成（GW-PURCHASE-156），无需再次入库。可回复「发 GW-PURCHASE-156 回执」领取 PDF。\",\"statusLabel\":\"已审核、已入库\",\"billNumber\":\"GW-PURCHASE-156\"}"
+      "detail": "{\"draftId\":184,\"summary\":\"采购单 CG-B2AUD-MVJQJ7F8｜华东化工\\n表面活性剂 RM-A001｜原料仓｜7L × 20 元＝140 元\\n未入库\\n待确认单 #184\\n请回复「确认采购184」完成入库\"}"
+    },
+    {
+      "name": "audited_119_valid_posted",
+      "ok": true,
+      "detail": "{\"summary\":\"采购单 CG-B2AUD-MVJQJ7F8 已审核完成（GW-PURCHASE-184），无需再次入库。可回复「发 GW-PURCHASE-184 回执」领取 PDF。\",\"statusLabel\":\"已审核、已入库\",\"billNumber\":\"GW-PURCHASE-184\",\"state\":\"POSTED\"}"
     },
     {
       "name": "audited_replay_offers_pdf_and_same_bill",
       "ok": true,
-      "detail": "{\"fakeBill\":\"GW-PURCHASE-156\",\"draftId\":156,\"alreadyPosted\":1,\"sameDraft\":true}"
+      "detail": "{\"fakeBill\":\"GW-PURCHASE-184\",\"draftId\":184,\"alreadyPosted\":1,\"sameDraft\":true}"
     },
     {
       "name": "audited_replay_no_new_draft",
       "ok": true,
-      "detail": "{\"draftsOpenAfter\":0,\"auditedDraftId\":156}"
+      "detail": "{\"draftsOpenAfter\":0,\"auditedDraftId\":184}"
     },
     {
       "name": "prepare_verified_batch_audited",
       "ok": true,
-      "detail": "采购单 CG-B2AUD-MVJE6KIT 已审核完成（GW-PURCHASE-156），无需再次入库。可回复「发 GW-PURCHASE-156 回执」领取 PDF。"
+      "detail": "采购单 CG-B2AUD-MVJQJ7F8 已审核完成（GW-PURCHASE-184），无需再次入库。可回复「发 GW-PURCHASE-184 回执」领取 PDF。"
+    },
+    {
+      "name": "recon_missing_bill",
+      "ok": true,
+      "detail": "{\"state\":\"RECONCILIATION_REQUIRED\",\"statusLabel\":\"需人工对账\",\"reason\":\"MISSING_BILL\",\"summary\":\"采购单 CG-B2RC-nobill-MVJQJ7F8 需人工对账（MISSING_BILL）：网关已确认但原生已审核单据未核验成功，未新建草稿、请勿再次确认入库。\"}"
+    },
+    {
+      "name": "recon_missing_native_head",
+      "ok": true,
+      "detail": "{\"reason\":\"MISSING_NATIVE_HEAD\",\"statusLabel\":\"需人工对账\",\"summary\":\"采购单 CG-B2RC-nohead-MVJQJ7F8 需人工对账（MISSING_NATIVE_HEAD）：网关已确认但原生已审核单据未核验成功，未新建草稿、请勿再次确认入库。\"}"
+    },
+    {
+      "name": "recon_unapproved_native_head",
+      "ok": true,
+      "detail": "{\"reason\":\"NATIVE_NOT_AUDITED\",\"statusLabel\":\"需人工对账\",\"summary\":\"采购单 CG-B2RC-unapp-MVJQJ7F8 需人工对账（NATIVE_NOT_AUDITED）：网关已确认但原生已审核单据未核验成功，未新建草稿、请勿再次确认入库。\"}"
     },
     {
       "name": "conflict_bill_fields_blocked",
       "ok": true,
-      "detail": "{\"summary\":\"批量采购已核对：1 张；0 张可办理、1 张有错。\\n- 第4行（CG-B2CF-MVJE6KIT）：同一业务单号的业务日期不一致（2026-10-22 / 2026-10-21）\\n错误不可忽略。请改好后重发，或明确指定仅办理有效业务单号。库存未变化，未创建采购草稿。\",\"autoDraft\":false}"
+      "detail": "{\"summary\":\"批量采购已核对：1 张；0 张可办理、1 张有错。\\n- 第4行（CG-B2CF-MVJQJ7F8）：同一业务单号的业务日期不一致（2026-10-22 / 2026-10-21）\\n错误不可忽略。请改好后重发，或明确指定仅办理有效业务单号。库存未变化，未创建采购草稿。\",\"autoDraft\":false}"
     },
     {
       "name": "stock_unchanged",
@@ -77,7 +102,7 @@
       "detail": "{\"stockBefore\":250.7,\"stockAfter\":250.7}"
     }
   ],
-  "pass": 13,
+  "pass": 18,
   "fail": 0,
-  "note": "Non-posting. Audited replay simulated via CONFIRMED status + fake bill_number (no native stock delta)."
+  "note": "Non-posting. POSTED only with verified native depot_head status=1; gaps → RECONCILIATION_REQUIRED; revision immutable on same-file reupload."
 }
