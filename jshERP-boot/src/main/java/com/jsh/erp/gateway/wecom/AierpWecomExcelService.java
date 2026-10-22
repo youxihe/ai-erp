@@ -92,7 +92,13 @@ public class AierpWecomExcelService {
             throw new BusinessRunTimeException(400, "fileBase64 无效");
         }
         String scene = body.getString("scene");
-        String fileSha256 = body.getString("fileSha256");
+        String actualFileSha256 = sha256HexBytes(raw);
+        String suppliedFileSha256 = trimToNull(body.getString("fileSha256"));
+        if (suppliedFileSha256 != null && !actualFileSha256.equalsIgnoreCase(suppliedFileSha256)) {
+            throw new BusinessRunTimeException(400, "上传文件校验不一致，请重新上传原文件。");
+        }
+        // Server-computed bytes are authoritative for revision and idempotency.
+        String fileSha256 = actualFileSha256;
         Map<String, Object> preview = excelService.previewAs(ctx.user, raw, fileName, scene);
         preview.put("boundErpLoginName", ctx.user.getLoginName());
         preview.put("wecomUserIdMasked", mask(ctx.wecomUserId));
@@ -242,6 +248,14 @@ public class AierpWecomExcelService {
     private Map<String, Object> tryPrepareVerifiedPurchase(AierpWecomBindingService.BoundContext ctx,
                                                            String previewId, String fileSha256,
                                                            boolean throwOnIneligible) throws Exception {
+        Map<String, Object> active = getWorkflow(ctx);
+        String activeStatus = active == null ? "" : String.valueOf(active.get("status"));
+        if (active == null || !("PREVIEWED".equals(activeStatus) || "DRAFT_READY".equals(activeStatus))
+                || previewId == null || !previewId.equals(String.valueOf(active.get("previewId")))
+                || fileSha256 == null || !fileSha256.matches("[0-9a-fA-F]{64}")
+                || !fileSha256.equalsIgnoreCase(String.valueOf(active.get("fileSha256")))) {
+            throw new BusinessRunTimeException(409, "文件核对结果已改变，请按最新 Excel 核对结果办理。");
+        }
         JSONObject payload = loadPreviewPayload(ctx, previewId);
         JSONArray records = payload.getJSONArray("records");
         if (records == null || records.isEmpty()) {
@@ -417,7 +431,8 @@ public class AierpWecomExcelService {
 
     private void invalidateStaleDraftIfFileChanged(AierpWecomBindingService.BoundContext ctx, String newSha) {
         Map<String, Object> current = getWorkflow(ctx);
-        if (current == null || current.get("draftId") == null) {
+        if (current == null || current.get("draftId") == null
+                || !"DRAFT_READY".equals(String.valueOf(current.get("status")))) {
             return;
         }
         String oldSha = current.get("fileSha256") == null ? null : String.valueOf(current.get("fileSha256"));
@@ -427,8 +442,10 @@ public class AierpWecomExcelService {
         try {
             long draftId = Long.parseLong(String.valueOf(current.get("draftId")));
             gatewayService.cancelDraftAs(ctx.user, draftId, toOwner(ctx));
-        } catch (Exception ignore) {
-            // ignore
+        } catch (Exception ex) {
+            // Do not open two confirmable purchases from one changing Excel workflow.
+            throw new BusinessRunTimeException(409,
+                    "上一份文件的待确认采购单尚未安全取消，请先处理上一张草稿后重试。");
         }
     }
 
@@ -610,6 +627,20 @@ public class AierpWecomExcelService {
         String digest = sha256Hex(raw);
         String key = "wx:" + digest;
         return key.length() <= 80 ? key : key.substring(0, 80);
+    }
+
+    private static String sha256HexBytes(byte[] raw) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] dig = md.digest(raw);
+            StringBuilder sb = new StringBuilder(dig.length * 2);
+            for (byte b : dig) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException("服务器文件摘要算法不可用", ex);
+        }
     }
 
     private static String sha256Hex(String raw) {
