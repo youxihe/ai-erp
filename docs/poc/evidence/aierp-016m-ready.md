@@ -2,8 +2,10 @@
 
 ## HEAD
 
-`ae2f5be98b6b22947c28a2616400dd6a5178266a` on `origin/feat/aierp-016m-mix-sop`  
-??????`416cdb442983dd8bb5fa023b69adf38a260bd495`?? `git rev-parse origin/feat/aierp-016m-mix-sop` ???
+? `git rev-parse origin/feat/aierp-016m-mix-sop`?????????? tip??
+
+?????`416cdb442983dd8bb5fa023b69adf38a260bd495`  
+`feat(016M): WeCom MIX draft prepare and ???? confirm phrase`
 
 ## ??
 
