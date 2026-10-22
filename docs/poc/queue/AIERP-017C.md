@@ -1,6 +1,6 @@
 # AIERP-017C · Excel 多单可信确认与原生过账、回执
 
-- **状态**：PLANNED / after 017B reviewed + 015B native trusted confirmation accepted
+- **状态**：PLANNED / first implement 017C1 purchase-batch confirmation after 017B2; later generalize to MIX/SERVICE
 - **目标**：用户收到批次预览摘要后，在企微回复“确认批次{batchId}”或点击经官方渠道认证的确认卡片，服务端以可信原始事件和批次业务 hash/版本/绑定 generation 校验本人确认，再按指定业务清单调用现有原生确认流程；模型没有可自行审核的工具。
 - **场景**：采购入库、配制/组装、服务耗料，及已经实现且审查过的销售出库/一般领料场景；不默认为所有模板可过账。
 - **语义**：明确“整批多少业务单、多少行、各仓库存增减、金额/数量/单位、错误项、是否允许部分成功”。若一批内的多张单不能保证同事务原子性，则允许 `PARTIAL_SUCCESS`，但必须按单记录已审核号/失败原因，重试只处理未成功单，不重复改库存。
