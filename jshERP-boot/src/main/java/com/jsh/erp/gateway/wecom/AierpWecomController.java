@@ -212,7 +212,18 @@ public class AierpWecomController {
     }
 
     /**
-     * AIERP-016M: create MIX draft from user-confirmed recipe slots (not AI-invented ratios).
+     * AIERP-016M: display a proposed slot recipe DRAFT and register server-side recipeHash.
+     * Does not create a draft; model booleans are not acceptance evidence.
+     */
+    @PostMapping("/mix/recipe-preview")
+    public BaseResponseInfo mixRecipePreview(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.recipePreview(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: create MIX draft from a previously displayed recipeHash (not model booleans).
+     * Confirm/post remains trusted「确认配制{draftId}」only (no second recipe-ack phrase).
      */
     @PostMapping("/mix/prepare")
     public BaseResponseInfo mixPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {

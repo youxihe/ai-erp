@@ -160,7 +160,7 @@ function num(v) {
 
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
-  // MIX confirm is handled by sop/register-mix-confirm.mjs (priority 55).
+  // MIX 「确认配制{n}」owned by registerMixConfirmDispatch (priority 55).
   return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t) || isMixConfirmPhrase(t);
 }
 
@@ -1374,7 +1374,10 @@ const plugin = {
   register(api) {
     registerErpTools(api);
     registerExcelObserveHook(api);
-    // AIERP-016M: thin MIX confirm registration (before purchase confirm hook).
+    // AIERP-016M: thin MIX draft confirm (before purchase confirm hook).
+    // Does not alter PURCHASE confirm + receipt PDF auto-send paths.
+    // MIX has no dedicated PDF — text receipt only.
+    // Confirm phrase remains 「确认配制{draftId}」only (no separate 确认配方 ack).
     registerMixConfirmDispatch(api, {
       botId,
       signedPost,

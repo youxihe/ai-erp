@@ -12,8 +12,10 @@ import {
   isMixConfirmPhrase,
   extractMixDraftId,
   buildMixPrepareBody,
+  buildMixRecipePreviewBody,
   formatMixDraftReady,
 } from "../openclaw/plugins/aierp-erp-tools/sop/mix-prepare.mjs";
+import { routeTrustedInbound } from "../openclaw/plugins/aierp-erp-tools/sop/registry.mjs";
 
 const BASE = (process.env.AIERP_ERP_BASE_URL || "http://127.0.0.1:9999/jshERP-boot").replace(/\/$/, "");
 const BOT = process.env.AIERP_WECOM_BOT_ID || "default";
@@ -106,16 +108,44 @@ note("phrase_match_spaced", isMixConfirmPhrase("确认 配制 456") && extractMi
 note("phrase_reject_purchase", !isMixConfirmPhrase("确认采购123"), "purchase");
 note("phrase_reject_bare", !isMixConfirmPhrase("确认"), "bare");
 note(
-  "build_requires_user_recipe",
+  "build_rejects_model_boolean_without_hash",
   (() => {
     try {
-      buildMixPrepareBody({ wecomUserId: "x", finished: { barCode: "FG-101", qty: 1, unit: "L" }, lines: [{ barCode: "RM-A001", qty: 0.1, unit: "L" }] });
+      buildMixPrepareBody({
+        wecomUserId: "x",
+        recipeUserConfirmed: true,
+        finished: { barCode: "FG-101", qty: 1, unit: "L" },
+        lines: [{ barCode: "RM-A001", qty: 0.1, unit: "L" }],
+      });
+      return false;
+    } catch (ex) {
+      return /recipeHash|布尔|recipe-preview/.test(String(ex?.message || ex));
+    }
+  })(),
+  "must refuse model boolean without recipeHash",
+);
+note(
+  "build_requires_recipe_hash",
+  (() => {
+    try {
+      buildMixPrepareBody({
+        wecomUserId: "x",
+        finished: { barCode: "FG-101", qty: 1, unit: "L" },
+        lines: [{ barCode: "RM-A001", qty: 0.1, unit: "L" }],
+      });
       return false;
     } catch {
       return true;
     }
   })(),
-  "must require recipeUserConfirmed",
+  "must require recipeHash",
+);
+note(
+  "phrase_only_confirm_mix_is_post_path",
+  isMixConfirmPhrase("确认配制99") &&
+    routeTrustedInbound({ text: "确认配制99", wecomUserId: "x" })?.sopId === "mix_confirm" &&
+    !isMixConfirmPhrase("确认配方aabbccdd1122"),
+  "确认配制{id} only; 确认配方 is not a confirm/post path",
 );
 
 const token = (
@@ -304,33 +334,90 @@ note(
   stockAfterNegatives,
 );
 
-// Slot prepare without recipeUserConfirmed
-const noRecipe = await signedPost("/aierp/v1/wecom/mix/prepare", idBody({
+// Slot prepare: model boolean alone must fail (no recipeHash)
+const booleanOnly = await signedPost("/aierp/v1/wecom/mix/prepare", idBody({
+  recipeUserConfirmed: true,
+  userConfirmedRecipe: true,
+  finished: { barCode: "FG-101", qty: "1", unit: "L" },
+  lines: [{ barCode: "RM-A001", qty: "0.1", unit: "L" }],
+  idempotencyKey: `mix-bool-${Date.now()}`,
+}));
+const booleanMsg = String(booleanOnly.json?.data?.message || booleanOnly.json?.message || "");
+note(
+  "slot_prepare_rejects_model_boolean",
+  booleanOnly.json?.code !== 200 && /recipeHash|布尔|recipe-preview|模型/.test(booleanMsg),
+  { code: booleanOnly.json?.code, msg: booleanMsg.slice(0, 240) },
+);
+
+const noHash = await signedPost("/aierp/v1/wecom/mix/prepare", idBody({
   finished: { barCode: "FG-101", qty: "1", unit: "L" },
   lines: [{ barCode: "RM-A001", qty: "0.1", unit: "L" }],
   idempotencyKey: `mix-norecipe-${Date.now()}`,
 }));
 note(
-  "slot_prepare_requires_recipe_flag",
-  noRecipe.json?.code !== 200,
-  { code: noRecipe.json?.code, msg: noRecipe.json?.data?.message || noRecipe.json?.message },
+  "slot_prepare_requires_recipe_hash",
+  noHash.json?.code !== 200,
+  { code: noHash.json?.code, msg: noHash.json?.data?.message || noHash.json?.message },
 );
 
 // Cancel excel workflow to free for slot prepare
 await signedPost("/aierp/v1/wecom/excel/workflow/cancel", idBody({ messageMsgId: `cancel-${Date.now()}` }));
 
+const slotFinished = { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" };
+const slotLines = [
+  { barCode: "RM-A001", qty: "0.5", unit: "L" },
+  { barCode: "RM-B002", qty: "0.2", unit: "L" },
+  { barCode: "RM-C003", qty: "0.3", unit: "L" },
+];
+const previewBody = buildMixRecipePreviewBody({
+  wecomUserId: WECOM,
+  botId: BOT,
+  finished: slotFinished,
+  lines: slotLines,
+});
+const recipePrev = await signedPost("/aierp/v1/wecom/mix/recipe-preview", previewBody);
+const recipeHash = recipePrev.json?.data?.recipeHash;
+const recipeDisplay = String(recipePrev.json?.data?.recipeDisplayZh || "");
+note(
+  "slot_recipe_preview_registers_hash",
+  recipePrev.json?.code === 200 &&
+    /^[0-9a-f]{64}$/.test(String(recipeHash || "")) &&
+    /FG-101/.test(recipeDisplay) &&
+    /RM-A001|RM-B002|RM-C003/.test(recipeDisplay) &&
+    recipePrev.json?.data?.recipeStatus === "PROPOSED" &&
+    /模型布尔/.test(recipeDisplay),
+  {
+    recipeHash: String(recipeHash || "").slice(0, 16),
+    status: recipePrev.json?.data?.recipeStatus,
+    display: recipeDisplay.slice(0, 220),
+  },
+);
+
+const fakeHashPrep = await signedPost(
+  "/aierp/v1/wecom/mix/prepare",
+  buildMixPrepareBody({
+    wecomUserId: WECOM,
+    botId: BOT,
+    recipeHash: "a".repeat(64),
+    finished: slotFinished,
+    lines: slotLines,
+    idempotencyKey: `mix-fakehash-${Date.now()}`,
+  }),
+);
+note(
+  "slot_prepare_rejects_unknown_hash",
+  fakeHashPrep.json?.code !== 200,
+  { code: fakeHashPrep.json?.code, msg: fakeHashPrep.json?.data?.message || fakeHashPrep.json?.message },
+);
+
 const slotBody = buildMixPrepareBody({
   wecomUserId: WECOM,
   botId: BOT,
-  recipeUserConfirmed: true,
-  finished: { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" },
-  lines: [
-    { barCode: "RM-A001", qty: "0.5", unit: "L" },
-    { barCode: "RM-B002", qty: "0.2", unit: "L" },
-    { barCode: "RM-C003", qty: "0.3", unit: "L" },
-  ],
+  recipeHash,
+  finished: slotFinished,
+  lines: slotLines,
   idempotencyKey: `mix-slot-${Date.now()}`,
-  remark: "016M slot test recipe user-confirmed",
+  remark: "016M slot test after recipe-preview hash",
 });
 const slot = await signedPost("/aierp/v1/wecom/mix/prepare", slotBody);
 const slotData = slot.json?.data;
@@ -340,13 +427,32 @@ note(
   slot.json?.code === 200 &&
     !!slotId &&
     slotData?.posted !== true &&
-    (slotData?.confirmPhrase === `确认配制${slotId}` || slotData?.challenge?.phrase === `确认配制${slotId}`),
+    slotData?.recipeHash === recipeHash &&
+    (slotData?.confirmPhrase === `确认配制${slotId}` || slotData?.challenge?.phrase === `确认配制${slotId}`) &&
+    !/用户已确认/.test(String(slotData?.hint || slotData?.remark || "")),
   {
     draftId: slotId,
     phrase: slotData?.confirmPhrase || slotData?.challenge?.phrase,
+    recipeHash: String(slotData?.recipeHash || "").slice(0, 16),
     status: slotData?.status,
     formatted: formatMixDraftReady(slotData).slice(0, 200),
+    code: slot.json?.code,
+    msg: slot.json?.data?.message || slot.json?.message,
   },
+);
+
+// Cross-type SERVICE phrase on MIX draft must reject
+const servicePhrase = await signedPost("/aierp/v1/wecom/draft/confirm", idBody({
+  rawText: `确认耗料${slotId || draftId1}`,
+  messageMsgId: `bad-service-${Date.now()}`,
+  eventSource: "WECOM_BEFORE_DISPATCH",
+  isGroup: false,
+  draftId: slotId || draftId1,
+}));
+note(
+  "reject_service_phrase_on_mix",
+  servicePhrase.json?.code !== 200,
+  { code: servicePhrase.json?.code, msg: servicePhrase.json?.data?.message || servicePhrase.json?.message },
 );
 
 const stockAfterSlot = {

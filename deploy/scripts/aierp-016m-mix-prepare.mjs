@@ -8,8 +8,15 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { routeTrustedInbound, isMixConfirmPhrase } from "../openclaw/plugins/aierp-erp-tools/sop/registry.mjs";
-import { extractMixDraftId } from "../openclaw/plugins/aierp-erp-tools/sop/mix-prepare.mjs";
+import {
+  routeTrustedInbound,
+  isMixConfirmPhrase,
+} from "../openclaw/plugins/aierp-erp-tools/sop/registry.mjs";
+import {
+  extractMixDraftId,
+  buildMixPrepareBody,
+  buildMixRecipePreviewBody,
+} from "../openclaw/plugins/aierp-erp-tools/sop/mix-prepare.mjs";
 
 const BASE = (process.env.AIERP_ERP_BASE_URL || "http://127.0.0.1:9999/jshERP-boot").replace(/\/$/, "");
 const BOT = process.env.AIERP_WECOM_BOT_ID || "default";
@@ -106,6 +113,25 @@ note(
     isConfirmPhrase: (t) => /^\s*确认\s*采购/.test(t),
   })?.sopId === "purchase_confirm",
   {},
+);
+note(
+  "unit_model_boolean_alone_rejected",
+  (() => {
+    try {
+      buildMixPrepareBody({
+        wecomUserId: "x",
+        recipeUserConfirmed: true,
+        userConfirmedRecipe: true,
+        finished: { barCode: "FG-101", qty: 1, unit: "L" },
+        lines: [{ barCode: "RM-A001", qty: 0.1, unit: "L" }],
+      });
+      return false;
+    } catch (ex) {
+      const msg = String(ex?.message || ex);
+      return /recipeHash|布尔|recipe-preview/.test(msg) && !/用户已确认/.test(msg);
+    }
+  })(),
+  "model boolean must not skip recipeHash / must not claim 用户已确认",
 );
 
 const purchase119Before = mysql(
@@ -227,8 +253,15 @@ note(
     !!draftId1 &&
     d1?.bizType === "MIX" &&
     String(d1?.confirmPhrase || "").includes(`确认配制${draftId1}`) &&
-    summary.includes("确认配制"),
-  { draftId: draftId1, confirmPhrase: d1?.confirmPhrase, summary: summary.slice(0, 280) },
+    summary.includes("确认配制") &&
+    !/用户已确认/.test(summary) &&
+    !!d1?.recipeHash,
+  {
+    draftId: draftId1,
+    confirmPhrase: d1?.confirmPhrase,
+    recipeHash: String(d1?.recipeHash || "").slice(0, 16),
+    summary: summary.slice(0, 280),
+  },
 );
 note(
   "one_bill_three_raw_lines",
@@ -280,30 +313,27 @@ note(
   stockAfterReplay,
 );
 
-// Insufficient stock: huge RM qty must fail prepare (no draft / error)
-const badPrep = await signedPost("/aierp/v1/wecom/mix/prepare", {
+// Model boolean alone cannot shortcut recipe confirmation
+const boolOnly = await signedPost("/aierp/v1/wecom/mix/prepare", {
   wecomUserId: WECOM,
   botId: BOT,
   channel: "wecom",
   recipeUserConfirmed: true,
-  idempotencyKey: `mix-insuff-${Date.now()}`,
+  userConfirmedRecipe: true,
+  idempotencyKey: `mix-bool-${Date.now()}`,
   finished: { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" },
-  lines: [
-    { barCode: "RM-A001", qty: "999999", unit: "L", depotName: "原料仓" },
-    { barCode: "RM-B002", qty: "0.1", unit: "L", depotName: "原料仓" },
-    { barCode: "RM-C003", qty: "0.3", unit: "L", depotName: "原料仓" },
-  ],
-  remark: "故意超量测试",
+  lines: [{ barCode: "RM-A001", qty: "0.1", unit: "L", depotName: "原料仓" }],
 });
-const badCode = badPrep.json?.code;
-const badMsg = String(badPrep.json?.data?.message || badPrep.json?.message || "");
+const boolMsg = String(boolOnly.json?.data?.message || boolOnly.json?.message || "");
 note(
-  "insufficient_stock_fails_prepare",
-  badCode === 400 || badCode === 409 || /库存不足/.test(badMsg),
-  { code: badCode, msg: badMsg.slice(0, 200) },
+  "refuse_model_boolean_as_recipe_approval",
+  boolOnly.json?.code !== 200 &&
+    /recipeHash|布尔|recipe-preview|模型/.test(boolMsg) &&
+    !/用户已确认/.test(boolMsg),
+  { code: boolOnly.json?.code, msg: boolMsg.slice(0, 240) },
 );
 
-// Cross-type: 确认采购 on MIX draft must not succeed (non-post probe)
+// Cross-type: 确认采购 / 确认耗料 on MIX draft must not succeed (non-post probe)
 const wrongConfirm = await signedPost("/aierp/v1/wecom/draft/confirm", {
   wecomUserId: WECOM,
   botId: BOT,
@@ -317,6 +347,21 @@ note(
   "reject_purchase_phrase_on_mix_draft",
   wrongConfirm.json?.code !== 200,
   { code: wrongConfirm.json?.code, msg: wrongConfirm.json?.data?.message || wrongConfirm.json?.message },
+);
+
+const serviceWrong = await signedPost("/aierp/v1/wecom/draft/confirm", {
+  wecomUserId: WECOM,
+  botId: BOT,
+  channel: "wecom",
+  eventSource: "WECOM_BEFORE_DISPATCH",
+  rawText: `确认耗料${draftId1}`,
+  messageMsgId: `mix-svc-${Date.now()}`,
+  draftId: draftId1,
+});
+note(
+  "reject_service_phrase_on_mix_draft",
+  serviceWrong.json?.code !== 200,
+  { code: serviceWrong.json?.code, msg: serviceWrong.json?.data?.message || serviceWrong.json?.message },
 );
 
 const purchase119After = mysql(
@@ -369,9 +414,53 @@ const invent = await signedPost("/aierp/v1/wecom/mix/prepare", {
 });
 const inventMsg = String(invent.json?.data?.message || invent.json?.message || "");
 note(
-  "refuse_unconfirmed_recipe",
-  invent.json?.code === 400 || /用户明确确认|测试配方|recipeUserConfirmed/.test(inventMsg),
+  "refuse_prepare_without_recipe_hash",
+  invent.json?.code === 400 || /recipeHash|recipe-preview|布尔/.test(inventMsg),
   { code: invent.json?.code, msg: inventMsg.slice(0, 200) },
+);
+
+// Insufficient stock: recipe-preview → prepare with registered hash must fail (no invent via boolean)
+const insuffFinished = { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" };
+const insuffLines = [
+  { barCode: "RM-A001", qty: "999999", unit: "L", depotName: "原料仓" },
+  { barCode: "RM-B002", qty: "0.1", unit: "L", depotName: "原料仓" },
+  { barCode: "RM-C003", qty: "0.3", unit: "L", depotName: "原料仓" },
+];
+const insuffPrev = await signedPost(
+  "/aierp/v1/wecom/mix/recipe-preview",
+  buildMixRecipePreviewBody({
+    wecomUserId: WECOM,
+    botId: BOT,
+    finished: insuffFinished,
+    lines: insuffLines,
+  }),
+);
+const insuffHash = insuffPrev.json?.data?.recipeHash;
+const badPrep = await signedPost(
+  "/aierp/v1/wecom/mix/prepare",
+  buildMixPrepareBody({
+    wecomUserId: WECOM,
+    botId: BOT,
+    recipeHash: insuffHash,
+    idempotencyKey: `mix-insuff-${Date.now()}`,
+    finished: insuffFinished,
+    lines: insuffLines,
+    remark: "故意超量测试",
+  }),
+);
+const badCode = badPrep.json?.code;
+const badMsg = String(badPrep.json?.data?.message || badPrep.json?.message || "");
+note(
+  "insufficient_stock_fails_prepare",
+  insuffPrev.json?.code === 200 &&
+    !!insuffHash &&
+    (badCode === 400 || badCode === 409 || /库存不足/.test(badMsg)),
+  {
+    previewCode: insuffPrev.json?.code,
+    recipeHash: String(insuffHash || "").slice(0, 16),
+    code: badCode,
+    msg: badMsg.slice(0, 200),
+  },
 );
 
 const pass = results.every((r) => r.ok);

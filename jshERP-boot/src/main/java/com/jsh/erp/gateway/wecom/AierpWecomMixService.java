@@ -18,18 +18,25 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * AIERP-016M: WeCom MIX (组装/配制) unposted DRAFT from Excel preview or user-confirmed recipe slots.
- * Never posts inventory; confirm remains trusted before_dispatch「确认配制{draftId}」only.
- * Not a full MES/BOM — recipe must be user-confirmed test values.
+ * AIERP-016M: WeCom MIX (组装/配制) unposted DRAFT from Excel preview or slot recipe.
+ * Never posts inventory; post remains trusted before_dispatch「确认配制{draftId}」only.
+ * Slot path: recipe-preview (PROPOSED + recipeHash) → prepare(recipeHash) → 确认配制{id}.
+ * Model booleans never equal human approval; ratios are never AI-derived.
  */
 @Service
 public class AierpWecomMixService {
 
     private static final String WF_PREFIX = "aierp:excel-wf:";
+    private static final String RECIPE_PREFIX = "aierp:mix-recipe:";
     private static final long WF_TTL_SECONDS = 6L * 60L * 60L;
+    private static final long RECIPE_TTL_SECONDS = 6L * 60L * 60L;
     private static final String CHANNEL = "wecom";
     private static final String DEFAULT_FG_DEPOT = "成品仓";
     private static final String DEFAULT_RM_DEPOT = "原料仓";
+    private static final String RECIPE_STATUS_PROPOSED = "PROPOSED";
+    private static final String RECIPE_SOURCE_EXCEL = "EXCEL";
+    private static final String RECIPE_SOURCE_SLOT = "SLOT_PREVIEW";
+    private static final int RECIPE_HASH_SHORT_LEN = 12;
 
     @Resource
     private AierpWecomBindingService bindingService;
@@ -66,17 +73,73 @@ public class AierpWecomMixService {
     }
 
     /**
-     * Create MIX draft from explicit user-confirmed recipe slots (not AI-invented ratios).
-     * Body: finished{barCode,qty,unit,depotName?}, lines[{barCode,qty,unit,depotName?}], idempotencyKey, remark?
+     * Display a proposed slot recipe DRAFT and register its server-side formula hash.
+     * Does not create an ERP draft or change stock. Model booleans are ignored.
+     */
+    public Map<String, Object> recipePreview(JSONObject body) throws Exception {
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        JSONObject finished = parseFinished(body == null ? null : body.getJSONObject("finished"));
+        JSONArray lines = parseRawLines(body == null ? null : body.getJSONArray("lines"));
+        String recipeHash = computeRecipeHash(finished, lines);
+        String displayZh = buildRecipeDisplayZh(finished, lines, recipeHash, RECIPE_STATUS_PROPOSED);
+        Map<String, Object> stored = new LinkedHashMap<String, Object>();
+        stored.put("recipeHash", recipeHash);
+        stored.put("recipeStatus", RECIPE_STATUS_PROPOSED);
+        stored.put("finished", finished);
+        stored.put("lines", lines);
+        stored.put("recipeDisplayZh", displayZh);
+        stored.put("erpUserId", ctx.user.getId());
+        stored.put("tenantId", ctx.user.getTenantId());
+        stored.put("bindingId", ctx.binding.get("id"));
+        stored.put("bindingVersion", ctx.binding.get("binding_version"));
+        stored.put("updatedAt", System.currentTimeMillis());
+        String key = recipeKey(ctx, recipeHash);
+        redisService.setCacheObject(key, JSON.toJSONString(stored));
+        try {
+            redisService.redisTemplate.expire(key, RECIPE_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception ignore) {
+            // best-effort TTL
+        }
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("recipeHash", recipeHash);
+        out.put("recipeConfirmHash", recipeHash);
+        out.put("recipeStatus", RECIPE_STATUS_PROPOSED);
+        out.put("recipeSource", RECIPE_SOURCE_SLOT);
+        out.put("recipeDisplayZh", displayZh);
+        out.put("finished", finished);
+        out.put("lines", lines);
+        out.put("posted", false);
+        out.put("stockUnchanged", true);
+        out.put("hintZh", displayZh + "\n核对无误后携带本 recipeHash 调用 /mix/prepare 生成未审核草稿，"
+                + "再私聊原文「确认配制{草稿号}」过账。模型布尔不能代替用户核对或过账授权。");
+        out.put("userSummaryZh", out.get("hintZh"));
+        return out;
+    }
+
+    /**
+     * Create MIX draft from a previously displayed recipeHash (PROPOSED), never from model booleans.
+     * Body: recipeHash (required), idempotencyKey, optional finished/lines (must match stored).
+     * Posting remains trusted「确认配制{draftId}」only — no second confirm phrase.
      */
     public Map<String, Object> mixPrepare(JSONObject body) throws Exception {
-        // Validate user-confirmed recipe before workflow/binding side effects.
-        JSONObject draftBody = buildMixBodyFromSlots(body);
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
         assertNoBlockingWorkflow(ctx);
+        JSONObject draftBody = buildMixBodyFromSlots(ctx, body);
         AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
         Map<String, Object> created = gatewayService.createDraftAs(ctx.user, "MIX", draftBody, owner);
-        return enrichMixView(ctx, created, draftBody.getString("businessKey"), false);
+        Map<String, Object> view = enrichMixView(ctx, created, draftBody.getString("businessKey"), false);
+        view.put("recipeHash", draftBody.getString("recipeHash"));
+        view.put("recipeConfirmHash", draftBody.getString("recipeHash"));
+        view.put("recipeStatus", RECIPE_STATUS_PROPOSED);
+        view.put("recipeSource", RECIPE_SOURCE_SLOT);
+        Object finishedObj = draftBody.get("finished");
+        Object linesObj = draftBody.get("lines");
+        if (finishedObj instanceof JSONObject && linesObj instanceof JSONArray) {
+            view.put("recipeDisplayZh", buildRecipeDisplayZh(
+                    (JSONObject) finishedObj, (JSONArray) linesObj,
+                    draftBody.getString("recipeHash"), RECIPE_STATUS_PROPOSED));
+        }
+        return view;
     }
 
     /** Soft try used by Excel preview auto-draft (throwOnIneligible=false). */
@@ -148,10 +211,14 @@ public class AierpWecomMixService {
             throw new BusinessRunTimeException(400, "预览缺少规范化明细");
         }
         JSONObject draftBody = buildMixDraftFromNormalized(normalized, businessKey);
+        String recipeHash = computeRecipeHash(
+                draftBody.getJSONObject("finished"), draftBody.getJSONArray("lines"));
+        draftBody.put("recipeHash", recipeHash);
         String idem = shortIdempotencyKey(ctx, fileSha256, businessKey);
         draftBody.put("idempotencyKey", idem);
         if (draftBody.getString("remark") == null || draftBody.getString("remark").trim().isEmpty()) {
-            draftBody.put("remark", "企微Excel配制 " + businessKey + "（测试配方，需用户确认）");
+            draftBody.put("remark", "企微Excel配制 " + businessKey
+                    + "（Excel 测试配方草案 recipeHash=" + shortHash(recipeHash) + "，待原文确认配制）");
         }
 
         AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
@@ -162,7 +229,7 @@ public class AierpWecomMixService {
         }
         long draftId = Long.parseLong(String.valueOf(draftIdObj));
         String confirmPhrase = "确认配制" + draftId;
-        String summaryZh = buildMixDraftSummary(businessKey, created, draftId, confirmPhrase);
+        String summaryZh = buildMixDraftSummary(businessKey, created, draftId, confirmPhrase, recipeHash);
         putWorkflow(ctx, "DRAFT_READY", previewId, fileSha256, null, null, summaryZh,
                 draftId, businessKey, confirmPhrase);
         Map<String, Object> out = enrichMixView(ctx, created, businessKey, true);
@@ -171,6 +238,13 @@ public class AierpWecomMixService {
         out.put("userSummaryZh", summaryZh);
         out.put("hintZh", summaryZh);
         out.put("businessKey", businessKey);
+        out.put("recipeHash", recipeHash);
+        out.put("recipeConfirmHash", recipeHash);
+        out.put("recipeStatus", RECIPE_STATUS_PROPOSED);
+        out.put("recipeSource", RECIPE_SOURCE_EXCEL);
+        out.put("recipeDisplayZh", buildRecipeDisplayZh(
+                draftBody.getJSONObject("finished"), draftBody.getJSONArray("lines"),
+                recipeHash, RECIPE_STATUS_PROPOSED));
         return out;
     }
 
@@ -186,7 +260,7 @@ public class AierpWecomMixService {
         JSONObject finished = new JSONObject(true);
         finished.put("barCode", required(finishedIn, "barCode"));
         finished.put("depotName", firstNonBlank(finishedIn.getString("depotName"), DEFAULT_FG_DEPOT));
-        finished.put("qty", required(finishedIn, "qty"));
+        finished.put("qty", normalizeQtyString(required(finishedIn, "qty")));
         // MIX_HEADERS has two「单位」columns; Excel parser already used unitAt(0)/unitAt(1).
         finished.put("unit", required(finishedIn, "unit"));
         assertPositiveQty(finished.getString("qty"), "成品产出数量");
@@ -200,7 +274,7 @@ public class AierpWecomMixService {
             JSONObject line = new JSONObject(true);
             line.put("barCode", required(src, "barCode"));
             line.put("depotName", firstNonBlank(src.getString("depotName"), DEFAULT_RM_DEPOT));
-            line.put("qty", required(src, "qty"));
+            line.put("qty", normalizeQtyString(required(src, "qty")));
             line.put("unit", required(src, "unit"));
             assertPositiveQty(line.getString("qty"), "原料领用数量");
             lines.add(line);
@@ -217,14 +291,37 @@ public class AierpWecomMixService {
         return draftBody;
     }
 
-    private JSONObject buildMixBodyFromSlots(JSONObject body) {
+    /**
+     * Slot prepare: recipeHash from prior /mix/recipe-preview only.
+     * Never treat recipeUserConfirmed / userConfirmedRecipe as approval evidence.
+     * 「确认配制{id}」remains the only trusted confirm/post path.
+     */
+    private JSONObject buildMixBodyFromSlots(AierpWecomBindingService.BoundContext ctx, JSONObject body) {
         if (body == null) {
             throw new BusinessRunTimeException(400, "缺少配制槽位");
         }
-        if (!body.getBooleanValue("recipeUserConfirmed") && !body.getBooleanValue("userConfirmedRecipe")) {
-            throw new BusinessRunTimeException(400,
-                    "配制配方必须由用户明确确认（测试配方）。请设置 recipeUserConfirmed=true，系统不会自动推导化学比例。");
+        // Model booleans prove nothing — reject when used without a registered recipeHash.
+        if (body.getBooleanValue("recipeUserConfirmed") || body.getBooleanValue("userConfirmedRecipe")) {
+            String maybeHash = firstNonBlank(
+                    trimToNull(body.getString("recipeHash")),
+                    trimToNull(body.getString("recipeConfirmHash")));
+            if (maybeHash == null) {
+                throw new BusinessRunTimeException(400,
+                        "模型布尔 recipeUserConfirmed/userConfirmedRecipe 不能证明用户已核对配方。"
+                                + "请先调用 /mix/recipe-preview 展示完整成品/原料配比，再用返回的 recipeHash 准备草稿。"
+                                + "系统不会自动推导化学比例；过账仅接受原文「确认配制{草稿号}」。");
+            }
+            // Boolean present with hash: ignored — only server-stored recipeHash authorizes prepare.
         }
+        String recipeHash = firstNonBlank(
+                trimToNull(body.getString("recipeHash")),
+                trimToNull(body.getString("recipeConfirmHash")));
+        if (recipeHash == null || !recipeHash.matches("[0-9a-fA-F]{64}")) {
+            throw new BusinessRunTimeException(400,
+                    "缺少有效 recipeHash。请先 /mix/recipe-preview 展示完整配方草案，再携带服务端返回的 hash 准备草稿。"
+                            + "禁止用模型布尔标记冒充用户确认；系统不会自动推导化学比例。");
+        }
+        recipeHash = recipeHash.toLowerCase(Locale.ROOT);
         String idem = trimToNull(body.getString("idempotencyKey"));
         if (idem == null) {
             throw new BusinessRunTimeException(400, "缺少 idempotencyKey");
@@ -232,41 +329,219 @@ public class AierpWecomMixService {
         if (idem.length() > 80) {
             throw new BusinessRunTimeException(400, "idempotencyKey 过长");
         }
-        JSONObject finishedIn = body.getJSONObject("finished");
-        if (finishedIn == null) {
-            throw new BusinessRunTimeException(400, "缺少 finished（成品编码/产出数量/单位）");
-        }
-        JSONArray rawLines = body.getJSONArray("lines");
-        if (rawLines == null || rawLines.isEmpty()) {
-            throw new BusinessRunTimeException(400, "缺少 lines（至少一行原料）");
-        }
-        JSONObject finished = new JSONObject(true);
-        finished.put("barCode", required(finishedIn, "barCode"));
-        finished.put("depotName", firstNonBlank(finishedIn.getString("depotName"), DEFAULT_FG_DEPOT));
-        finished.put("qty", required(finishedIn, "qty"));
-        finished.put("unit", required(finishedIn, "unit"));
-        assertPositiveQty(finished.getString("qty"), "成品产出数量");
 
-        JSONArray lines = new JSONArray();
-        for (int i = 0; i < rawLines.size(); i++) {
-            JSONObject src = rawLines.getJSONObject(i);
-            JSONObject line = new JSONObject(true);
-            line.put("barCode", required(src, "barCode"));
-            line.put("depotName", firstNonBlank(src.getString("depotName"), DEFAULT_RM_DEPOT));
-            line.put("qty", required(src, "qty"));
-            line.put("unit", required(src, "unit"));
-            assertPositiveQty(line.getString("qty"), "原料领用数量");
-            lines.add(line);
+        Map<String, Object> stored = loadRecipePreview(ctx, recipeHash);
+        if (stored == null) {
+            throw new BusinessRunTimeException(404,
+                    "recipeHash 未登记或已过期。请重新 /mix/recipe-preview 展示完整成品/原料配比后再准备草稿。");
         }
+        JSONObject finished = toJsonObject(stored.get("finished"));
+        JSONArray lines = toJsonArray(stored.get("lines"));
+        if (finished == null || lines == null || lines.isEmpty()) {
+            throw new BusinessRunTimeException(500, "已登记配方缺少成品或原料行");
+        }
+        // Optional client finished/lines must match server-stored formula (prevent swap after display).
+        if (body.getJSONObject("finished") != null || body.getJSONArray("lines") != null) {
+            JSONObject clientFinished = body.getJSONObject("finished") == null
+                    ? null : parseFinished(body.getJSONObject("finished"));
+            JSONArray clientLines = body.getJSONArray("lines") == null
+                    ? null : parseRawLines(body.getJSONArray("lines"));
+            if (clientFinished != null && clientLines != null) {
+                String clientHash = computeRecipeHash(clientFinished, clientLines);
+                if (!recipeHash.equals(clientHash)) {
+                    throw new BusinessRunTimeException(409,
+                            "请求中的成品/原料与已展示 recipeHash 不一致，请重新预览后再准备。");
+                }
+            }
+        }
+
         JSONObject draftBody = new JSONObject(true);
         draftBody.put("idempotencyKey", idem);
         draftBody.put("finished", finished);
         draftBody.put("lines", lines);
+        draftBody.put("recipeHash", recipeHash);
         String remark = trimToNull(body.getString("remark"));
         draftBody.put("remark", remark == null
-                ? "企微对话配制（测试配方，用户已确认）"
+                ? ("企微对话配制（测试配方草案 recipeHash=" + shortHash(recipeHash)
+                + "，已展示待原文确认配制）")
                 : remark);
         return draftBody;
+    }
+
+    private JSONObject parseFinished(JSONObject finishedIn) {
+        if (finishedIn == null) {
+            throw new BusinessRunTimeException(400, "缺少 finished（成品编码/产出数量/单位）");
+        }
+        JSONObject finished = new JSONObject(true);
+        finished.put("barCode", required(finishedIn, "barCode"));
+        finished.put("depotName", firstNonBlank(finishedIn.getString("depotName"), DEFAULT_FG_DEPOT));
+        finished.put("qty", normalizeQtyString(required(finishedIn, "qty")));
+        finished.put("unit", required(finishedIn, "unit"));
+        assertPositiveQty(finished.getString("qty"), "成品产出数量");
+        return finished;
+    }
+
+    private JSONArray parseRawLines(JSONArray rawLines) {
+        if (rawLines == null || rawLines.isEmpty()) {
+            throw new BusinessRunTimeException(400, "缺少 lines（至少一行原料）");
+        }
+        List<JSONObject> sorted = new java.util.ArrayList<JSONObject>();
+        for (int i = 0; i < rawLines.size(); i++) {
+            JSONObject src = rawLines.getJSONObject(i);
+            if (src == null) {
+                continue;
+            }
+            JSONObject line = new JSONObject(true);
+            line.put("barCode", required(src, "barCode"));
+            line.put("depotName", firstNonBlank(src.getString("depotName"), DEFAULT_RM_DEPOT));
+            line.put("qty", normalizeQtyString(required(src, "qty")));
+            line.put("unit", required(src, "unit"));
+            assertPositiveQty(line.getString("qty"), "原料领用数量");
+            sorted.add(line);
+        }
+        if (sorted.isEmpty()) {
+            throw new BusinessRunTimeException(400, "缺少有效原料行");
+        }
+        sorted.sort(new java.util.Comparator<JSONObject>() {
+            @Override
+            public int compare(JSONObject a, JSONObject b) {
+                return String.valueOf(a.getString("barCode"))
+                        .compareTo(String.valueOf(b.getString("barCode")));
+            }
+        });
+        JSONArray lines = new JSONArray();
+        lines.addAll(sorted);
+        return lines;
+    }
+
+    private Map<String, Object> loadRecipePreview(AierpWecomBindingService.BoundContext ctx, String recipeHash) {
+        Object raw;
+        try {
+            raw = redisService.getCacheObject(recipeKey(ctx, recipeHash));
+        } catch (Exception ex) {
+            return null;
+        }
+        if (raw == null) {
+            return null;
+        }
+        try {
+            Map<String, Object> stored = JSON.parseObject(String.valueOf(raw));
+            if (stored == null
+                    || !recipeHash.equalsIgnoreCase(String.valueOf(stored.get("recipeHash")))
+                    || !String.valueOf(ctx.user.getId()).equals(String.valueOf(stored.get("erpUserId")))
+                    || !String.valueOf(ctx.user.getTenantId()).equals(String.valueOf(stored.get("tenantId")))
+                    || !String.valueOf(ctx.binding.get("id")).equals(String.valueOf(stored.get("bindingId")))
+                    || !String.valueOf(ctx.binding.get("binding_version"))
+                    .equals(String.valueOf(stored.get("bindingVersion")))) {
+                return null;
+            }
+            return stored;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String recipeKey(AierpWecomBindingService.BoundContext ctx, String recipeHash) {
+        return RECIPE_PREFIX + ctx.botId + ":" + ctx.wecomUserId + ":" + recipeHash.toLowerCase(Locale.ROOT);
+    }
+
+    /** Canonical SHA-256 of finished + sorted raw lines (no model flags). */
+    static String computeRecipeHash(JSONObject finished, JSONArray lines) {
+        StringBuilder canon = new StringBuilder();
+        canon.append("FG|").append(normToken(finished.getString("barCode")))
+                .append("|").append(normQtyCanon(finished.getString("qty")))
+                .append("|").append(normToken(finished.getString("unit")))
+                .append("|").append(normToken(firstNonBlank(finished.getString("depotName"), DEFAULT_FG_DEPOT)))
+                .append("\n");
+        List<JSONObject> sorted = new java.util.ArrayList<JSONObject>();
+        for (int i = 0; i < lines.size(); i++) {
+            JSONObject line = lines.getJSONObject(i);
+            if (line != null) {
+                sorted.add(line);
+            }
+        }
+        sorted.sort(new java.util.Comparator<JSONObject>() {
+            @Override
+            public int compare(JSONObject a, JSONObject b) {
+                return String.valueOf(a.getString("barCode"))
+                        .compareTo(String.valueOf(b.getString("barCode")));
+            }
+        });
+        for (JSONObject line : sorted) {
+            canon.append("RM|").append(normToken(line.getString("barCode")))
+                    .append("|").append(normQtyCanon(line.getString("qty")))
+                    .append("|").append(normToken(line.getString("unit")))
+                    .append("|").append(normToken(firstNonBlank(line.getString("depotName"), DEFAULT_RM_DEPOT)))
+                    .append("\n");
+        }
+        return sha256Hex(canon.toString());
+    }
+
+    private static String buildRecipeDisplayZh(JSONObject finished, JSONArray lines,
+                                               String recipeHash, String recipeStatus) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("【配制配方草案】").append(recipeStatus == null ? RECIPE_STATUS_PROPOSED : recipeStatus);
+        sb.append(" recipeHash=").append(shortHash(recipeHash)).append("\n");
+        sb.append("成品：").append(finished.getString("barCode"))
+                .append(" ").append(stripNumber(finished.get("qty")))
+                .append(" ").append(nullTo(finished.getString("unit"), ""))
+                .append(" → ").append(nullTo(finished.getString("depotName"), DEFAULT_FG_DEPOT))
+                .append("\n");
+        sb.append("原料（预计扣减，确认后生效）：\n");
+        for (int i = 0; i < lines.size(); i++) {
+            JSONObject line = lines.getJSONObject(i);
+            sb.append("- ").append(line.getString("barCode"))
+                    .append(" ").append(stripNumber(line.get("qty")))
+                    .append(" ").append(nullTo(line.getString("unit"), ""))
+                    .append(" @ ").append(nullTo(line.getString("depotName"), DEFAULT_RM_DEPOT))
+                    .append("\n");
+        }
+        sb.append("此为提案展示，不是过账授权；模型布尔不能代替用户核对。");
+        sb.append("系统不会自动推导化学比例。过账仅接受原文「确认配制{草稿号}」。");
+        return sb.toString().trim();
+    }
+
+    private static String shortHash(String recipeHash) {
+        if (recipeHash == null || recipeHash.length() < RECIPE_HASH_SHORT_LEN) {
+            return recipeHash == null ? "" : recipeHash.toLowerCase(Locale.ROOT);
+        }
+        return recipeHash.substring(0, RECIPE_HASH_SHORT_LEN).toLowerCase(Locale.ROOT);
+    }
+
+    private static JSONObject toJsonObject(Object o) {
+        if (o == null) {
+            return null;
+        }
+        if (o instanceof JSONObject) {
+            return (JSONObject) o;
+        }
+        return JSON.parseObject(JSON.toJSONString(o));
+    }
+
+    private static JSONArray toJsonArray(Object o) {
+        if (o == null) {
+            return null;
+        }
+        if (o instanceof JSONArray) {
+            return (JSONArray) o;
+        }
+        return JSON.parseArray(JSON.toJSONString(o));
+    }
+
+    private static String normalizeQtyString(String raw) {
+        return new BigDecimal(raw.trim()).stripTrailingZeros().toPlainString();
+    }
+
+    private static String normQtyCanon(String raw) {
+        try {
+            return new BigDecimal(String.valueOf(raw).trim()).stripTrailingZeros().toPlainString();
+        } catch (Exception ex) {
+            return String.valueOf(raw).trim();
+        }
+    }
+
+    private static String normToken(String s) {
+        return s == null ? "" : s.trim().toUpperCase(Locale.ROOT);
     }
 
     private Map<String, Object> enrichMixView(AierpWecomBindingService.BoundContext ctx,
@@ -305,7 +580,9 @@ public class AierpWecomMixService {
         data.put("confirmPhrase", confirmPhrase);
         if (!confirmed) {
             data.put("hint", "待确认、库存未变。请回复「" + confirmPhrase + "」完成配制过账。"
-                    + (fromExcel ? " 配比为 Excel 中用户填写的测试值。" : " 配比为用户确认的测试配方。"));
+                    + (fromExcel
+                    ? " 配比为 Excel 中用户填写的测试值（非模型布尔）。"
+                    : " 配比为已展示的测试配方草案（recipeHash 已登记；非模型布尔确认）。"));
         }
         Object payloadObj = created.get("payload");
         JSONObject payload = payloadObj instanceof JSONObject
@@ -331,10 +608,13 @@ public class AierpWecomMixService {
     }
 
     private String buildMixDraftSummary(String businessKey, Map<String, Object> created,
-                                        long draftId, String confirmPhrase) {
+                                        long draftId, String confirmPhrase, String recipeHash) {
         StringBuilder sb = new StringBuilder();
         sb.append("配制单 ").append(businessKey == null ? "" : businessKey).append("\n");
         sb.append("待确认单 #").append(draftId).append("（未过账，库存未变）\n");
+        if (recipeHash != null && !recipeHash.isEmpty()) {
+            sb.append("配方草案 recipeHash=").append(shortHash(recipeHash)).append("\n");
+        }
         Object payloadObj = created.get("payload");
         JSONObject payload = payloadObj instanceof JSONObject
                 ? (JSONObject) payloadObj
@@ -363,7 +643,7 @@ public class AierpWecomMixService {
                 }
             }
         }
-        sb.append("测试配方，需用户确认。请回复「").append(confirmPhrase).append("」完成配制");
+        sb.append("测试配方草案已展示；过账须原文「").append(confirmPhrase).append("」（模型布尔无效）");
         return sb.toString();
     }
 
@@ -390,7 +670,6 @@ public class AierpWecomMixService {
         if (lineCount < 1) {
             throw new BusinessRunTimeException(400, "配制单至少需要一行原料");
         }
-        // finished already single object after Excel mergeGroup; qty/unit validated via resolveLine later
         if (finished.getString("barCode") == null || finished.getString("unit") == null) {
             throw new BusinessRunTimeException(400, "成品编码或单位缺失（注意 MIX 表有两个「单位」列）");
         }

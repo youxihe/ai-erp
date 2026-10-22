@@ -46,6 +46,8 @@ public class AierpGatewayService {
             "^\\s*确认\\s*采购\\s*[#＃：:]?\\s*(\\d+)\\s*$");
     private static final Pattern CONFIRM_MIX = Pattern.compile(
             "^\\s*确认\\s*配制\\s*[#＃：:]?\\s*(\\d+)\\s*$");
+    private static final Pattern CONFIRM_SERVICE = Pattern.compile(
+            "^\\s*确认\\s*耗料\\s*[#＃：:]?\\s*(\\d+)\\s*$");
     private static final Pattern CONFIRM_SIMPLE = Pattern.compile("^\\s*确认\\s*$");
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final long FUN_STOCK = 246L;
@@ -1526,6 +1528,13 @@ public class AierpGatewayService {
             out.confirm = true;
             out.kind = "MIX";
             out.draftId = Long.parseLong(mix.group(1));
+            return out;
+        }
+        Matcher service = CONFIRM_SERVICE.matcher(text);
+        if (service.matches()) {
+            out.confirm = true;
+            out.kind = "SERVICE";
+            out.draftId = Long.parseLong(service.group(1));
             return out;
         }
         Matcher m = CONFIRM_PURCHASE.matcher(text);
