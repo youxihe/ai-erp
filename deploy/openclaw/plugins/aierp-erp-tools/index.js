@@ -802,15 +802,16 @@ function workflowBlocksPrepare(wf) {
 function formatPreviewLines(data) {
   if (data?.userSummaryZh) return String(data.userSummaryZh);
   if (data?.hintZh) return String(data.hintZh);
+  if (data?.draftId && data?.confirmPhrase) {
+    const bk = data.businessKey || "";
+    return (
+      `采购单 ${bk}\n待确认单 #${data.draftId}\n请回复「${data.confirmPhrase}」完成入库`
+    );
+  }
   const records = Array.isArray(data?.records) ? data.records : [];
-  const lines = [];
   const errors = [];
-  let billCount = 0;
-  let lineCount = 0;
   for (const rec of records) {
-    billCount += 1;
     const sourceRows = Array.isArray(rec?.sourceRows) ? rec.sourceRows : [];
-    lineCount += sourceRows.length || 1;
     const errs = Array.isArray(rec?.errors) ? rec.errors.filter(Boolean) : [];
     if (errs.length || rec?.canConfirm === false) {
       const rowLabel = sourceRows.length ? sourceRows[0] : "?";
@@ -818,42 +819,9 @@ function formatPreviewLines(data) {
     }
   }
   if (errors.length) {
-    lines.push(`文件已收到，但还有 ${errors.length} 处需要修改：`);
-    for (const e of errors.slice(0, 5)) lines.push(`- ${e}`);
-    lines.push("请改好后重新发回 Excel。库存未变化，也未创建采购单。");
-    return lines.join("\n");
+    return [`文件已收到，但还有 ${errors.length} 处需要修改：`, ...errors.slice(0, 5).map((e) => `- ${e}`), "请改好后重新发回 Excel。"].join("\n");
   }
-  lines.push(`文件已核对：${billCount || records.length} 张业务单 / ${lineCount || records.length} 行明细。`);
-  for (const rec of records.slice(0, 5)) {
-    const norm = rec?.normalized || {};
-    const sceneLabel =
-      rec?.scene === "PURCHASE" ? "采购单" : rec?.scene === "MIX" ? "配制单" : rec?.scene === "SERVICE" ? "服务单" : "业务单";
-    let head = `${sceneLabel} ${rec?.businessKey || "?"}`;
-    if (norm.organName) head += `｜${norm.organName}`;
-    lines.push(head);
-    const purchaseLines = Array.isArray(norm.lines) ? norm.lines : [];
-    for (const ln of purchaseLines.slice(0, 8)) {
-      const qty = ln.qty ?? "?";
-      const unit = ln.unit || "";
-      const price = ln.unitPrice ?? ln.price;
-      let amount = "";
-      if (price != null && price !== "" && qty !== "?") {
-        const n = Number(qty) * Number(price);
-        if (Number.isFinite(n)) amount = `＝${n} 元`;
-      }
-      lines.push(
-        `  ${ln.barCode || ""}${ln.depotName ? "｜" + ln.depotName : ""}｜${qty}${unit}` +
-          (price != null && price !== "" ? ` × ${price} 元${amount}` : ""),
-      );
-    }
-    if (norm.finished) {
-      const f = norm.finished;
-      lines.push(`  成品 ${f.barCode || ""}｜${f.qty || "?"}${f.unit || ""}`);
-    }
-  }
-  lines.push("数据无误，尚未入库。本阶段仅核对；下一阶段会生成待确认采购单后再请您确认。");
-  lines.push("不必重新上传同一文件。若改口头采购，请回复「取消文件」。");
-  return lines.join("\n");
+  return "文件已核对。若未生成待确认单，请稍后再试或重新发送。";
 }
 
 function formatParseFailed(reason) {
@@ -1124,21 +1092,44 @@ function registerConfirmAndExcelDispatchHook(api) {
     // Durable preview follow-up: user says 入库吧 after session/model reset.
     if (EXCEL_FOLLOWUP.test(text) && !isConfirmPhrase(text)) {
       try {
-        const st = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+        let st = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
           wecomUserId: senderId,
           botId: botId(),
           channel: CHANNEL_ID,
         });
-        if (st && st.status === "PREVIEWED" && (st.userSummaryZh || st.previewId)) {
-          const summary = st.userSummaryZh
-            ? String(st.userSummaryZh)
-            : "文件已核对完成，结果仍保留在服务端。";
+        if (st && st.status === "PREVIEWED" && st.previewId && !st.draftId) {
+          try {
+            const drafted = await signedPost("/aierp/v1/wecom/excel/prepare-verified", {
+              wecomUserId: senderId,
+              botId: botId(),
+              channel: CHANNEL_ID,
+              previewId: st.previewId,
+              fileSha256: st.fileSha256 || undefined,
+            });
+            if (drafted?.userSummaryZh || drafted?.draftId) {
+              return { handled: true, text: drafted.userSummaryZh || formatPreviewLines(drafted) };
+            }
+          } catch (err) {
+            return {
+              handled: true,
+              text: String(err?.message || err).slice(0, 200) || "暂时无法生成待确认采购单，请重新发送 Excel。",
+            };
+          }
+          st = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
+            wecomUserId: senderId,
+            botId: botId(),
+            channel: CHANNEL_ID,
+          });
+        }
+        if (st && (st.status === "DRAFT_READY" || st.hasAwaitingDraft) && (st.userSummaryZh || st.draftId)) {
+          const phrase = st.confirmPhrase || (st.draftId ? `确认采购${st.draftId}` : "");
           const body =
-            summary +
-            "\n\n已保留刚才的核对结果，不必重新上传。" +
-            "本阶段仅完成核对，尚未生成待确认采购单；下一阶段开通后即可确认入库。" +
-            "若要口头采购，请先回复「取消文件」。";
+            (st.userSummaryZh ? String(st.userSummaryZh) : `待确认单 #${st.draftId}`) +
+            (phrase && !(st.userSummaryZh || "").includes(phrase) ? `\n请回复「${phrase}」完成入库` : "");
           return { handled: true, text: body };
+        }
+        if (st && st.status === "PREVIEWED" && st.userSummaryZh) {
+          return { handled: true, text: String(st.userSummaryZh) };
         }
         if (st && (st.status === "PENDING" || st.status === "FAILED")) {
           return {
@@ -1151,7 +1142,7 @@ function registerConfirmAndExcelDispatchHook(api) {
       }
       return {
         handled: true,
-        text: "当前没有可继续的 Excel 核对结果。请先发送填写好的 .xlsx，或直接口头下采购单。",
+        text: "当前没有待确认的采购单。请先发送填写好的 Excel。",
       };
     }
 
@@ -1215,7 +1206,7 @@ function registerPrepareGate(api) {
           botId: botId(),
           channel: CHANNEL_ID,
         });
-        if (st && (st.status === "PENDING" || st.status === "PREVIEWED" || st.status === "FAILED")) {
+        if (st && (st.status === "PENDING" || st.status === "PREVIEWED" || st.status === "FAILED" || st.status === "DRAFT_READY")) {
           serverBlocks = true;
         }
       }
