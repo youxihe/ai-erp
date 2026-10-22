@@ -1,11 +1,10 @@
 /**
  * SOP registry — priority routing for trusted WeCom inbound.
- * Mirror of plugins/aierp-erp-tools/sop/registry.mjs for workspace import paths.
  * receipt > mix recipe-ack > mix/purchase confirm > purchase_batch_prepare >
  * mix_prepare > excel cancel/followup > excel file > fallback LLM
  *
  * AIERP-016M: mix_recipe_ack / mix_confirm / mix_prepare; keep PURCHASE confirm+PDF paths intact.
- * AIERP-017B2: purchase_batch_prepare (DRAFT only).
+ * AIERP-017B2: purchase_batch_prepare (DRAFT only); preview auto-prepare + HMAC batch API cover the path.
  */
 import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
 import { isMixConfirmPhrase, isMixRecipeAckPhrase, MIX_SOP } from "./mix-prepare.mjs";
