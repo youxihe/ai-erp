@@ -1,6 +1,6 @@
 ﻿# AIERP-016S READY_FOR_REVIEW
 
-**HEAD:** `cb99ff9e7ce6b1ec88b02eced49bcdd4140f9276`  
+**HEAD:** `5eb6b035ee656255c5450ab4be6f5f519759784a`  
 **Branch:** `feat/aierp-016s-service-outbound-sop` (from `origin/master` `74b32fe8`)  
 **Compare / open PR:** https://github.com/youxihe/ai-erp/compare/master...feat/aierp-016s-service-outbound-sop?expand=1  
 **Status:** READY_FOR_REVIEW — no Merge; no F: plugin overwrite.
