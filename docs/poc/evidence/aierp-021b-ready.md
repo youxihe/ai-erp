@@ -2,7 +2,7 @@
 
 ## HEAD
 
-见本分支 push 后最新 commit（`feat/aierp-021b-material-masterdata-sop`）。
+`82d6a2b557167e024d6840445aeec36083d1fe88`（`feat/aierp-021b-material-masterdata-sop`；证据提交后以 push 最新为准）。
 
 ## 行为
 
