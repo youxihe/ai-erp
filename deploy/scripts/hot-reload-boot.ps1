@@ -63,10 +63,27 @@ function Wait-BootHttp {
 function Invoke-BootComposeUp {
   Push-Location $deploy
   try {
-    docker compose --env-file .env -f docker-compose.yml -f docker-compose.boot-hot.yml up -d aierp-boot
-    if ($LASTEXITCODE -ne 0) { throw "docker compose up aierp-boot failed (exit $LASTEXITCODE)" }
+    # The bind-mounted app.jar changes without changing Compose configuration.
+    # Plain "up -d" may leave the existing JVM running OLD bytecode.
+    docker compose --env-file .env -f docker-compose.yml -f docker-compose.boot-hot.yml config -q
+    if ($LASTEXITCODE -ne 0) { throw "compose overlay config invalid (exit $LASTEXITCODE)" }
+    docker compose --env-file .env -f docker-compose.yml -f docker-compose.boot-hot.yml up -d --force-recreate --no-deps aierp-boot
+    if ($LASTEXITCODE -ne 0) { throw "docker compose recreate aierp-boot failed (exit $LASTEXITCODE)" }
   } finally {
     Pop-Location
+  }
+}
+
+function Test-BootJarMatchesHost {
+  if (-not (Test-Path $jarOut)) { return $false }
+  try {
+    $expected = (Get-FileHash -Path $jarOut -Algorithm SHA256).Hash.ToLowerInvariant()
+    $lines = @(docker exec aierp-boot sha256sum /app/app.jar 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $lines.Count -eq 0) { return $false }
+    $actual = ([string]$lines[0] -split '\s+')[0].Trim().ToLowerInvariant()
+    return ($actual -eq $expected)
+  } catch {
+    return $false
   }
 }
 
@@ -196,21 +213,23 @@ try {
   Invoke-BootComposeUp
 
   Write-Host "== wait HTTP (doc.html) =="
-  $ok = Wait-BootHttp -TimeoutSec $HealthWaitSec
-  if ($ok) {
-    Write-Host "bootReady=true doc.html=200"
+  $httpOk = Wait-BootHttp -TimeoutSec $HealthWaitSec
+  $hashOk = $httpOk -and (Test-BootJarMatchesHost)
+  if ($httpOk -and $hashOk) {
+    Write-Host "bootReady=true doc.html=200 jarSha256Matched=true"
   } else {
-    Write-Host "bootReady=false — attempting rollback from app.jar.bak"
+    Write-Host "bootReady=false httpOk=$httpOk jarSha256Matched=$hashOk — attempting rollback from app.jar.bak"
     docker logs aierp-boot --tail 30 2>&1 | Select-Object -Last 30
     if (Test-Path $jarBak) {
       Copy-Item -Force $jarBak $jarOut
       Write-Host "restored $jarOut from $jarBak"
       Invoke-BootComposeUp
       $rolled = Wait-BootHttp -TimeoutSec $HealthWaitSec
-      if ($rolled) {
-        Write-Host "rollbackReady=true doc.html=200 (previous jar restored)"
+      $rolledHashOk = $rolled -and (Test-BootJarMatchesHost)
+      if ($rolled -and $rolledHashOk) {
+        Write-Host "rollbackReady=true doc.html=200 jarSha256Matched=true (previous jar restored)"
       } else {
-        Write-Host "rollbackReady=false — check: docker logs aierp-boot --tail 50"
+        Write-Host "rollbackReady=false httpOk=$rolled jarSha256Matched=$rolledHashOk — check: docker logs aierp-boot --tail 50"
         throw "hot-reload start failed; backup restore also failed health check"
       }
       throw "hot-reload start failed; restored previous jar from app.jar.bak"
