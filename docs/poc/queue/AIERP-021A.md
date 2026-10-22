@@ -1,7 +1,8 @@
 # AIERP-021A · 企微对话创建/修改供应商与客户（ERP 原生主数据）
 
-- **状态**：RELEASED / next_order #4（独立开发；与 017B2、016M、016S 可并行写代码，但 F: 共享插件最后统一集成）
+- **状态**：READY_FOR_REVIEW（实现完成，待 ChatGPT Review；勿 Merge；F: 插件未接线）
 - **分支**：`feat/aierp-021a-partner-masterdata-sop`，基于最新 origin/master。
+- **HEAD**：见 push 后最新 commit（证据 `docs/poc/evidence/aierp-021a-ready.md`）。
 - **交付目标**：对话“新增供应商”“修改客户联系人/电话/地址”“查供应商资料”→ 真实 ERP 往来单位档案持久化，可立即被采购/服务耗料按名称检索。**创建/修改前显示摘要或字段差异，用户本人明确确认**，而不是模型认为“已提交”就生效。
 
 ## 已核对的现有代码（必须复用数据语义而不是直接复用假 Session）

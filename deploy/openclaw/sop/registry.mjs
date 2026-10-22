@@ -1,12 +1,14 @@
 /**
  * SOP registry — priority routing for trusted WeCom inbound.
- * receipt_request/followup > purchase_confirm > excel cancel/followup > excel file > fallback LLM
+ * receipt > partner_confirm > purchase_confirm > excel > fallback LLM
  */
 import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
+import { canHandlePartnerConfirm, isPartnerConfirmPhrase } from "./partner-upsert.mjs";
 
 export const SOP_PRIORITY = [
   "receipt_request",
   "receipt_followup",
+  "partner_confirm",
   "purchase_confirm",
   "excel_cancel",
   "excel_followup",
@@ -27,6 +29,10 @@ export function routeTrustedInbound({ text, wecomUserId, isConfirmPhrase, isExce
       sopId: receipt.followup || isReceiptFollowup(t) ? "receipt_followup" : "receipt_request",
       followup: !!receipt.followup || isReceiptFollowup(t),
     };
+  }
+
+  if (canHandlePartnerConfirm(t) || isPartnerConfirmPhrase(t)) {
+    return { sopId: "partner_confirm" };
   }
 
   if (typeof isConfirmPhrase === "function" && isConfirmPhrase(t)) {

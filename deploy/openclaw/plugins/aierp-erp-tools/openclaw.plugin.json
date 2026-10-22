@@ -15,6 +15,7 @@
       "erp_stock_query",
       "erp_material_search",
       "erp_partner_search",
+      "erp_partner_prepare",
       "erp_bill_search",
       "erp_bill_detail",
       "erp_report_query",

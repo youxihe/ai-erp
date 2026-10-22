@@ -14,6 +14,12 @@ import {
   isReceiptFollowup,
 } from "./sop/receipt-send.mjs";
 import {
+  isPartnerConfirmPhrase,
+  formatPartnerPrepare,
+  formatPartnerCommit,
+  runPartnerCommit,
+} from "./sop/partner-upsert.mjs";
+import {
   renderPurchaseConfirmed,
   factsFromConfirm,
   sanitizeForChannel,
@@ -533,6 +539,54 @@ function registerErpTools(api) {
         rowCount: data?.rowCount ?? 0,
         rows: data?.rows || [],
         hint: data?.hint || null,
+      },
+    }),
+  );
+
+  make(
+    "erp_partner_prepare",
+    "准备新建/修改供应商或客户（白名单：name/contacts/phone/address/remark）。只创建申请与确认口令，确认前 ERP 无写入。禁止银行/税号/余额。确认须本人回复「确认建档{申请号}」或「确认修改{申请号}」。无 commit 工具。",
+    "/aierp/v1/wecom/master/partner/prepare",
+    {
+      type: "object",
+      properties: {
+        op: { type: "string", description: "CREATE 或 UPDATE" },
+        type: { type: "string", description: "供应商 或 客户" },
+        partnerId: { type: "number", description: "UPDATE 必填：ERP 主键" },
+        name: { type: "string", description: "名称（CREATE 必填）" },
+        contacts: { type: "string", description: "联系人" },
+        phone: { type: "string", description: "联系电话" },
+        address: { type: "string", description: "地址" },
+        remark: { type: "string", description: "备注" },
+      },
+      required: ["op", "type"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      op: str(p.op),
+      type: str(p.type),
+      partnerId: num(p.partnerId),
+      name: str(p.name),
+      contacts: str(p.contacts),
+      phone: str(p.phone),
+      address: str(p.address),
+      remark: str(p.remark),
+    }),
+    (data) => ({
+      text: formatPartnerPrepare(data),
+      details: {
+        requestId: data?.requestId ?? null,
+        op: data?.op || null,
+        type: data?.type || null,
+        partnerId: data?.partnerId ?? null,
+        dbWrite: data?.dbWrite === true,
+        posted: !!data?.posted,
+        challenge: data?.challenge || null,
+        fieldDiffs: data?.fieldDiffs || [],
+        summary: data?.summary || null,
       },
     }),
   );
@@ -1124,6 +1178,21 @@ function registerConfirmAndExcelDispatchHook(api) {
         // ignore
       }
       return { handled: true, text: cleared.replyText };
+    }
+
+    if (isPartnerConfirmPhrase(text)) {
+      try {
+        const result = await runPartnerCommit({
+          wecomUserId: senderId,
+          text,
+          botId: botId(),
+          messageId,
+          signedPost,
+        });
+        return { handled: true, text: result.text || formatPartnerCommit(result.data) };
+      } catch (err) {
+        return { handled: true, text: `主数据确认未完成：${String(err?.message || err).slice(0, 200)}` };
+      }
     }
 
         if (isConfirmPhrase(text)) {
