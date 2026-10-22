@@ -831,6 +831,9 @@ public class AierpGatewayService {
         JSONObject out = new JSONObject(true);
         out.put("idempotencyKey", required(body, "idempotencyKey"));
         out.put("remark", body.getString("remark") == null ? "" : body.getString("remark").trim());
+        if (body.getString("businessKey") != null && !body.getString("businessKey").trim().isEmpty()) {
+            out.put("businessKey", body.getString("businessKey").trim());
+        }
         if ("MIX".equals(bizType)) {
             JSONObject finishedIn = body.getJSONObject("finished");
             if (finishedIn == null) {

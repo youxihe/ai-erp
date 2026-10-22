@@ -483,7 +483,10 @@ public class AierpExcelService {
             String key = cell(row, headers, formatter, errors, "业务单号");
             record.put("businessKey", key);
             normalized.put("organName", cell(row, headers, formatter, errors, "供应商名称"));
+            normalized.put("operTime", optional(row, headers, formatter, errors, "业务日期"));
             normalized.put("remark", optional(row, headers, formatter, errors, "业务备注"));
+            // Persist Excel businessKey on the draft payload for audited-replay lookup.
+            normalized.put("businessKey", key);
             JSONArray lines = new JSONArray();
             lines.add(line(row, headers, formatter, errors, "物料编码", "入库仓库", "入库数量", "单位", "单价(元)"));
             normalized.put("lines", lines);
@@ -524,7 +527,16 @@ public class AierpExcelService {
         rows.addAll(incoming.getJSONArray("sourceRows"));
         JSONArray errors = group.getJSONArray("errors");
         errors.addAll(incoming.getJSONArray("errors"));
-        if (!"MIX".equals(group.getString("scene"))) {
+        String scene = group.getString("scene");
+        if ("PURCHASE".equals(scene) || "SERVICE".equals(scene)) {
+            // Same businessKey must not silently fuse conflicting bill-level fields.
+            assertBillFieldSame(group, incoming, "organName",
+                    "PURCHASE".equals(scene) ? "同一业务单号的供应商不一致" : "同一业务单号的客户不一致", errors);
+            assertBillFieldSame(group, incoming, "operTime", "同一业务单号的业务日期不一致", errors);
+            assertDepotFieldSame(group, incoming, errors);
+            JSONArray lines = group.getJSONObject("normalized").getJSONArray("lines");
+            lines.addAll(incoming.getJSONObject("normalized").getJSONArray("lines"));
+        } else if (!"MIX".equals(scene)) {
             JSONArray lines = group.getJSONObject("normalized").getJSONArray("lines");
             lines.addAll(incoming.getJSONObject("normalized").getJSONArray("lines"));
         } else {
@@ -539,6 +551,59 @@ public class AierpExcelService {
             group.getJSONObject("normalized").getJSONArray("lines").addAll(incoming.getJSONObject("normalized").getJSONArray("lines"));
         }
         group.put("canConfirm", errors.isEmpty());
+    }
+
+    /** Hard-fail when same businessKey rows disagree on a document-level field. */
+    private void assertBillFieldSame(JSONObject group, JSONObject incoming, String field,
+                                     String errorMsg, JSONArray errors) {
+        JSONObject leftN = group.getJSONObject("normalized");
+        JSONObject rightN = incoming.getJSONObject("normalized");
+        if (leftN == null || rightN == null) {
+            return;
+        }
+        String left = normalizeBillField(leftN.getString(field));
+        String right = normalizeBillField(rightN.getString(field));
+        if (left.isEmpty() && right.isEmpty()) {
+            return;
+        }
+        if (left.isEmpty()) {
+            leftN.put(field, rightN.getString(field));
+            return;
+        }
+        if (right.isEmpty()) {
+            return;
+        }
+        if (!left.equalsIgnoreCase(right)) {
+            errors.add(errorMsg + "（" + left + " / " + right + "）");
+        }
+    }
+
+    /** Bill-level warehouse: all lines under one businessKey must share the same depot. */
+    private void assertDepotFieldSame(JSONObject group, JSONObject incoming, JSONArray errors) {
+        String left = firstLineDepot(group.getJSONObject("normalized"));
+        String right = firstLineDepot(incoming.getJSONObject("normalized"));
+        if (left.isEmpty() || right.isEmpty()) {
+            return;
+        }
+        if (!left.equalsIgnoreCase(right)) {
+            errors.add("同一业务单号的仓库不一致（" + left + " / " + right + "）");
+        }
+    }
+
+    private static String firstLineDepot(JSONObject normalized) {
+        if (normalized == null || normalized.getJSONArray("lines") == null
+                || normalized.getJSONArray("lines").isEmpty()) {
+            return "";
+        }
+        JSONObject line = normalized.getJSONArray("lines").getJSONObject(0);
+        return line == null ? "" : normalizeBillField(line.getString("depotName"));
+    }
+
+    private static String normalizeBillField(String raw) {
+        if (raw == null || "null".equals(raw)) {
+            return "";
+        }
+        return raw.trim();
     }
 
     private void validateMaster(User user, String scene, JSONObject normalized, JSONArray errors) {

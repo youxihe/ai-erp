@@ -1,11 +1,20 @@
 /**
  * SOP registry — priority routing for trusted WeCom inbound.
- * receipt > mix recipe-ack > mix/purchase confirm > excel cancel/followup > excel file > fallback LLM
+ * Mirror of plugins/aierp-erp-tools/sop/registry.mjs for workspace import paths.
+ * receipt > mix recipe-ack > mix/purchase confirm > purchase_batch_prepare >
+ * mix_prepare > excel cancel/followup > excel file > fallback LLM
  *
  * AIERP-016M: mix_recipe_ack / mix_confirm / mix_prepare; keep PURCHASE confirm+PDF paths intact.
+ * AIERP-017B2: purchase_batch_prepare (DRAFT only).
  */
 import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
 import { isMixConfirmPhrase, isMixRecipeAckPhrase, MIX_SOP } from "./mix-prepare.mjs";
+import {
+  SOP_ID as PURCHASE_BATCH_SOP,
+  canHandlePurchaseBatchFollowup,
+  runPurchaseBatchPrepare,
+  formatPurchaseBatchReply,
+} from "./purchase-batch-prepare.mjs";
 
 export const SOP_PRIORITY = [
   "receipt_request",
@@ -13,6 +22,7 @@ export const SOP_PRIORITY = [
   "mix_recipe_ack",
   "mix_confirm",
   "purchase_confirm",
+  "purchase_batch_prepare",
   "mix_prepare",
   "excel_cancel",
   "excel_followup",
@@ -54,6 +64,9 @@ export function routeTrustedInbound({
   if (typeof isConfirmPhrase === "function" && isConfirmPhrase(t)) {
     return { sopId: "purchase_confirm" };
   }
+  if (canHandlePurchaseBatchFollowup(t)) {
+    return { sopId: PURCHASE_BATCH_SOP };
+  }
   if (typeof isExcelCancel === "function" && isExcelCancel(t)) {
     return { sopId: "excel_cancel" };
   }
@@ -69,4 +82,8 @@ export {
   isMixConfirmPhrase,
   isMixRecipeAckPhrase,
   MIX_SOP,
+  canHandlePurchaseBatchFollowup,
+  runPurchaseBatchPrepare,
+  formatPurchaseBatchReply,
+  PURCHASE_BATCH_SOP,
 };
