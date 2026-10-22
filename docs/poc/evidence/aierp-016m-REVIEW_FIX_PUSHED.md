@@ -5,7 +5,7 @@
 **PR:** https://github.com/youxihe/ai-erp/pull/42  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: OpenClaw overwrite; no MIX native post / stock write.  
 **Evidence at:** 2026-10-23 ~01:58 +08:00  
-**Remote HEAD:** _(pinned in follow-up commit after push)_
+**Remote HEAD:** `58d1fffbed81440529c7a38016082debb5dc0fb7`
 
 ## ChatGPT Round-1 P0 — model boolean ≠ human approval
 
