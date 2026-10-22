@@ -22,7 +22,7 @@
 | AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
 | AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
 
-| **AIERP-020A** | **RELEASED / next_order #4 (SOP/UX)** | **标准业务确定性 SOP 脚本 + 企微 Markdown/卡片渲染规范；015C P0 的 receipt-send 优先，其他按小 PR 渐进** |
+| **AIERP-020A** | **RELEASED / next_order #6 (SOP/UX)** | **标准业务确定性 SOP 脚本 + 企微 Markdown/卡片渲染规范；015C P0 的 receipt-send 优先，其他按小 PR 渐进** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | **DONE / PR #37** | **真实企微已收到 PDF 文件消息（GW-PURCHASE-119）；SOP receipt-send + 自动发送已合并，最新自动发送 / PDF 新排版仍待客户端验收** |
 
@@ -30,6 +30,9 @@
 | AIERP-017C1 | PLANNED / after 017B2 | 一次可信“确认批次”→采购逐单原生入库 + 批次 XLSX 回执 |
 | **AIERP-016M** | **RELEASED / next_order #2 (CODE / independent)** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
 | **AIERP-016S** | **RELEASED / next_order #3 (CODE / independent)** | **SERVICE 客户服务耗料 SOP：确认后真实成品仓扣减，客户与回执记录** |
+| **AIERP-021A** | **RELEASED / next_order #4 (CODE / independent)** | **OpenClaw 对话新增/修改真实供应商与客户：查重、受控字段、独立本人确认，原生 ERP 持久化** |
+| **AIERP-021B** | **RELEASED / next_order #5 (CODE / independent)** | **OpenClaw 对话新增/修改原料/物料：Material+MaterialExtend 条码、单位/分类，建档时库存不变** |
+| AIERP-021C | PLANNED / after 021A+021B | **缺档挂起采购/配制/耗料→建档后恢复原业务，不要求用户重复讲需求** |
 | AIERP-016 | SUPERSEDED by 016M/016S | 配制与客户耗料拆分独立业务交付和 UAT |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
 | AIERP-017B1 | **DONE / PR #35** | **企微真实 Excel 80 L / ¥1,600 → DRAFT #119 → 原生已审核 GW-PURCHASE-119，库存 170.7→250.7 L；11/11 本地 + 真人 UAT** |
@@ -40,6 +43,17 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-22 · 主数据也纳入 OpenClaw 核心业务链
+
+**用户新增要求**：新原料、供应商、客户也应该直接通过企微对话完成新增、修改，业务过程中遇到缺档不能要求用户跳去 ERP 后台。当前 `MaterialController /material/add,/update` 与 `SupplierController /supplier/add,/update` 已有原生能力，但原 Service 中使用 `userService.getCurrentUser()` 与会话日志；物料新增/修改还可携带 `stock` **修改期初与当前库存**，不能直接暴露给 Agent。
+
+新增两条独立可开发任务：
+- **021A RELEASED #4**：供应商/客户建档与普通联系方式修改 SOP，显示字段摘要/差异，经用户原始企微确认才写 ERP；银行/税号/财务余额、停用/删除等不允许普通聊天更改。
+- **021B RELEASED #5**：原料/物料新增和名称规格备注受控修改，ERP `Material+MaterialExtend` 双表写入、bar_code 与单位一致、全仓库存不变，不允许经此入口设置库存/修改已有基础单位。
+- **021C PLANNED**：业务缺档后将已验证的采购/配制/客户耗料上下文服务端保存，建档后自动继续未审核草稿准备，**绝不能把确认建档误作业务过账授权**。
+
+所有 SOP 均走可信企业微信原文确认 + 后端显式 ERP actor、当前功能/租户权限、版本/业务 digest 与幂等；不能伪造 HTTP Session/RequestContextHolder，也不能把 ERP 写 API 提供给模型任意执行。任务及实测脚本 `docs/poc/queue/AIERP-021A.md`、`021B.md`、`021C.md`、`docs/poc/DEMO_UAT_MASTERDATA_CHAT.md`。
 
 ## 2026-10-22 16:55 · 三类功能扩展及演示 UAT：多单采购、配制生产、服务耗料
 
