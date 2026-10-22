@@ -35,7 +35,7 @@ public class AierpWecomConfirmService {
         }
         if (body != null && (Boolean.TRUE.equals(body.getBoolean("isGroup"))
                 || Boolean.TRUE.equals(body.getBoolean("groupChat")))) {
-            throw new BusinessRunTimeException(403, "禁止在群聊中确认业务单据");
+            throw new BusinessRunTimeException(403, "禁止在群聊中确认业务草稿");
         }
         String rawText = trimToNull(body == null ? null : body.getString("rawText"));
         if (rawText == null) {

@@ -28,6 +28,10 @@ import java.io.IOException;
                               "/jshERP-boot/aierp/v1/wecom/excel/template#/jshERP-boot/aierp/v1/wecom/excel/preview#" +
                               "/jshERP-boot/aierp/v1/wecom/excel/workflow/status#/jshERP-boot/aierp/v1/wecom/excel/workflow/cancel#" +
                               "/jshERP-boot/aierp/v1/wecom/excel/prepare-verified#" +
+                              "/jshERP-boot/aierp/v1/wecom/excel/prepare-verified-batch#" +
+                              "/jshERP-boot/aierp/v1/wecom/excel/purchase-batch-prepare#" +
+                              "/jshERP-boot/aierp/v1/wecom/mix/prepare#/jshERP-boot/aierp/v1/wecom/mix/prepare-verified#" +
+                              "/jshERP-boot/aierp/v1/wecom/mix/recipe-preview#/jshERP-boot/aierp/v1/wecom/mix/recipe-ack#" +
                               "/jshERP-boot/aierp/v1/wecom/receipt/find#/jshERP-boot/aierp/v1/wecom/receipt/file")})
 public class LogCostFilter implements Filter {
 

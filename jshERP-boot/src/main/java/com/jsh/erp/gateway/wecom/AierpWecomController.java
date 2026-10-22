@@ -37,6 +37,10 @@ public class AierpWecomController {
     @Resource
     private AierpWecomReceiptService receiptService;
     @Resource
+    private AierpWecomMixService mixService;
+    @Resource
+    private AierpWecomPurchaseBatchService purchaseBatchService;
+    @Resource
     private com.jsh.erp.service.UserService userService;
 
     @PostMapping("/binding/issue")
@@ -212,13 +216,70 @@ public class AierpWecomController {
     }
 
     /**
-     * AIERP-017B1: create/reuse unposted PURCHASE draft from persisted Excel preview.
+     * AIERP-017B1/017B2: create/reuse unposted PURCHASE draft(s) from persisted Excel preview.
      * Never posts inventory; confirm remains trusted before_dispatch only.
      */
     @PostMapping("/excel/prepare-verified")
     public BaseResponseInfo excelPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
         return ok(excelService.prepareVerified(parse(raw)));
+    }
+
+    /**
+     * AIERP-017B2: multi-purchase verified draft batch from authoritative preview payload_json.
+     * Optional selectedBusinessKeys after explicit user choice when some rows have errors.
+     * Never posts inventory; no excel.confirm / no LLM confirm tool.
+     */
+    @PostMapping("/excel/prepare-verified-batch")
+    public BaseResponseInfo excelPrepareVerifiedBatch(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.prepareVerifiedBatch(parse(raw)));
+    }
+
+    /** AIERP-017B2 controlled SOP entry (HMAC). Same semantics as prepare-verified-batch. */
+    @PostMapping("/excel/purchase-batch-prepare")
+    public BaseResponseInfo excelPurchaseBatchPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(purchaseBatchService.prepare(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: create/reuse unposted MIX draft from persisted Excel preview payload_json.
+     * Never posts inventory; confirm via 「确认配制{draftId}」 only.
+     */
+    @PostMapping("/mix/prepare-verified")
+    public BaseResponseInfo mixPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.prepareVerifiedMix(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: display a proposed slot recipe DRAFT and register server-side recipeHash.
+     * Does not create a draft; model booleans are not acceptance evidence.
+     */
+    @PostMapping("/mix/recipe-preview")
+    public BaseResponseInfo mixRecipePreview(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.recipePreview(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: trusted before_dispatch「确认配方{hash}」acks a displayed recipe proposal.
+     */
+    @PostMapping("/mix/recipe-ack")
+    public BaseResponseInfo mixRecipeAck(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.ackRecipeFromTrustedInbound(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: create MIX draft from a USER_ACKED recipeHash (trusted「确认配方」 first).
+     * Model booleans never equal approval. Posting remains「确认配制{draftId}」only.
+     */
+    @PostMapping("/mix/prepare")
+    public BaseResponseInfo mixPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.mixPrepare(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {

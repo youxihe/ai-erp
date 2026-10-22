@@ -1,0 +1,165 @@
+{
+  "suite": "aierp-016m-mix-prepare-flow",
+  "at": "2026-10-22T17:57:25.889Z",
+  "headNote": "non-post only; confirm phrase 确认配制{draftId}; no F: deploy; do not confirm #119",
+  "wecomUserIdMasked": "m16-***",
+  "businessKey": "MIX-016M-MVJUFR85",
+  "excelDraftId": 268,
+  "slotDraftId": 269,
+  "stockBefore": {
+    "RM-A001@原料仓": 250.7,
+    "RM-B002@原料仓": 4.8,
+    "RM-C003@原料仓": 36.4,
+    "FG-101@成品仓": 149
+  },
+  "stockAfterPrepare": {
+    "RM-A001@原料仓": 250.7,
+    "RM-B002@原料仓": 4.8,
+    "RM-C003@原料仓": 36.4,
+    "FG-101@成品仓": 149
+  },
+  "pass": 28,
+  "fail": 0,
+  "results": [
+    {
+      "name": "phrase_match_plain",
+      "ok": true,
+      "detail": "确认配制123"
+    },
+    {
+      "name": "phrase_match_spaced",
+      "ok": true,
+      "detail": "spaced"
+    },
+    {
+      "name": "phrase_reject_purchase",
+      "ok": true,
+      "detail": "purchase"
+    },
+    {
+      "name": "phrase_reject_bare",
+      "ok": true,
+      "detail": "bare"
+    },
+    {
+      "name": "build_rejects_model_boolean_without_hash",
+      "ok": true,
+      "detail": "must refuse model boolean without recipeHash"
+    },
+    {
+      "name": "build_requires_recipe_hash",
+      "ok": true,
+      "detail": "must require recipeHash"
+    },
+    {
+      "name": "phrase_recipe_ack",
+      "ok": true,
+      "detail": "确认配方{hash}"
+    },
+    {
+      "name": "phrase_only_confirm_mix_is_post_path",
+      "ok": true,
+      "detail": "确认配制{id} only; 确认配方 is not a confirm/post path"
+    },
+    {
+      "name": "binding_claim",
+      "ok": true,
+      "detail": "{\"code\":200}"
+    },
+    {
+      "name": "template_mix_3raw",
+      "ok": true,
+      "detail": "{\"code\":200,\"fileName\":\"配制生产模板.xlsx\"}"
+    },
+    {
+      "name": "preview_auto_mix_draft",
+      "ok": true,
+      "detail": "{\"draftId\":268,\"businessKey\":\"MIX-016M-MVJUFR85\",\"phrase\":\"确认配制268\",\"summary\":\"配制单 MIX-016M-MVJUFR85\\n待确认单 #268（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制268」（模型布尔无效）\",\"posted\":false,\"stockUnchanged\":true}"
+    },
+    {
+      "name": "prepare_not_posted",
+      "ok": true,
+      "detail": "{\"posted\":false,\"stockUnchanged\":true,\"status\":\"AWAITING_CONFIRM\"}"
+    },
+    {
+      "name": "summary_has_confirm_mix_phrase",
+      "ok": true,
+      "detail": "{\"phrase\":\"确认配制268\",\"hasInSummary\":true}"
+    },
+    {
+      "name": "summary_no_tech_jargon",
+      "ok": true,
+      "detail": "配制单 MIX-016M-MVJUFR85\n待确认单 #268（未过账，库存未变）\n配方草案 recipeHash=e248f607c73d\n成品：PCB清洗液（FG-101） 1 L → 成品仓\n原料（预计扣减，确认后生效）：\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\n- 络合剂（RM-B002） 0.1 L @ 原料仓\n- 纯水（RM-C"
+    },
+    {
+      "name": "stock_unchanged_after_prepare",
+      "ok": true,
+      "detail": "{\"before\":{\"RM-A001@原料仓\":250.7,\"RM-B002@原料仓\":4.8,\"RM-C003@原料仓\":36.4,\"FG-101@成品仓\":149},\"after\":{\"RM-A001@原料仓\":250.7,\"RM-B002@原料仓\":4.8,\"RM-C003@原料仓\":36.4,\"FG-101@成品仓\":149}}"
+    },
+    {
+      "name": "workflow_draft_ready",
+      "ok": true,
+      "detail": "{\"userSummaryZh\":\"配制单 MIX-016M-MVJUFR85\\n待确认单 #268（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制268」（模型布尔无效）\",\"draftId\":268,\"bizType\":\"MIX\",\"hasValidPreview\":true,\"erpUserId\":63,\"bindingVersion\":1,\"blocksPurchasePrepare\":true,\"fileSha256\":\"1a7a223b7381fab5075998aa744d8a2995180d46a8c1ae0d7a7c5517491dfd80\",\"confirmPhrase\":\"确认配制268\",\"hasAwaitingDraft\":true,\"businessKey\":\"MIX-016M-MVJUFR85\",\"tenantId\":63,\"bindingId\":110,\"previewId\":\"pv-9ab8175f131149008"
+    },
+    {
+      "name": "reject_purchase_phrase_on_mix",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制268」\"}"
+    },
+    {
+      "name": "reject_bare_confirm_on_mix",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"请回复明确指令「确认配制268」（配制/服务耗料不接受单独「确认」）\"}"
+    },
+    {
+      "name": "stock_still_unchanged_after_reject",
+      "ok": true,
+      "detail": "{\"RM-A001@原料仓\":250.7,\"FG-101@成品仓\":149}"
+    },
+    {
+      "name": "slot_prepare_rejects_model_boolean",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"模型布尔 recipeUserConfirmed/userConfirmedRecipe 不能证明用户已核对配方。请先调用 /mix/recipe-preview 展示完整成品/原料配比，再用返回的 recipeHash 准备草稿。系统不会自动推导化学比例；过账仅接受原文「确认配制{草稿号}」。\"}"
+    },
+    {
+      "name": "slot_prepare_requires_recipe_hash",
+      "ok": true,
+      "detail": "{\"code\":409,\"msg\":\"当前有待确认草稿 #268。请回复「确认配制268」或「取消文件」后再口头配制。\"}"
+    },
+    {
+      "name": "slot_recipe_preview_registers_hash",
+      "ok": true,
+      "detail": "{\"recipeHash\":\"9641c2c8df0adfc8\",\"status\":\"PROPOSED\",\"ackPhrase\":\"确认配方9641c2c8df0a\",\"display\":\"【配制配方草案】PROPOSED recipeHash=9641c2c8df0a\\n成品：FG-101 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- RM-A001 0.5 L @ 原料仓\\n- RM-B002 0.2 L @ 原料仓\\n- RM-C003 0.3 L @ 原料仓\\n此为提案展示，不是过账授权；模型布尔不能代替用户核对。核对无误请回复「确认配方9641c2c8df0a」。系统不会自动推导化学比例。过账仅接受原文「确认配\"}"
+    },
+    {
+      "name": "slot_prepare_rejects_unknown_hash",
+      "ok": true,
+      "detail": "{\"code\":404,\"msg\":\"recipeHash 未登记或已过期。请重新 /mix/recipe-preview 展示完整成品/原料配比后再准备草稿。\"}"
+    },
+    {
+      "name": "slot_prepare_rejects_unacked_hash",
+      "ok": true,
+      "detail": "{\"code\":409,\"msg\":\"配方尚未经用户原文确认。请用户私聊回复「确认配方9641c2c8df0a」后再准备草稿（模型代报哈希或布尔无效）。\"}"
+    },
+    {
+      "name": "slot_recipe_ack_trusted",
+      "ok": true,
+      "detail": "{\"status\":\"USER_ACKED\",\"acked\":true,\"code\":200}"
+    },
+    {
+      "name": "slot_prepare_draft",
+      "ok": true,
+      "detail": "{\"draftId\":269,\"phrase\":\"确认配制269\",\"recipeHash\":\"9641c2c8df0adfc8\",\"status\":\"AWAITING_CONFIRM\",\"formatted\":\"待确认、库存未变。请回复「确认配制269」完成配制过账。 配比为已展示的测试配方草案（recipeHash 已登记；非模型布尔确认）。\",\"code\":200}"
+    },
+    {
+      "name": "reject_service_phrase_on_mix",
+      "ok": true,
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制269」\"}"
+    },
+    {
+      "name": "slot_prepare_stock_unchanged",
+      "ok": true,
+      "detail": "{\"RM-A001@原料仓\":250.7,\"FG-101@成品仓\":149}"
+    }
+  ]
+}

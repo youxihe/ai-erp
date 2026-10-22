@@ -23,13 +23,16 @@ import {
   formatServiceDraft,
   formatServiceConfirmed,
 } from "./sop/service-consume.mjs";
+import { registerMixConfirmDispatch } from "./sop/register-mix-confirm.mjs";
+import { registerMixRecipeAckDispatch } from "./sop/register-mix-recipe-ack.mjs";
+import { isMixConfirmPhrase, isMixRecipeAckPhrase } from "./sop/mix-prepare.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
 const MIN_SECRET_LEN = 32;
 const BANNED_SECRET_SNIPPETS = ["change-me", "changeme", "example", "placeholder", "aierp-local-wecom-adapter"];
-const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[：:#＃]?\s*(\d+)\s*$/;
 const CONFIRM_MIX = /^\s*确认\s*配制\s*[：:#＃]?\s*(\d+)\s*$/;
+const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[：:#＃]?\s*(\d+)\s*$/;
 const CONFIRM_SIMPLE = /^\s*确认\s*$/;
 
 function emptyPluginConfigSchema() {
@@ -164,13 +167,15 @@ function num(v) {
 
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
-  // Trusted phrases only: PURCHASE / SERVICE / MIX (+ bare「确认」→ Java rejects on non-PURCHASE).
-  // Cross-type mismatch is rejected by Gateway assertConfirmKindMatchesBiz (not LLM).
+  // Trusted phrases: PURCHASE / SERVICE / MIX (+ bare「确认」→ Java rejects non-PURCHASE).
+  // MIX 「确认配制{n}」also owned by registerMixConfirmDispatch (priority 55).
   return (
     CONFIRM_PURCHASE.test(t) ||
     CONFIRM_SERVICE.test(t) ||
     CONFIRM_MIX.test(t) ||
-    CONFIRM_SIMPLE.test(t)
+    CONFIRM_SIMPLE.test(t) ||
+    isMixConfirmPhrase(t) ||
+    isMixRecipeAckPhrase(t)
   );
 }
 
@@ -268,6 +273,20 @@ function formatConfirm(data) {
   const biz = String(data?.bizType || "");
   if (biz === "SERVICE" || String(bill).startsWith("GW-SERVICE-")) {
     return sanitizeForChannel(formatServiceConfirmed(data || {}), { markdown: false });
+  }
+  const isMix =
+    data?.bizType === "MIX" ||
+    data?.receiptKind === "MIX" ||
+    String(data?.billNumber || "").startsWith("GW-MIX-");
+  if (isMix) {
+    const hint = data?.receiptText || data?.hint;
+    if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
+      return sanitizeForChannel(String(hint).slice(0, 800), { markdown: false });
+    }
+    return sanitizeForChannel(
+      `组装配制已完成\n${data?.billNumber || "?"} · 已审核（无采购 PDF）`,
+      { markdown: false },
+    );
   }
   try {
     const facts = factsFromConfirm(data || {});
@@ -553,51 +572,6 @@ function registerErpTools(api) {
     }),
   );
 
-  make(
-    "erp_purchase_prepare",
-    "创建真实未审核采购草稿（不改库存、不审核）。需要物料编码、数量、单位、仓库、供应商与幂等键。缺字段先追问。禁止声称已入库。确认请用户回复「确认采购{草稿号}」。",
-    "/aierp/v1/wecom/purchase/prepare",
-    {
-      type: "object",
-      properties: {
-        barCode: { type: "string", description: "物料编码，如 RM-A001" },
-        qty: { type: "number", description: "采购数量" },
-        unit: { type: "string", description: "单位，如 L" },
-        depotName: { type: "string", description: "入库仓库，如 原料仓" },
-        organName: { type: "string", description: "供应商名称" },
-        idempotencyKey: { type: "string", description: "幂等键，同一对话同一意图保持稳定" },
-        remark: { type: "string", description: "备注（可选）" },
-      },
-      required: ["barCode", "qty", "unit", "depotName", "organName", "idempotencyKey"],
-      additionalProperties: false,
-    },
-    (wecomUserId, p) => ({
-      wecomUserId,
-      botId: botId(),
-      channel: CHANNEL_ID,
-      barCode: str(p.barCode),
-      qty: num(p.qty),
-      unit: str(p.unit),
-      depotName: str(p.depotName),
-      organName: str(p.organName),
-      idempotencyKey: str(p.idempotencyKey),
-      remark: str(p.remark),
-    }),
-    (data) => ({
-      text: formatPurchaseDraft(data),
-      details: {
-        draftId: data?.draftId ?? null,
-        status: data?.status || null,
-        statusLabel: data?.statusLabel || null,
-        posted: !!data?.posted,
-        stockUnchanged: data?.stockUnchanged !== false,
-        summary: data?.summary || null,
-        challenge: data?.challenge || null,
-        replayed: !!data?.replayed,
-      },
-    }),
-  );
-
   // AIERP-016S: SERVICE consume draft only — confirm via DM「确认耗料{id}」, never model confirm tool.
   make(
     "erp_service_prepare",
@@ -649,8 +623,53 @@ function registerErpTools(api) {
   );
 
   make(
+    "erp_purchase_prepare",
+    "创建真实未审核采购草稿（不改库存、不审核）。需要物料编码、数量、单位、仓库、供应商与幂等键。缺字段先追问。禁止声称已入库。确认请用户回复「确认采购{草稿号}」。",
+    "/aierp/v1/wecom/purchase/prepare",
+    {
+      type: "object",
+      properties: {
+        barCode: { type: "string", description: "物料编码，如 RM-A001" },
+        qty: { type: "number", description: "采购数量" },
+        unit: { type: "string", description: "单位，如 L" },
+        depotName: { type: "string", description: "入库仓库，如 原料仓" },
+        organName: { type: "string", description: "供应商名称" },
+        idempotencyKey: { type: "string", description: "幂等键，同一对话同一意图保持稳定" },
+        remark: { type: "string", description: "备注（可选）" },
+      },
+      required: ["barCode", "qty", "unit", "depotName", "organName", "idempotencyKey"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      barCode: str(p.barCode),
+      qty: num(p.qty),
+      unit: str(p.unit),
+      depotName: str(p.depotName),
+      organName: str(p.organName),
+      idempotencyKey: str(p.idempotencyKey),
+      remark: str(p.remark),
+    }),
+    (data) => ({
+      text: formatPurchaseDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: !!data?.posted,
+        stockUnchanged: data?.stockUnchanged !== false,
+        summary: data?.summary || null,
+        challenge: data?.challenge || null,
+        replayed: !!data?.replayed,
+      },
+    }),
+  );
+
+  make(
     "erp_draft_status",
-    "查询当前绑定用户名下采购/服务耗料草稿状态与摘要（只读）。",
+    "查询当前绑定用户名下采购草稿状态与摘要（只读）。",
     "/aierp/v1/wecom/draft/status",
     {
       type: "object",
@@ -665,21 +684,14 @@ function registerErpTools(api) {
       draftId: num(p.draftId),
     }),
     (data) => ({
-      text:
-        data?.bizType === "SERVICE" || String(data?.confirmPhrase || "").startsWith("确认耗料")
-          ? formatServiceDraft(data)
-          : formatPurchaseDraft(data),
+      text: formatPurchaseDraft(data),
       details: {
         draftId: data?.draftId ?? null,
-        bizType: data?.bizType || null,
         status: data?.status || null,
         statusLabel: data?.statusLabel || null,
         posted: !!data?.posted,
         stockUnchanged: data?.stockUnchanged !== false,
         summary: data?.summary || null,
-        challenge: data?.challenge || null,
-        confirmPhrase: data?.confirmPhrase || null,
-        replayed: !!data?.replayed,
       },
     }),
   );
@@ -1199,6 +1211,10 @@ function registerConfirmAndExcelDispatchHook(api) {
       return { handled: true, text: cleared.replyText };
     }
 
+        // MIX「确认配制{n}」is owned by registerMixConfirmDispatch (priority 55).
+        if (isMixRecipeAckPhrase(text) || isMixConfirmPhrase(text)) {
+          return;
+        }
         if (isConfirmPhrase(text)) {
       try {
         const data = await signedPost("/aierp/v1/wecom/draft/confirm", {
@@ -1214,9 +1230,9 @@ function registerConfirmAndExcelDispatchHook(api) {
         const bill = data?.billNumber;
         const isServiceBill =
           data?.bizType === "SERVICE" || String(bill || "").startsWith("GW-SERVICE-");
-        // Auto-send receipt PDF after PURCHASE confirm only.
-        // SERVICE: text《服务耗料出库回执》; dedicated PDF template not shipped.
-        if (bill && data?.status === "CONFIRMED" && !isServiceBill) {
+        const isMixBill = String(bill || "").startsWith("GW-MIX-") || data?.bizType === "MIX";
+        // Auto-send receipt PDF after PURCHASE confirm only (never fake PDF for MIX/SERVICE).
+        if (bill && data?.status === "CONFIRMED" && !isServiceBill && !isMixBill) {
           try {
             const sent = await runReceiptSend({
               wecomUserId: senderId,
@@ -1423,11 +1439,28 @@ const plugin = {
   id: "aierp-erp-tools",
   name: "AIERP ERP Tools",
   description:
-    "WeCom trusted-identity ERP: queries + purchase/service draft + before_dispatch confirm/receipt-PDF + excel template/preview (no model confirm tools)",
+    "WeCom trusted-identity ERP: queries + purchase draft + before_dispatch confirm/receipt-PDF + excel template/preview (no model confirm tools)",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);
     registerExcelObserveHook(api);
+    // AIERP-016M: recipe-hash ack (确认配方) then draft confirm (确认配制).
+    // Does not alter PURCHASE confirm + receipt PDF auto-send paths.
+    // MIX has no dedicated PDF — text receipt only.
+    registerMixRecipeAckDispatch(api, {
+      botId,
+      signedPost,
+      trustedWecomUserId,
+      isWecomGroupChat,
+      channelId: CHANNEL_ID,
+    });
+    registerMixConfirmDispatch(api, {
+      botId,
+      signedPost,
+      trustedWecomUserId,
+      isWecomGroupChat,
+      channelId: CHANNEL_ID,
+    });
     registerConfirmAndExcelDispatchHook(api);
     registerPrepareGate(api);
   },

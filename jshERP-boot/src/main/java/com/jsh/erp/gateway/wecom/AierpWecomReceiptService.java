@@ -115,10 +115,8 @@ public class AierpWecomReceiptService {
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
             // Retry PDF once if prior generation failed (e.g. missing CJK font in container).
-            // SERVICE stays text-only until a dedicated PDF template ships.
-            if (!isServiceBiz(confirmed, null)
-                    && ("PDF_FAILED".equals(String.valueOf(row.get("pdf_status")))
-                    || "NONE".equals(String.valueOf(row.get("pdf_status"))))) {
+            if ("PDF_FAILED".equals(String.valueOf(row.get("pdf_status")))
+                    || "NONE".equals(String.valueOf(row.get("pdf_status")))) {
                 tryRetryPdf(user, row, confirmed);
                 List<Map<String, Object>> refreshed = jdbcTemplate.queryForList(
                         "SELECT * FROM aierp_gateway_receipt WHERE tenant_id=? AND bill_number=?",
@@ -146,11 +144,12 @@ public class AierpWecomReceiptService {
         String pdfRef = null;
         String delivery = "TEXT_ONLY";
         boolean serviceReceipt = isServiceBiz(confirmed, facts);
+        boolean mixReceipt = isMixFacts(facts);
         if (serviceReceipt) {
-            // Honest: no dedicated SERVICE PDF template yet — do not retitle purchase PDF.
             facts.put("pdfNote", "服务耗料专用 PDF 模板尚未独立交付；当前仅文字《服务耗料出库回执》。");
             text = renderText(facts);
-        } else {
+        } else if (!mixReceipt) {
+            // AIERP-016M: never generate a purchase-titled PDF for MIX.
             try {
                 byte[] pdf = renderPdf(facts);
                 File dir = new File(storageDir);
@@ -171,6 +170,9 @@ public class AierpWecomReceiptService {
                 delivery = "TEXT_ONLY";
                 facts.put("pdfError", String.valueOf(ex.getMessage()));
             }
+        } else {
+            facts.put("pdfSkipped", serviceReceipt ? "SERVICE_TEXT_ONLY" : "MIX_NO_PURCHASE_PDF");
+            delivery = "TEXT_ONLY";
         }
 
         jdbcTemplate.update(
@@ -610,7 +612,7 @@ public class AierpWecomReceiptService {
         String billNumber = String.valueOf(confirmed.get("billNumber"));
         List<Map<String, Object>> heads = jdbcTemplate.queryForList(
                 "SELECT h.id, h.number, h.type, h.sub_type, h.status, h.oper_time, h.create_time, h.creator, "
-                        + "h.organ_id, h.total_price, h.discount_last_money, h.remark, u.login_name AS creator_login, "
+                        + "h.organ_id, h.total_price, h.discount_last_money, u.login_name AS creator_login, "
                         + "s.supplier AS organ_name "
                         + "FROM jsh_depot_head h "
                         + "LEFT JOIN jsh_user u ON u.id=h.creator "
@@ -618,11 +620,12 @@ public class AierpWecomReceiptService {
                         + "WHERE h.number=? AND h.tenant_id=? AND IFNULL(h.delete_flag,'0')<>'1'",
                 billNumber, user.getTenantId());
         if (heads.isEmpty() || !"1".equals(String.valueOf(heads.get(0).get("status")))) {
-            throw new BusinessRunTimeException(500, "原生单据未审核成功，拒绝生成业务回执");
+            throw new BusinessRunTimeException(500, "原生单据未审核成功，拒绝生成入库回执");
         }
         Map<String, Object> head = heads.get(0);
         List<Map<String, Object>> lines = jdbcTemplate.queryForList(
                 "SELECT i.material_id, i.depot_id, i.oper_number, i.unit_price, i.all_price, i.material_unit, "
+                        + "IFNULL(i.material_type,'') AS material_type, "
                         + "m.name AS material_name, me.bar_code, d.name AS depot_name "
                         + "FROM jsh_depot_item i "
                         + "LEFT JOIN jsh_material m ON m.id=i.material_id "
@@ -631,11 +634,15 @@ public class AierpWecomReceiptService {
                         + "WHERE i.header_id=? AND IFNULL(i.delete_flag,'0')<>'1'",
                 head.get("id"));
         boolean service = isServiceBiz(confirmed, head);
+        boolean mix = isMixBill(billNumber, head);
         Map<String, Object> facts = new LinkedHashMap<String, Object>();
-        facts.put("bizType", service ? "SERVICE" : String.valueOf(confirmed.get("bizType") == null
-                ? "PURCHASE" : confirmed.get("bizType")));
-        facts.put("title", service ? "服务耗料出库回执" : "采购入库业务回执");
-        facts.put("disclaimer", "此文件仅作业务记录，不作为税务发票或付款证明。服务耗料≠销售出库/收入确认。");
+        facts.put("bizType", service ? "SERVICE" : (mix ? "MIX" : String.valueOf(confirmed.get("bizType") == null
+                ? "PURCHASE" : confirmed.get("bizType"))));
+        facts.put("title", service ? "服务耗料出库回执" : (mix ? "组装配制业务回执" : "采购入库业务回执"));
+        facts.put("receiptKind", service ? "SERVICE" : (mix ? "MIX" : "PURCHASE"));
+        facts.put("disclaimer", service
+                ? "此文件仅作业务记录，不作为税务发票或付款证明。服务耗料≠销售出库/收入确认。"
+                : "此文件仅作业务记录，不作为税务发票或付款证明。");
         facts.put("billNumber", billNumber);
         facts.put("billStatus", "已审核");
         facts.put("operTime", String.valueOf(head.get("oper_time")));
@@ -649,8 +656,6 @@ public class AierpWecomReceiptService {
         facts.put("stockAfter", confirmed.get("stockAfter"));
         facts.put("confirmTime", confirmed.get("confirmTime"));
         facts.put("replayed", confirmed.get("replayed"));
-        facts.put("nativeType", head.get("type"));
-        facts.put("nativeSubType", head.get("sub_type"));
         return facts;
     }
 
@@ -719,7 +724,25 @@ public class AierpWecomReceiptService {
         return null;
     }
 
+    private static boolean isMixBill(String billNumber, Map<String, Object> head) {
+        if (billNumber != null && billNumber.startsWith("GW-MIX-")) {
+            return true;
+        }
+        if (head == null) {
+            return false;
+        }
+        return "其它".equals(String.valueOf(head.get("type")))
+                && "组装单".equals(String.valueOf(head.get("sub_type")));
+    }
+
+    private static boolean isMixFacts(Map<String, Object> facts) {
+        return facts != null && "MIX".equals(String.valueOf(facts.get("receiptKind")));
+    }
+
     private String renderText(Map<String, Object> facts) {
+        if (isMixFacts(facts)) {
+            return renderMixText(facts);
+        }
         boolean service = isServiceBiz(null, facts) || "SERVICE".equals(String.valueOf(facts.get("bizType")));
         StringBuilder sb = new StringBuilder();
         if (service) {
@@ -769,6 +792,41 @@ public class AierpWecomReceiptService {
         } else {
             sb.append("《采购入库业务回执》已生成（非发票）。");
         }
+        return sb.toString();
+    }
+
+    /** MIX receipt: finished FG + raw material deltas; no purchase PDF claim. */
+    private String renderMixText(Map<String, Object> facts) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("组装配制已完成（已审核）\n");
+        sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
+        sb.append("操作人：").append(nullToDash(facts.get("creatorLogin"))).append("\n");
+        sb.append("处理时间：").append(fmtTime(facts.get("operTime"))).append("\n");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
+        if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                String mType = line.get("material_type") == null ? "" : String.valueOf(line.get("material_type"));
+                String role = "组合件".equals(mType) ? "成品产出" : ("普通子件".equals(mType) ? "原料领用" : "明细");
+                sb.append("- [").append(role).append("] ")
+                        .append(nullToDash(line.get("material_name")))
+                        .append("（").append(nullToDash(line.get("bar_code"))).append("）")
+                        .append(" ").append(fmtQty(line.get("oper_number")))
+                        .append(" ").append(nullToDash(line.get("material_unit")))
+                        .append(" @ ").append(nullToDash(line.get("depot_name")))
+                        .append("\n");
+            }
+        }
+        List<String[]> stockRows = stockChangeRows(facts.get("stockBefore"), facts.get("stockAfter"));
+        if (!stockRows.isEmpty()) {
+            sb.append("库存变化（成品仓↑ / 原料仓↓）：\n");
+            for (String[] r : stockRows) {
+                sb.append("- ").append(r[0]).append("@").append(r[1])
+                        .append("  ").append(r[2]).append(" → ").append(r[3])
+                        .append("（").append(r[4]).append("）\n");
+            }
+        }
+        sb.append("文字回执已生成；配制场景不附带《采购入库业务回执》PDF。");
         return sb.toString();
     }
 
@@ -995,9 +1053,6 @@ public class AierpWecomReceiptService {
     }
 
     private void tryRetryPdf(User user, Map<String, Object> row, Map<String, Object> confirmed) {
-        if (isServiceBiz(confirmed, null) || String.valueOf(row.get("bill_number")).startsWith("GW-SERVICE-")) {
-            return;
-        }
         try {
             Map<String, Object> facts = buildFacts(user, confirmed);
             byte[] pdf = renderPdf(facts);
