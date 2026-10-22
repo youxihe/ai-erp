@@ -371,7 +371,7 @@ async function main() {
       idempotencyKey: idem,
       remark: "AIERP-016S automated test — SERVICE other outbound",
     });
-    assert(prep.json?.code === 200, "prepare failed: " + JSON.stringify(prep.json));
+    assert(prep.json?.code === 200, "prepare failed: " + JSON.stringify(prep.json ?? prep));
     const draftId = prep.json.data?.draftId;
     assert(draftId, "no draftId");
     assert(prep.json.data?.posted !== true, "prepare must not post");

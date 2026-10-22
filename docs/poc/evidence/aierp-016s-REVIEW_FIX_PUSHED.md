@@ -3,9 +3,8 @@
 **Branch:** `feat/aierp-016s-service-outbound-sop`  
 **PR:** https://github.com/youxihe/ai-erp/pull/43  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: plugin overwrite; no re-post of `GW-SERVICE-136`.  
-**HEAD:** `ed85bae560017b62123d546798bba0f67bf0b238`  
 **Code fix:** `48fecfef`  
-**Evidence UTF-8:** `6237390e` · **JSON suite:** `9993cc85`
+**Evidence suite (this push):** see commit HEAD after push.
 
 ## Round-1 fixes
 
@@ -17,8 +16,8 @@
 ### P1
 - Customer visibility: `assertCustomerVisible` via `UserCustomer` when `customerFlag=1` (prepare `resolveOrgan`, confirm `reassertParties`, Excel SERVICE preview) — not tenant-only.
 - Depot: `assertDepotAllowed` / `reassertAccess` re-check `UserDepot` at prepare and native posting (empty assignment denies).
-- No AR/sales posting: gateway rejects `SALE`/`SALES`.
-- Audited replay: CONFIRMED same `idempotencyKey` returns posted bill (ignores live stock-snapshot drift); same XLSX `prepare-verified` on POSTED workflow returns posted bill, never a new DRAFT.
+- No AR/sales posting: `assertGatewayBizType` rejects `SALE`/`SALES`/`AR`.
+- Audited replay: CONFIRMED same `idempotencyKey` short-circuits **before** `normalize` (ignores live stock drift); same XLSX `prepare-verified` on POSTED returns posted bill, never a new DRAFT.
 
 ## Files
 
@@ -29,6 +28,7 @@
 | `jshERP-boot/.../AierpWecomServiceConsumeService.java` | POSTED / same-file prepare-verified → posted bill |
 | `jshERP-boot/.../AierpWecomExcelService.java` | SERVICE posted summary; preserve PURCHASE PDF path |
 | `jshERP-boot/.../AierpWecomConfirmService.java` | markWorkflowPosted(bizType) |
+| `jshERP-boot/.../filter/LogCostFilter.java` | HMAC allowlist includes `service/prepare` (+ verified) |
 | `deploy/openclaw/plugins/aierp-erp-tools/index.js` | trusted `确认配制` phrase |
 | `deploy/scripts/aierp-016s-service-consume.mjs` | non-post REVIEW_FIX suite |
 
@@ -40,7 +40,7 @@
 - Negatives: bad customer, UserCustomer invisible (`customerFlag=1` → 苏州精密电子 403), cross-depot 403, cross-owner confirm, `确认采购`/`确认配制` on SERVICE, `确认耗料` on PURCHASE, no native bill after prepare.
 - Audited replay fixture `GW-SERVICE-136` → `CONFIRMED` / `posted=true` / stock unchanged (no second outbound).
 - XLSX POSTED `prepare-verified` → same draft #136, `replayed=true`, not new DRAFT.
-- Fresh prepare draft cancelled unposted (latest run `#217`).
+- Fresh prepare draft cancelled unposted (latest run `#226`).
 
 ## NOT_VERIFIED
 
