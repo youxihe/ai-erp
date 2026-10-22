@@ -4,7 +4,7 @@
 **PR:** https://github.com/youxihe/ai-erp/pull/43  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: plugin overwrite; no re-post of `GW-SERVICE-136`.  
 **Code fix:** `48fecfef` (UserCustomer / depot / cross-type / audited replay).  
-**This evidence commit HEAD:** *(filled after push — see tip of branch)*
+**HEAD:** `9993cc858163c33ae1c91ad436a37f0ca214c4c5`
 
 ## Round-1 fixes
 
