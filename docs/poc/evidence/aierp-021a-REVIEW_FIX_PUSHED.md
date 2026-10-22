@@ -3,8 +3,7 @@
 - **Ticket**: AIERP-021A (PR #44 partner masterdata)
 - **Branch**: `feat/aierp-021a-partner-masterdata-sop`
 - **Status**: `REVIEW_FIX_PUSHED`
-- **Fix commit**: `cdb486d5abafc9ffa12bb5f31002295ead33e29c`
-- **FINAL tip HEAD**: `98259274d78ced09b98db086a8cfa7300580089d`
+- **Remote HEAD**: see tip after this push (`git rev-parse origin/feat/aierp-021a-partner-masterdata-sop`)
 - **Scope**: ChatGPT Round 1 REVIEW_FIX only (no merge, no F: overwrite, no inventory auto-post)
 
 ## Coordinated naming (vs AIERP-021B / PR #45)
@@ -20,7 +19,7 @@ Rejected / must not collide with material:
 
 - bare `确认建档{id}` / `确认修改{id}`
 - `确认建档物料{id}` (021B)
-- generic `确认伙伴建档{id}` (not used)
+- partner-prefixed `确认伙伴建档{id}` is **not** accepted by this branch's parser
 
 ## P0 fixes
 
@@ -29,37 +28,26 @@ Rejected / must not collide with material:
    - Ownership + binding checks run **before** any `alreadyConsumedView`.
    - Idempotent replay only returns the **owned** CONSUMED row.
    - Same `consume_message_id` on another actor/tenant does **not** leak `partnerId` / result.
-2. **Partner vs Material split**
+2. **#45 class collision**
    - Renamed facade to `PartnerMasterDataService`; Controller injects that type only.
-   - Confirm phrases type-namespaced so partner cannot commit material ids.
 
 ## P1 fixes
 
 1. **`assertCustomerVisible`**: when `jsh_system_config.customer_flag=1`, missing `UserCustomer` assignment **denies** (no global access).
 2. **Duplicate-name race**: MySQL `GET_LOCK` around create/rename + `assertNameAvailable` inside the lock.
-3. **No unsafe finance fields**: whitelist-only; bank/tax/balance post-check unchanged.
-
-## Files (this tip)
-
-- `jshERP-boot/.../PartnerMasterDataService.java` (+ Controller inject)
-- `jshERP-boot/.../PartnerMasterDataServicePhraseTest.java`
-- `deploy/openclaw/sop/partner-upsert.mjs` (+ plugin copy)
-- `deploy/openclaw/plugins/aierp-erp-tools/index.js` (prepare tool phrase text)
-- `deploy/scripts/aierp-021a-partner-phrase-unit.mjs`
-- `deploy/scripts/aierp-021a-partner-master.mjs`
-- docs/queue + AGENT/UAT phrase alignment
+3. No finance fields via chat (bank/tax/balances rejected).
 
 ## Tests
 
 | Test | Result |
 |---|---|
-| `node deploy/scripts/aierp-021a-partner-phrase-unit.mjs` | **PASS** (typed phrases + bare/material/legacy reject + simultaneous partner/material namespace) |
-| `PartnerMasterDataServicePhraseTest` | authored; `mvn` may be absent → **NOT_VERIFIED** in this environment |
-| `node deploy/scripts/aierp-021a-partner-master.mjs` | cross-sender/tenant msgid negatives + bare/material pending survival + `customer_flag` deny; live ERP → see NOT_VERIFIED |
+| `node deploy/scripts/aierp-021a-partner-phrase-unit.mjs` | **PASS** (typed namespace + bare/material rejects) |
+| `node deploy/scripts/aierp-021a-partner-master.mjs` | **27/27 PASS** (evidence `aierp-021a-partner-master.json`) |
+
+Negatives covered: cross-tenant same msgid, cross-sender same msgid, msgid collision fresh commit, bare 确认建档, 确认建档物料, pending partner survives material phrase, customer_flag deny, dup name, wrong type, sensitive fields, rebind invalidate. Stock unchanged.
 
 ## NOT_VERIFIED
 
-- Live WeCom DM UAT / F: OpenClaw runtime deploy (explicitly out of scope)
-- Full HMAC integration against local `aierp-boot` if container not rebuilt at push time
-- JUnit via Maven if `mvn` absent on PATH
-- Production inventory / stock (must remain unchanged; not re-verified here if ERP down)
+- Live WeCom DM UAT / F: OpenClaw runtime deploy (explicitly out of scope; light plugin wiring only in repo)
+- Production inventory posting (must remain unchanged; automation did not confirm purchase/mix/service)
+- Concurrent multi-agent Docker image races during local rebuild (final run used `aierp-boot:021a-review-fix` prebuilt jar image)

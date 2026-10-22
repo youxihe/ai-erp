@@ -1,0 +1,20 @@
+# Runtime-only image using a locally prebuilt jshERP.jar (avoids in-Docker Maven OOM).
+FROM eclipse-temurin:8-jre
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-wqy-microhei fontconfig \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/tmp/tomcat /opt/jshERP/upload /opt/jshERP/export /opt/jshERP/receipts \
+       /app/data/tomcat /app/data/upload /app/data/export
+COPY jshERP-boot/target/jshERP.jar /app/app.jar
+EXPOSE 9999
+ENV SPRING_PROFILES_ACTIVE=local \
+    AIERP_MYSQL_HOST=aierp-mysql \
+    AIERP_MYSQL_PORT=3306 \
+    AIERP_REDIS_HOST=aierp-redis \
+    AIERP_REDIS_PORT=6379 \
+    AIERP_TOMCAT_BASEDIR=/opt/tmp/tomcat \
+    AIERP_UPLOAD_PATH=/opt/jshERP/upload \
+    AIERP_EXPORT_PATH=/opt/jshERP/export
+ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=local"]
