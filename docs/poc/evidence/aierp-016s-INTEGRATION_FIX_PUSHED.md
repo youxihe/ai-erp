@@ -15,7 +15,7 @@
 | Pre-integration tip (#43 HEAD) | `0d576c4b` |
 | Merged `origin/master` (#41+#42+#47) | `0c841fbd` (#41 `db13699f`, #42 `bccd9f52`, #47 `0c841fbd`) |
 | Merge commit | `a07ad04d` Integrate master multi-purchase, MIX, and boot hot-reload into SERVICE branch |
-| **Remote HEAD** | *(pin after this push)* |
+| **Remote HEAD** | `32694dbc8c5f6998247b6d6e8ee90f9c0fad626b` |
 | Merge | **Do not self-merge** to master from this agent |
 | F: / stock | No F: OpenClaw overwrite; no auto stock post; do not re-post GW-PURCHASE-119 / GW-SERVICE-136 |
 
