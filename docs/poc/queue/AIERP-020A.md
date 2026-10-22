@@ -31,3 +31,9 @@
 - 采购入库一条标准成功消息 4-6 行；低权限失败 1-2 行，不能说未入库，也不能发附件路径；同一用户不同会话、/new 不丢已审核状态。
 - 内容样式通过真实企微 PC/移动端截图验收，提供 plain-text 降级效果；不得宣称可选择任意字号/颜色（受企微 Markdown/Card 限制）。
 - 不新增库存变化测试；回归 015B trusted confirm、017A Excel 真实文件、017B1 one-confirm purchase and 13 tool bindings。CURSOR PUSH → ChatGPT Review → Merge，不能自 Merge。
+
+## 2026-10-22 · 三类业务复用 SOP 与渠道 renderer
+
+新业务 SOP：`purchase-batch-prepare`（多单采购，仅 DRAFT）、`mix-prepare`（组装配制）、`service-consume`（客户服务耗料）。每个 SOP 输入必须是服务端已授权 normalized 业务数据并复核权限；模型只做业务意图/槽位选择，正式过账必须独立可信企微原始消息。
+
+**渠道渲染分开**：推荐 `renderBusinessResult(result, channelCapabilities)` 工厂分派，`wecom` 严格依据实际 Bot WS markdown/card/plain 能力，`feishu` 将来按飞书 interactive card/schema 单独实现。**不能**在企微文本里混入飞书 JSON/Card 结构或 literal `<font>`。业务标准消息突出 ERP 单号、状态、数量、金额、仓库、客户和真实回执文件；失败只指明业务原因和下一步。批次消息展示各子单处理状态与部分成功，不得把单据数/不同单位简单求和。

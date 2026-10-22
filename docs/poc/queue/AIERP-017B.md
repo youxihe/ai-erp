@@ -1,6 +1,6 @@
 # AIERP-017B · Excel 多场景批量待确认业务单（批量导入 P0）
 
-- **状态**：PLANNED / after 017A file channel & preview review
+- **状态**：PLANNED / partly superseded by 017B2 multi-purchase + 016M MIX + 016S SERVICE; original full multiple-scene batch deferred until these pass
 - **产品目标**：ERP 用户上传 Excel 后**只生成逐单校验/预览和可追溯、未过账草稿**，AI 返回“X 张可提交、Y 张有问题”，支持用户修改 Excel 重新提交、选中有效单据，最终一键/一句话确认整批。
 - **不能**把现有 `AierpExcelService.confirm` 直接暴露给模型：它内部循环 `postOne → createDraft → confirm`，会实际过账。重用模板、解析、主数据校验，**拆开预览/准备草稿与真实提交**。
 
