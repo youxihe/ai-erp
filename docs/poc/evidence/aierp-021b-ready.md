@@ -1,28 +1,23 @@
-# AIERP-021B READY_FOR_REVIEW
+# AIERP-021B READY_FOR_REVIEW / REVIEW_FIX
 
 ## HEAD
 
 Branch tip on `feat/aierp-021b-material-masterdata-sop` (use `git rev-parse HEAD` / GitHub branch tip).
 
-## 行为
+## 行为（Review-Fix）
 
-1. HMAC `POST /aierp/v1/wecom/master/material/prepare`：白名单字段校验（name/barCode/unit 必填；类别/规格/品牌/备注可选），仅引用租户已有分类与单位；**拒绝 stock/initStock 等库存字段**；只写 `aierp_master_material_request`，不写 `jsh_material`。
-2. 本人可信私聊回复 `确认建档{申请号}` / `确认修改{申请号}` → HMAC `.../master/material/commit`（`WECOM_BEFORE_DISPATCH`）；群聊与 LLM 自报 `eventSource` 拒绝。
-3. Commit 事务写入 `jsh_material` + `jsh_material_extend`（条码/SKU/单位）；**绝不**写 `jsh_material_current_stock` / `jsh_material_initial_stock` / depotHead；新建库存合计 0。
-4. 本棒禁止改 bar_code / 基础单位；更新仅 name/standard/brand/remark；同申请重放幂等。
-5. SOP：`deploy/openclaw/sop/material-upsert.mjs` + registry 优先于 `purchase_confirm`；**未改** `plugin/index.js`，无 F: 覆盖。
+1. 服务类：`MaterialMasterDataService`（镜像 #44 `PartnerMasterDataService`；**禁止**共享旧 `AierpWecomMasterDataService` 路径）。
+2. HMAC `POST /aierp/v1/wecom/master/material/prepare`：白名单字段；**prepare + commit** 均校验原生 RoleFunctions「商品信息」funId=23；拒绝 stock 字段；只写 `aierp_master_material_request`。
+3. 本人可信私聊 `确认建档物料{申请号}` / `确认修改物料{申请号}` → HMAC `.../master/material/commit`；**必须** `eventSource=WECOM_BEFORE_DISPATCH`（null / LLM 自报拒绝）；群聊拒绝；跨绑定拒绝。
+4. Commit 事务写入 `jsh_material` + `jsh_material_extend`；`GET_LOCK`+`FOR UPDATE` 防条码并发；**绝不**写库存表 / depotHead；新建库存合计 0；更新不改 bar_code/单位/历史单据。
+5. SOP：`material-upsert.mjs` 物料命名空间确认短语；registry 优先于 `purchase_confirm`；**未改**共享 F: `plugin/index.js` 业务逻辑。
 
 ## 本地自动化（无过账）
 
-- `node deploy/scripts/aierp-021b-material-master-flow.mjs`：**ALL PASS**
-- 证据：`docs/poc/evidence/aierp-021b-material-master-*.json`
-- 样例：`RM-TEST-*` → Material+Extend 落库；current/initial stock 行数 0；改备注成功；重复条码 409；stock 字段 400。
-
-## 真人企微 UAT
-
-- 脚本覆盖 prepare/commit/HMAC/绑定链路；真人私聊确认可按 DEMO_UAT §4–5 补做。
-- `LIVE_WECOM_CONFIRM=PENDING_USER`（可选）。
+- `node deploy/scripts/aierp-021b-material-phrase-unit.mjs`（offline）
+- `node deploy/scripts/aierp-021b-material-master-flow.mjs`
+- 含：低权限 prepare 拒绝、null eventSource、跨绑定、裸确认短语、条码竞态、重放幂等。
 
 ## 不做
 
-- 不 Merge；不部署共享 F: OpenClaw 插件；不碰期初库存/盘点。
+- 不 Merge；不部署共享 F: OpenClaw 插件覆盖；不碰期初库存/盘点。

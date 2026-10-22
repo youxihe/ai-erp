@@ -35,17 +35,27 @@ import java.util.regex.Pattern;
 
 /**
  * AIERP-021B: WeCom material master-data prepare/commit.
- * Explicit {@link User} actor; whitelist fields only; never touches stock / depotHead.
+ * Distinct from partner master-data ({@code PartnerMasterDataService} on #44) — unique class path,
+ * never shares a combined {@code AierpWecomMasterDataService}. Explicit {@link User} actor;
+ * whitelist only; never touches stock / depotHead / historical bills.
+ * Confirm phrases (mirror partner verb+type order): 确认建档物料{id} / 确认修改物料{id}.
  */
 @Service
-public class AierpWecomMasterDataService {
+public class MaterialMasterDataService {
+
+    /** Native ERP menu function「商品信息」(/material/material). */
+    private static final long FUN_MATERIAL = 23L;
 
     private static final String CHANNEL = "wecom";
     private static final long CHALLENGE_TTL_SEC = 1800L;
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final Pattern CONFIRM_CREATE = Pattern.compile("^确认建档(\\d+)\\s*$");
-    private static final Pattern CONFIRM_UPDATE = Pattern.compile("^确认修改(\\d+)\\s*$");
+    /**
+     * Material-namespaced confirms — must not collide with partner
+     * 确认建档供应商/客户{id} or bare 确认建档{id}.
+     */
+    private static final Pattern CONFIRM_CREATE = Pattern.compile("^\\s*确认建档物料(\\d+)\\s*$");
+    private static final Pattern CONFIRM_UPDATE = Pattern.compile("^\\s*确认修改物料(\\d+)\\s*$");
     private static final Set<String> FORBIDDEN_STOCK_KEYS = Collections.unmodifiableSet(new LinkedHashSet<String>(Arrays.asList(
             "stock", "initStock", "initialStock", "currentStock", "current_number", "lowSafeStock",
             "highSafeStock", "safeStock", "depotHead", "depotItem", "库存", "期初库存", "初始库存")));
@@ -73,6 +83,7 @@ public class AierpWecomMasterDataService {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
         User actor = ctx.user;
         String opType = normalizeOpType(body.getString("opType"));
+        assertMaterialPermission(actor, opType);
         JSONObject normalized;
         String recordDigest = null;
         Long materialId = null;
@@ -94,7 +105,7 @@ public class AierpWecomMasterDataService {
         final String payloadHash = sha256Hex(payloadJson);
         final long bindingId = ((Number) ctx.binding.get("id")).longValue();
         final long bindingVersion = bindingVersionOf(ctx.binding);
-        final String phrasePrefix = "CREATE".equals(opType) ? "确认建档" : "确认修改";
+        final String phrasePrefix = "CREATE".equals(opType) ? "确认建档物料" : "确认修改物料";
         final String finalBarCode = barCode;
         final String finalRecordDigest = recordDigest;
         final Long finalMaterialId = materialId;
@@ -192,20 +203,33 @@ public class AierpWecomMasterDataService {
     /**
      * Trusted WeCom commit: re-validate binding generation + phrase + digest, then write Material+Extend.
      * LLM must never call this; only HMAC before_dispatch with exact confirm phrase.
+     * Requires exact {@code eventSource=WECOM_BEFORE_DISPATCH} (null / LLM self-report rejected).
      */
     public Map<String, Object> commitMaterial(JSONObject body) throws Exception {
         rejectForbiddenFields(body);
-        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
-        if (Boolean.TRUE.equals(body.getBoolean("isGroup"))) {
+        String eventSource = trimToNull(body == null ? null : body.getString("eventSource"));
+        if (!"WECOM_BEFORE_DISPATCH".equals(eventSource)) {
+            throw new BusinessRunTimeException(403, "确认事件来源必须是 WECOM_BEFORE_DISPATCH");
+        }
+        if (body != null && (Boolean.TRUE.equals(body.getBoolean("isGroup"))
+                || Boolean.TRUE.equals(body.getBoolean("groupChat")))) {
             throw new BusinessRunTimeException(403, "主数据确认仅支持本人私聊，群聊拒绝");
         }
-        String eventSource = trimToNull(body.getString("eventSource"));
-        if (eventSource != null && !"WECOM_BEFORE_DISPATCH".equals(eventSource)) {
-            throw new BusinessRunTimeException(403, "仅可信企微原始确认可提交主数据");
+        // Resolve binding first — independent of LLM-reported identity fields beyond HMAC+wecomUserId.
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        if (ctx.wecomUserId == null || ctx.wecomUserId.isEmpty() || ctx.botId == null || ctx.botId.isEmpty()) {
+            throw new BusinessRunTimeException(403, "缺少可信企微发送方身份");
         }
-        ParsedMasterConfirm intent = parseConfirm(firstNonEmpty(body.getString("rawText"), body.getString("phrase")));
+        if (ctx.user == null || ctx.user.getId() == null || ctx.user.getTenantId() == null) {
+            throw new BusinessRunTimeException(403, "缺少受控 ERP 绑定用户");
+        }
+        String rawText = firstNonEmpty(body.getString("rawText"), body.getString("phrase"));
+        if (rawText == null) {
+            throw new BusinessRunTimeException(400, "缺少 rawText（须为企微原始私聊原文）");
+        }
+        ParsedMasterConfirm intent = parseConfirm(rawText);
         if (!intent.confirm || intent.requestId == null) {
-            throw new BusinessRunTimeException(400, "请回复「确认建档{申请号}」或「确认修改{申请号}」");
+            throw new BusinessRunTimeException(400, "请回复「确认建档物料{申请号}」或「确认修改物料{申请号}」");
         }
         Long bodyRequestId = body.getLong("requestId");
         if (bodyRequestId != null && !bodyRequestId.equals(intent.requestId)) {
@@ -230,6 +254,9 @@ public class AierpWecomMasterDataService {
                                                  long requestId, String messageMsgId, String rawText) throws Exception {
         if (actor == null || actor.getId() == null || actor.getTenantId() == null) {
             throw new BusinessRunTimeException(403, "缺少受控 ERP 用户");
+        }
+        if (ctx == null || ctx.wecomUserId == null || ctx.botId == null) {
+            throw new BusinessRunTimeException(403, "缺少可信企微发送方身份");
         }
         long bindingId = ((Number) ctx.binding.get("id")).longValue();
         long bindingVersion = bindingVersionOf(ctx.binding);
@@ -263,20 +290,36 @@ public class AierpWecomMasterDataService {
             jdbcTemplate.update("UPDATE aierp_master_material_request SET status='SUPERSEDED' WHERE id=?", requestId);
             throw new BusinessRunTimeException(403, "绑定已更新，原申请不可再确认");
         }
+        // Cross-binding / identity: request row must match live WeCom sender + ERP actor.
+        if (!CHANNEL.equals(String.valueOf(row.get("channel")))
+                || !ctx.botId.equals(String.valueOf(row.get("bot_id")))
+                || !ctx.wecomUserId.equals(String.valueOf(row.get("wecom_user_id")))) {
+            throw new BusinessRunTimeException(403, "申请与当前企微身份不匹配");
+        }
+        long reqTenant = ((Number) row.get("tenant_id")).longValue();
+        long reqUser = ((Number) row.get("erp_user_id")).longValue();
+        if (!actor.getTenantId().equals(reqTenant) || !actor.getId().equals(reqUser)) {
+            throw new BusinessRunTimeException(403, "申请与当前绑定 ERP 用户不匹配");
+        }
+
         String expected = String.valueOf(row.get("expected_phrase"));
         if (rawText == null || !expected.equals(rawText.trim())) {
             throw new BusinessRunTimeException(400, "确认原文不匹配，请回复「" + expected + "」");
         }
 
-        // Message-id idempotency across requests.
+        // Message-id idempotency: same actor only. Cross-sender collisions must not leak other.result.
         if (messageMsgId != null && !messageMsgId.isEmpty()) {
             List<Map<String, Object>> byMsg = jdbcTemplate.queryForList(
-                    "SELECT id, status, result_material_id FROM aierp_master_material_request "
-                            + "WHERE consume_message_id=? LIMIT 1",
-                    messageMsgId);
+                    "SELECT id, tenant_id, erp_user_id, bot_id, wecom_user_id FROM aierp_master_material_request "
+                            + "WHERE consume_message_id=? AND id<>? LIMIT 1",
+                    messageMsgId, requestId);
             if (!byMsg.isEmpty()) {
                 Map<String, Object> prev = byMsg.get(0);
-                if (((Number) prev.get("id")).longValue() != requestId) {
+                boolean sameActor = ctx.botId.equals(String.valueOf(prev.get("bot_id")))
+                        && ctx.wecomUserId.equals(String.valueOf(prev.get("wecom_user_id")))
+                        && actor.getTenantId().equals(((Number) prev.get("tenant_id")).longValue())
+                        && actor.getId().equals(((Number) prev.get("erp_user_id")).longValue());
+                if (sameActor) {
                     throw new BusinessRunTimeException(409, "同一企微消息已用于其他申请");
                 }
             }
@@ -284,6 +327,8 @@ public class AierpWecomMasterDataService {
 
         JSONObject payload = JSON.parseObject(String.valueOf(row.get("payload_json")));
         String opType = String.valueOf(row.get("op_type"));
+        // Re-enforce native material-master permission at commit (role may have been revoked after prepare).
+        assertMaterialPermission(actor, opType);
         Long materialId;
         if ("CREATE".equals(opType)) {
             materialId = insertMaterialZeroStock(actor, payload);
@@ -361,65 +406,102 @@ public class AierpWecomMasterDataService {
         String name = required(payload, "name");
         String unit = required(payload, "unit");
         Long categoryId = payload.getLong("categoryId");
-        assertBarCodeUnique(actor.getTenantId(), barCode, null);
-        assertCategoryExists(actor.getTenantId(), categoryId);
-        assertUnitExists(actor.getTenantId(), unit);
-
         String standard = trimToNull(payload.getString("standard"));
         String brand = trimToNull(payload.getString("brand"));
         String remark = trimToNull(payload.getString("remark"));
-        String sku = trimToNull(payload.getString("sku"));
+        String sku = normalizeSku(payload.getString("sku"));
 
-        KeyHolder keys = new GeneratedKeyHolder();
-        jdbcTemplate.update(con -> {
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO jsh_material (category_id, name, model, standard, brand, unit, remark, enabled, "
-                            + "enable_serial_number, enable_batch_number, tenant_id, delete_flag) "
-                            + "VALUES (?,?,?,?,?,?,?, b'1', '0', '0', ?, '0')",
-                    Statement.RETURN_GENERATED_KEYS);
-            int i = 1;
-            if (categoryId == null) {
-                ps.setObject(i++, null);
-            } else {
-                ps.setLong(i++, categoryId);
+        // Named lock serializes parallel creates for the same tenant+barcode (check-then-insert race).
+        String lockName = barcodeLockName(actor.getTenantId(), barCode);
+        Integer locked = jdbcTemplate.queryForObject("SELECT GET_LOCK(?, 10)", Integer.class, lockName);
+        if (locked == null || locked != 1) {
+            throw new BusinessRunTimeException(409, "条码写入繁忙，请重试: " + barCode);
+        }
+        try {
+            // Gap/next-key friendly lock on existing barcode rows; re-check after lock.
+            jdbcTemplate.queryForList(
+                    "SELECT e.id FROM jsh_material_extend e "
+                            + "JOIN jsh_material m ON m.id=e.material_id AND m.tenant_id=? "
+                            + "AND IFNULL(m.delete_flag,'0')<>'1' "
+                            + "WHERE e.bar_code=? AND e.tenant_id=? AND IFNULL(e.delete_flag,'0')<>'1' "
+                            + "FOR UPDATE",
+                    actor.getTenantId(), barCode, actor.getTenantId());
+            assertBarCodeUnique(actor.getTenantId(), barCode, null);
+            assertCategoryExists(actor.getTenantId(), categoryId);
+            assertUnitExists(actor.getTenantId(), unit);
+            if (sku != null) {
+                assertSkuSemantics(actor.getTenantId(), sku, barCode, null);
             }
-            ps.setString(i++, name);
-            ps.setString(i++, barCode);
-            ps.setString(i++, standard);
-            ps.setString(i++, brand);
-            ps.setString(i++, unit);
-            ps.setString(i++, remark);
-            ps.setLong(i++, actor.getTenantId());
-            return ps;
-        }, keys);
-        Number mid = keys.getKey();
-        if (mid == null) {
-            throw new BusinessRunTimeException(500, "物料主档写入失败");
+
+            KeyHolder keys = new GeneratedKeyHolder();
+            jdbcTemplate.update(con -> {
+                PreparedStatement ps = con.prepareStatement(
+                        "INSERT INTO jsh_material (category_id, name, model, standard, brand, unit, remark, enabled, "
+                                + "enable_serial_number, enable_batch_number, tenant_id, delete_flag) "
+                                + "VALUES (?,?,?,?,?,?,?, b'1', '0', '0', ?, '0')",
+                        Statement.RETURN_GENERATED_KEYS);
+                int i = 1;
+                if (categoryId == null) {
+                    ps.setObject(i++, null);
+                } else {
+                    ps.setLong(i++, categoryId);
+                }
+                ps.setString(i++, name);
+                ps.setString(i++, barCode);
+                ps.setString(i++, standard);
+                ps.setString(i++, brand);
+                ps.setString(i++, unit);
+                ps.setString(i++, remark);
+                ps.setLong(i++, actor.getTenantId());
+                return ps;
+            }, keys);
+            Number mid = keys.getKey();
+            if (mid == null) {
+                throw new BusinessRunTimeException(500, "物料主档写入失败");
+            }
+            long materialId = mid.longValue();
+            String login = actor.getLoginName();
+            long nowMs = System.currentTimeMillis();
+            int ext = jdbcTemplate.update(
+                    "INSERT INTO jsh_material_extend (material_id, bar_code, commodity_unit, sku, default_flag, "
+                            + "create_time, create_serial, update_serial, update_time, tenant_id, delete_flag) "
+                            + "VALUES (?,?,?,?, '1', NOW(), ?, ?, ?, ?, '0')",
+                    materialId, barCode, unit, sku, login, login, nowMs, actor.getTenantId());
+            if (ext != 1) {
+                throw new BusinessRunTimeException(500, "物料条码扩展写入失败");
+            }
+            // Hard invariant: no initial/current stock rows; every warehouse stays 0.
+            Integer initCnt = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM jsh_material_initial_stock WHERE material_id=? AND tenant_id=? "
+                            + "AND IFNULL(delete_flag,'0')<>'1'",
+                    Integer.class, materialId, actor.getTenantId());
+            Integer curCnt = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM jsh_material_current_stock WHERE material_id=? AND tenant_id=? "
+                            + "AND IFNULL(delete_flag,'0')<>'1'",
+                    Integer.class, materialId, actor.getTenantId());
+            if ((initCnt != null && initCnt > 0) || (curCnt != null && curCnt > 0)) {
+                throw new BusinessRunTimeException(500, "内部错误：建档不应产生库存行");
+            }
+            Integer nonzeroDepots = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM ("
+                            + "SELECT d.id FROM jsh_depot d "
+                            + "LEFT JOIN jsh_material_current_stock cs ON cs.depot_id=d.id AND cs.material_id=? "
+                            + "AND IFNULL(cs.delete_flag,'0')<>'1' "
+                            + "WHERE IFNULL(d.delete_flag,'0')<>'1' AND IFNULL(d.tenant_id,?) = ? "
+                            + "GROUP BY d.id HAVING IFNULL(SUM(IFNULL(cs.current_number,0)),0)<>0"
+                            + ") t",
+                    Integer.class, materialId, actor.getTenantId(), actor.getTenantId());
+            if (nonzeroDepots != null && nonzeroDepots > 0) {
+                throw new BusinessRunTimeException(500, "内部错误：建档后存在非零仓库库存");
+            }
+            return materialId;
+        } finally {
+            try {
+                jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Integer.class, lockName);
+            } catch (Exception ignore) {
+                // best-effort unlock
+            }
         }
-        long materialId = mid.longValue();
-        String login = actor.getLoginName();
-        long nowMs = System.currentTimeMillis();
-        int ext = jdbcTemplate.update(
-                "INSERT INTO jsh_material_extend (material_id, bar_code, commodity_unit, sku, default_flag, "
-                        + "create_time, create_serial, update_serial, update_time, tenant_id, delete_flag) "
-                        + "VALUES (?,?,?,?, '1', NOW(), ?, ?, ?, ?, '0')",
-                materialId, barCode, unit, sku, login, login, nowMs, actor.getTenantId());
-        if (ext != 1) {
-            throw new BusinessRunTimeException(500, "物料条码扩展写入失败");
-        }
-        // Hard invariant: no initial/current stock rows created by this path.
-        Integer initCnt = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM jsh_material_initial_stock WHERE material_id=? AND tenant_id=? "
-                        + "AND IFNULL(delete_flag,'0')<>'1'",
-                Integer.class, materialId, actor.getTenantId());
-        Integer curCnt = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM jsh_material_current_stock WHERE material_id=? AND tenant_id=? "
-                        + "AND IFNULL(delete_flag,'0')<>'1'",
-                Integer.class, materialId, actor.getTenantId());
-        if ((initCnt != null && initCnt > 0) || (curCnt != null && curCnt > 0)) {
-            throw new BusinessRunTimeException(500, "内部错误：建档不应产生库存行");
-        }
-        return materialId;
     }
 
     private Long updateMaterialWhitelist(User actor, JSONObject payload, String expectedDigest) {
@@ -460,6 +542,8 @@ public class AierpWecomMasterDataService {
         String remark = payload.containsKey("remark") ? trimToNull(payload.getString("remark"))
                 : (cur.get("remark") == null ? null : String.valueOf(cur.get("remark")));
 
+        // Whitelist columns only — never touch bar_code/unit/extend, stock tables, or depot_head/item
+        // (no historical bill mutation via this path).
         jdbcTemplate.update(
                 "UPDATE jsh_material SET name=?, standard=?, brand=?, remark=? WHERE id=? AND tenant_id=?",
                 name, standard, brand, remark, materialId, actor.getTenantId());
@@ -484,9 +568,12 @@ public class AierpWecomMasterDataService {
         String standard = firstNonEmpty(trimToNull(body.getString("standard")), trimToNull(body.getString("spec")));
         String brand = trimToNull(body.getString("brand"));
         String remark = trimToNull(body.getString("remark"));
-        String sku = trimToNull(body.getString("sku"));
+        String sku = normalizeSku(body.getString("sku"));
         if (remark != null && remark.length() > 500) {
             throw new BusinessRunTimeException(400, "备注过长");
+        }
+        if (sku != null) {
+            assertSkuSemantics(actor.getTenantId(), sku, barCode, null);
         }
 
         JSONObject n = new JSONObject(true);
@@ -789,6 +876,102 @@ public class AierpWecomMasterDataService {
         if (n != null && n > 0) {
             throw new BusinessRunTimeException(409, "条码已存在: " + barCode);
         }
+    }
+
+    /**
+     * Enforce native ERP「商品信息」RoleFunctions (funId=23) for create/update.
+     * Stock-read-only / sales roles without material-master must fail prepare and commit.
+     */
+    private void assertMaterialPermission(User user, String op) {
+        String action = "CREATE".equals(op) ? "新建商品信息" : "修改商品信息";
+        List<Long> roles = roleIds(user);
+        if (roles.isEmpty()) {
+            throw new BusinessRunTimeException(403, "当前用户没有业务角色，拒绝" + action);
+        }
+        boolean hasFun = false;
+        for (Long roleId : roles) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT `value` FROM jsh_user_business WHERE type='RoleFunctions' AND key_id=? "
+                            + "AND IFNULL(delete_flag,'0')<>'1'",
+                    String.valueOf(roleId));
+            for (Map<String, Object> row : rows) {
+                String value = row.get("value") == null ? "" : String.valueOf(row.get("value"));
+                if (value.contains("[" + FUN_MATERIAL + "]")) {
+                    hasFun = true;
+                    break;
+                }
+            }
+            if (hasFun) {
+                break;
+            }
+        }
+        if (!hasFun) {
+            throw new BusinessRunTimeException(403, "当前角色无权" + action + "（需要商品信息权限）");
+        }
+    }
+
+    private List<Long> roleIds(User user) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT `value` FROM jsh_user_business WHERE type='UserRole' AND key_id=? "
+                        + "AND IFNULL(delete_flag,'0')<>'1'",
+                (rs, i) -> rs.getString(1), String.valueOf(user.getId()));
+        List<Long> ids = new ArrayList<Long>();
+        for (String value : values) {
+            if (value == null || value.isEmpty()) {
+                continue;
+            }
+            Matcher m = Pattern.compile("\\[(\\d+)]").matcher(value);
+            while (m.find()) {
+                ids.add(Long.parseLong(m.group(1)));
+            }
+        }
+        return ids;
+    }
+
+    private static String normalizeSku(String raw) {
+        String sku = trimToNull(raw);
+        if (sku == null) {
+            return null;
+        }
+        if (sku.length() > 50) {
+            throw new BusinessRunTimeException(400, "SKU 过长（最多 50）");
+        }
+        if (!sku.matches("^[A-Za-z0-9._\\-]{1,50}$")) {
+            throw new BusinessRunTimeException(400, "SKU 格式无效");
+        }
+        return sku;
+    }
+
+    /** SKU is optional metadata on MaterialExtend; must not collide with a different barcode's sku. */
+    private void assertSkuSemantics(long tenantId, String sku, String barCode, Long excludeMaterialId) {
+        List<Object> args = new ArrayList<Object>();
+        String sql = "SELECT e.bar_code FROM jsh_material_extend e "
+                + "JOIN jsh_material m ON m.id=e.material_id AND m.tenant_id=? AND IFNULL(m.delete_flag,'0')<>'1' "
+                + "WHERE e.sku=? AND e.tenant_id=? AND IFNULL(e.delete_flag,'0')<>'1'";
+        args.add(tenantId);
+        args.add(sku);
+        args.add(tenantId);
+        if (excludeMaterialId != null) {
+            sql += " AND e.material_id<>?";
+            args.add(excludeMaterialId);
+        }
+        sql += " LIMIT 5";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, args.toArray());
+        for (Map<String, Object> row : rows) {
+            String existingBar = row.get("bar_code") == null ? "" : String.valueOf(row.get("bar_code"));
+            if (!existingBar.equals(barCode)) {
+                throw new BusinessRunTimeException(409, "SKU 已用于其他条码: " + existingBar);
+            }
+        }
+    }
+
+    private static String barcodeLockName(long tenantId, String barCode) {
+        // MySQL GET_LOCK name max 64 chars.
+        String raw = "aierp_mat_bc_" + tenantId + "_" + barCode;
+        if (raw.length() <= 64) {
+            return raw;
+        }
+        return "aierp_mat_bc_" + tenantId + "_" + sha256Hex(barCode).substring(0, 24);
     }
 
     private void rejectForbiddenFields(JSONObject body) {

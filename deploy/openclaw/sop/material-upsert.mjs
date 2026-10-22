@@ -5,8 +5,9 @@
  * Do not edit plugins/aierp-erp-tools/index.js here — registry + this module only.
  */
 
+/** Material-namespaced — must not match partner 确认建档{id} / 确认修改{id}. */
 export const MATERIAL_CONFIRM =
-  /^\s*确认(?:建档|修改)(\d+)\s*$/;
+  /^\s*确认(?:建档|修改)物料(\d+)\s*$/;
 
 export const MATERIAL_CREATE_INTENT =
   /(?:新增|增加|创建|建档).{0,12}(?:原料|物料|商品)|(?:原料|物料).{0,8}(?:新增|增加|建档)/i;
@@ -29,6 +30,16 @@ const FORBIDDEN_STOCK_KEYS = new Set([
 
 export function isMaterialConfirmPhrase(text) {
   return MATERIAL_CONFIRM.test(String(text || "").trim());
+}
+
+/** @returns {{ op: 'CREATE'|'UPDATE', requestId: number, phrase: string } | null} */
+export function parseMaterialConfirm(text) {
+  const t = String(text || "").trim();
+  const m = t.match(/^\s*确认(建档|修改)物料(\d+)\s*$/);
+  if (!m) return null;
+  const op = m[1] === "建档" ? "CREATE" : "UPDATE";
+  const requestId = Number(m[2]);
+  return { op, requestId, phrase: `确认${m[1]}物料${requestId}` };
 }
 
 export function detectMaterialIntent(text) {
