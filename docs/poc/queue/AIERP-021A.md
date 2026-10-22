@@ -8,7 +8,7 @@
 ## 已核对的现有代码（必须复用数据语义而不是直接复用假 Session）
 
 - `SupplierController` 有 `POST /supplier/add`、`PUT /supplier/update`、`checkIsNameAndTypeExist`；Supplier 实体 `type=供应商|客户`、`supplier` 名称、`contacts,phoneNum,email,address,telephone,description,enabled,tenantId` 等。
-- 原生 `SupplierService.insertSupplier/updateSupplier` 依赖 `userService.getCurrentUser()`、`HttpServletRequest` 与 `setUserCustomerPermission`，直接模拟伪登录会话是**错误路径**；新增狭窄 `AierpWecomMasterDataService.createPartnerAs(User actor,...)` / `updatePartnerAs`，显式身份 + 事务 + 审计 + 与原生字段约束兼容，严禁利用共享 admin token。
+- 原生 `SupplierService.insertSupplier/updateSupplier` 依赖 `userService.getCurrentUser()`、`HttpServletRequest` 与 `setUserCustomerPermission`，直接模拟伪登录会话是**错误路径**；新增狭窄 `AierpWecomPartnerMasterDataService.createPartnerAs(User actor,...)` / `updatePartnerAs`（Partner-only；勿与 021B Material 共用 service），显式身份 + 事务 + 审计 + 与原生字段约束兼容，严禁利用共享 admin token。
 - 当前 SupplierService 原生逻辑部分异常吞掉后返回 0；必须对返回值和最终 DB 记录做事实校验、错误时不宣称成功。用户权限（往来单位/客户分配）需与原生相容；不能因“新增客户”给所有用户全局权限。
 
 ## 最小字段
@@ -19,7 +19,7 @@
 
 ## SOP
 - `sop/partner-upsert.mjs`：意图识别 + 受控字段收集 + 本人审批提示；后端 `POST /aierp/v1/wecom/master/partner/prepare` 返回单次 challenge / normalized payload / record digest，**只创建业务操作申请，不立即建档**。
-- 本人原始企微 DM 明确回复 `确认建档{申请号}` 或 `确认修改{申请号}`，Channel trusted handler→签名 `/master/partner/commit`，服务端在执行前重验当前绑定 actor/tenant/角色权限、版本/申请数据 digest、同类型名称冲突和幂等。LLM **没有 master-data commit Tool**；群聊及由模型自报确认均拒绝。
+- 本人原始企微 DM 明确回复 `确认伙伴建档{申请号}` 或 `确认伙伴修改{申请号}`（禁止裸 `确认建档{申请号}`，避免与 021B 物料冲突），Channel trusted handler→签名 `/master/partner/commit`，服务端在执行前重验当前绑定 actor/tenant/角色权限、版本/申请数据 digest、同类型名称冲突和幂等。LLM **没有 master-data commit Tool**；群聊及由模型自报确认均拒绝。
 - 更新必须先按 ERP 主键定位准确现有记录，展示字段级 `旧值→新值`，只允许白名单字段部分更新；无 ID/同名多候选时先让用户选择，不允许模糊更新。并发更新冲突（record version/modifiedAt 或已读取快照 hash）明确拒绝覆盖。
 - 申请存放 ERP Redis/DB，以可信 wecom sender + bot + binding ID/version + ERP actor/tenant + request ID、请求 digest/TTL 关联；用户 /new 后还可查询，换绑立即失效，防重复提交、多设备重试。
 - 成功返回真实 `supplier.id`、类型、名称及变更摘要；失败说明重名/无权限/格式等业务原因，不输出堆栈或内部账号。

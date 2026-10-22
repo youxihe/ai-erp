@@ -1,11 +1,15 @@
 /**
  * AIERP-021A partner upsert SOP: intent + whitelist field collect + approval prompt.
  * Prepare via signed API / future tool; commit ONLY via trusted before_dispatch phrase.
- * LLM must never call commit — only 确认建档{id} / 确认修改{id} from raw WeCom DM.
+ * LLM must never call commit — only namespaced phrases from raw WeCom DM:
+ *   确认伙伴建档{requestId} / 确认伙伴修改{requestId}
+ * Bare 确认建档{id} and material phrases are NOT partner confirms (AIERP-021B).
  */
 
-export const CONFIRM_PARTNER_CREATE = /^\s*确认\s*建档\s*[：:#＃]?\s*(\d+)\s*$/;
-export const CONFIRM_PARTNER_UPDATE = /^\s*确认\s*修改\s*[：:#＃]?\s*(\d+)\s*$/;
+export const CONFIRM_PARTNER_CREATE =
+  /^\s*确认\s*伙伴\s*建档\s*[：:#＃]?\s*(\d+)\s*$/;
+export const CONFIRM_PARTNER_UPDATE =
+  /^\s*确认\s*伙伴\s*修改\s*[：:#＃]?\s*(\d+)\s*$/;
 
 export const WHITELIST_FIELDS = Object.freeze(["name", "contacts", "phone", "address", "remark"]);
 export const FORBIDDEN_FIELDS = Object.freeze([
@@ -69,9 +73,13 @@ export function canHandlePartnerConfirm(text) {
 export function parsePartnerConfirm(text) {
   const t = String(text || "").trim();
   let m = t.match(CONFIRM_PARTNER_CREATE);
-  if (m) return { op: "CREATE", requestId: Number(m[1]), phrase: `确认建档${m[1]}` };
+  if (m) {
+    return { op: "CREATE", requestId: Number(m[1]), phrase: `确认伙伴建档${m[1]}` };
+  }
   m = t.match(CONFIRM_PARTNER_UPDATE);
-  if (m) return { op: "UPDATE", requestId: Number(m[1]), phrase: `确认修改${m[1]}` };
+  if (m) {
+    return { op: "UPDATE", requestId: Number(m[1]), phrase: `确认伙伴修改${m[1]}` };
+  }
   return null;
 }
 
@@ -88,7 +96,7 @@ export function formatPartnerPrepare(data) {
       lines.push(`- ${d.field}: ${d.oldValue || "-"} → ${d.newValue || "-"}`);
     }
   }
-  lines.push(`未写入 ERP。请本人私聊回复「${phrase || "确认建档/确认修改{申请号}"}」生效。`);
+  lines.push(`未写入 ERP。请本人私聊回复「${phrase || "确认伙伴建档/确认伙伴修改{申请号}"}」生效。`);
   if (data.hint && !String(data.hint).includes(phrase)) {
     lines.push(String(data.hint).slice(0, 120));
   }

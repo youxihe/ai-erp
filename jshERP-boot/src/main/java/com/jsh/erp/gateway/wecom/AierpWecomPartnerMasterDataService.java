@@ -34,9 +34,11 @@ import java.util.regex.Pattern;
 /**
  * AIERP-021A: WeCom partner (供应商/客户) master-data prepare + trusted commit.
  * Writes use explicit {@link User} actor via JDBC — no fake HttpServletRequest / admin session.
+ * Confirm phrases are partner-namespaced: 确认伙伴建档{requestId} / 确认伙伴修改{requestId}
+ * (never bare 确认建档{id} / 确认修改{id} used by material 021B).
  */
 @Service
-public class AierpWecomMasterDataService {
+public class AierpWecomPartnerMasterDataService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -46,6 +48,7 @@ public class AierpWecomMasterDataService {
     private static final int NAME_MAX = 100;
     private static final long FUN_PURCHASE = 33L;
     private static final long FUN_SERVICE = 202L;
+    private static final int NAME_LOCK_TIMEOUT_SEC = 10;
 
     private static final List<String> WHITELIST = Collections.unmodifiableList(
             Arrays.asList("name", "contacts", "phone", "address", "remark"));
@@ -55,8 +58,12 @@ public class AierpWecomMasterDataService {
             "advanceIn", "advance_in", "enabled", "deleteFlag", "delete_flag", "isystem",
             "fax", "email", "sort", "allNeedPay", "allNeedGet", "phoneNum", "telephone"));
 
-    private static final Pattern CONFIRM_CREATE = Pattern.compile("^\\s*确认\\s*建档\\s*[：:#＃]?\\s*(\\d+)\\s*$");
-    private static final Pattern CONFIRM_UPDATE = Pattern.compile("^\\s*确认\\s*修改\\s*[：:#＃]?\\s*(\\d+)\\s*$");
+    /** Partner-namespaced: 确认伙伴建档{requestId} — never bare 确认建档{id}. */
+    private static final Pattern CONFIRM_CREATE = Pattern.compile(
+            "^\\s*确认\\s*伙伴\\s*建档\\s*[：:#＃]?\\s*(\\d+)\\s*$");
+    /** Partner-namespaced: 确认伙伴修改{requestId} — never bare 确认修改{id}. */
+    private static final Pattern CONFIRM_UPDATE = Pattern.compile(
+            "^\\s*确认\\s*伙伴\\s*修改\\s*[：:#＃]?\\s*(\\d+)\\s*$");
     private static final Pattern PHONE_OK = Pattern.compile("^[0-9+\\-\\s()]{5,32}$");
 
     @Resource
@@ -126,7 +133,7 @@ public class AierpWecomMasterDataService {
             supersedePriorPending(ctx, op, partnerType, finalPartnerId);
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime exp = now.plusSeconds(REQUEST_TTL_SEC);
-            String phrasePrefix = "CREATE".equals(op) ? "确认建档" : "确认修改";
+            String phrasePrefix = phrasePrefixFor(op);
             // phrase filled after insert with auto id
             KeyHolder keys = new GeneratedKeyHolder();
             jdbcTemplate.update(con -> {
@@ -177,7 +184,7 @@ public class AierpWecomMasterDataService {
         challenge.put("requestId", requestId);
         challenge.put("challengeId", challengeId);
         challenge.put("expiresInSec", REQUEST_TTL_SEC);
-        String phrase = ("CREATE".equals(op) ? "确认建档" : "确认修改") + requestId;
+        String phrase = phrasePrefixFor(op) + requestId;
         challenge.put("phrase", phrase);
         challenge.put("hint", "请本人私聊回复「" + phrase + "」生效；群聊或模型自称确认无效。");
 
@@ -239,16 +246,7 @@ public class AierpWecomMasterDataService {
 
     private Map<String, Object> commitInTx(AierpWecomBindingService.BoundContext ctx,
                                            ParsedConfirm parsed, String messageMsgId) throws Exception {
-        if (messageMsgId != null) {
-            List<Map<String, Object>> byMsg = jdbcTemplate.queryForList(
-                    "SELECT id, status, result_partner_id, op_type, partner_type FROM aierp_master_partner_request "
-                            + "WHERE consume_message_id=? LIMIT 1",
-                    messageMsgId);
-            if (!byMsg.isEmpty()) {
-                return alreadyConsumedView(ctx, byMsg.get(0));
-            }
-        }
-
+        // Load by parsed request id first; never return another actor's result via bare consume_message_id.
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT * FROM aierp_master_partner_request WHERE id=? FOR UPDATE",
                 parsed.requestId);
@@ -256,16 +254,8 @@ public class AierpWecomMasterDataService {
             throw new BusinessRunTimeException(404, "申请不存在");
         }
         Map<String, Object> req = rows.get(0);
-        if (!CHANNEL.equals(String.valueOf(req.get("channel")))
-                || !ctx.botId.equals(String.valueOf(req.get("bot_id")))
-                || !ctx.wecomUserId.equals(String.valueOf(req.get("wecom_user_id")))) {
-            throw new BusinessRunTimeException(403, "申请与当前企微身份不匹配");
-        }
-        long reqTenant = ((Number) req.get("tenant_id")).longValue();
-        long reqUser = ((Number) req.get("erp_user_id")).longValue();
-        if (!ctx.user.getTenantId().equals(reqTenant) || !ctx.user.getId().equals(reqUser)) {
-            throw new BusinessRunTimeException(403, "申请与当前绑定 ERP 用户不匹配");
-        }
+        assertRequestOwnedByCurrentActor(ctx, req);
+
         long liveBindingId = ((Number) ctx.binding.get("id")).longValue();
         long liveBindingVersion = bindingVersionOf(ctx.binding);
         long reqBindingId = ((Number) req.get("binding_id")).longValue();
@@ -280,12 +270,37 @@ public class AierpWecomMasterDataService {
         }
 
         String status = String.valueOf(req.get("status"));
+        // Idempotent replay only after ownership + binding verified on this request row.
         if ("CONSUMED".equals(status)) {
+            if (messageMsgId != null) {
+                String consumedMsg = req.get("consume_message_id") == null
+                        ? null : String.valueOf(req.get("consume_message_id"));
+                if (consumedMsg != null && !consumedMsg.isEmpty() && !messageMsgId.equals(consumedMsg)) {
+                    throw new BusinessRunTimeException(409, "该申请已由其它消息确认，请勿复用");
+                }
+            }
             return alreadyConsumedView(ctx, req);
         }
         if (!"PENDING".equals(status)) {
             throw new BusinessRunTimeException(409, "申请状态不可确认：" + status);
         }
+
+        // Same message id must not silently attach to a different pending request for another scope.
+        if (messageMsgId != null) {
+            List<Map<String, Object>> byMsg = jdbcTemplate.queryForList(
+                    "SELECT id, status, result_partner_id, op_type, partner_type, tenant_id, erp_user_id, "
+                            + "bot_id, wecom_user_id, binding_id, binding_version "
+                            + "FROM aierp_master_partner_request WHERE consume_message_id=? AND id<>? LIMIT 1",
+                    messageMsgId, parsed.requestId);
+            if (!byMsg.isEmpty()) {
+                Map<String, Object> other = byMsg.get(0);
+                if (sameActorBinding(ctx, other, liveBindingId, liveBindingVersion)) {
+                    throw new BusinessRunTimeException(409, "该企微消息已用于其它主数据确认，请勿复用");
+                }
+                // Cross-sender / cross-tenant collision: do not leak other.result; treat as fresh pending.
+            }
+        }
+
         LocalDateTime exp = LocalDateTime.parse(
                 String.valueOf(req.get("expires_at")).replace(' ', 'T').substring(0, 19));
         if (LocalDateTime.now().isAfter(exp)) {
@@ -300,14 +315,16 @@ public class AierpWecomMasterDataService {
             throw new BusinessRunTimeException(400, "确认原文须为「" + expected + "」");
         }
         String op = String.valueOf(req.get("op_type"));
+        String partnerType = String.valueOf(req.get("partner_type"));
         if ("CREATE".equals(op) && !"CREATE".equals(parsed.op)) {
-            throw new BusinessRunTimeException(400, "该申请需回复「确认建档" + parsed.requestId + "」");
+            throw new BusinessRunTimeException(400,
+                    "该申请需回复「" + phrasePrefixFor("CREATE") + parsed.requestId + "」");
         }
         if ("UPDATE".equals(op) && !"UPDATE".equals(parsed.op)) {
-            throw new BusinessRunTimeException(400, "该申请需回复「确认修改" + parsed.requestId + "」");
+            throw new BusinessRunTimeException(400,
+                    "该申请需回复「" + phrasePrefixFor("UPDATE") + parsed.requestId + "」");
         }
 
-        String partnerType = String.valueOf(req.get("partner_type"));
         assertPartnerPermission(ctx.user, partnerType, op);
         JSONObject fields = JSON.parseObject(String.valueOf(req.get("payload_json")));
         String payloadHash = sha256Hex(stablePayloadJson(op, partnerType,
@@ -399,43 +416,51 @@ public class AierpWecomMasterDataService {
         assertPartnerPermission(actor, partnerType, "CREATE");
         JSONObject normalized = normalizeFields(fields, "CREATE");
         String name = normalized.getString("name");
-        assertNameAvailable(actor.getTenantId(), name, partnerType, null);
-
-        KeyHolder keys = new GeneratedKeyHolder();
         final String typeFinal = partnerType;
-        jdbcTemplate.update(con -> {
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO jsh_supplier ("
-                            + "supplier, contacts, phone_num, address, description, type, enabled, "
-                            + "creator, tenant_id, delete_flag, begin_need_pay, begin_need_get, advance_in"
-                            + ") VALUES (?,?,?,?,?,?, b'1', ?, ?, '0', 0, 0, 0)",
-                    Statement.RETURN_GENERATED_KEYS);
-            int i = 1;
-            ps.setString(i++, name);
-            ps.setString(i++, normalized.getString("contacts"));
-            ps.setString(i++, normalized.getString("phone"));
-            ps.setString(i++, normalized.getString("address"));
-            ps.setString(i++, normalized.getString("remark"));
-            ps.setString(i++, typeFinal);
-            ps.setLong(i++, actor.getId());
-            ps.setLong(i, actor.getTenantId());
-            return ps;
-        }, keys);
-        Number key = keys.getKey();
-        if (key == null) {
-            throw new BusinessRunTimeException(500, "建档写入失败");
+        String lockName = nameLockKey(actor.getTenantId(), typeFinal, name);
+        if (!acquireNameLock(lockName)) {
+            throw new BusinessRunTimeException(409, "同名建档繁忙，请稍后重试");
         }
-        long id = key.longValue();
-        Map<String, Object> saved = loadPartnerRow(actor.getTenantId(), id);
-        if (saved == null || !name.equals(nz(saved.get("supplier")))
-                || !typeFinal.equals(String.valueOf(saved.get("type")))
-                || !actor.getId().equals(((Number) saved.get("creator")).longValue())) {
-            throw new BusinessRunTimeException(500, "建档后事实校验失败");
+        try {
+            assertNameAvailable(actor.getTenantId(), name, typeFinal, null);
+
+            KeyHolder keys = new GeneratedKeyHolder();
+            jdbcTemplate.update(con -> {
+                PreparedStatement ps = con.prepareStatement(
+                        "INSERT INTO jsh_supplier ("
+                                + "supplier, contacts, phone_num, address, description, type, enabled, "
+                                + "creator, tenant_id, delete_flag, begin_need_pay, begin_need_get, advance_in"
+                                + ") VALUES (?,?,?,?,?,?, b'1', ?, ?, '0', 0, 0, 0)",
+                        Statement.RETURN_GENERATED_KEYS);
+                int i = 1;
+                ps.setString(i++, name);
+                ps.setString(i++, normalized.getString("contacts"));
+                ps.setString(i++, normalized.getString("phone"));
+                ps.setString(i++, normalized.getString("address"));
+                ps.setString(i++, normalized.getString("remark"));
+                ps.setString(i++, typeFinal);
+                ps.setLong(i++, actor.getId());
+                ps.setLong(i, actor.getTenantId());
+                return ps;
+            }, keys);
+            Number key = keys.getKey();
+            if (key == null) {
+                throw new BusinessRunTimeException(500, "建档写入失败");
+            }
+            long id = key.longValue();
+            Map<String, Object> saved = loadPartnerRow(actor.getTenantId(), id);
+            if (saved == null || !name.equals(nz(saved.get("supplier")))
+                    || !typeFinal.equals(String.valueOf(saved.get("type")))
+                    || !actor.getId().equals(((Number) saved.get("creator")).longValue())) {
+                throw new BusinessRunTimeException(500, "建档后事实校验失败");
+            }
+            if ("客户".equals(typeFinal)) {
+                grantCustomerPermission(actor, id);
+            }
+            return id;
+        } finally {
+            releaseNameLock(lockName);
         }
-        if ("客户".equals(typeFinal)) {
-            grantCustomerPermission(actor, id);
-        }
-        return id;
     }
 
     /**
@@ -467,9 +492,27 @@ public class AierpWecomMasterDataService {
         }
 
         JSONObject patch = normalizeFields(fields, "UPDATE");
+        String renameLock = null;
         if (patch.containsKey("name")) {
-            assertNameAvailable(actor.getTenantId(), patch.getString("name"), partnerType, partnerId);
+            renameLock = nameLockKey(actor.getTenantId(), partnerType, patch.getString("name"));
+            if (!acquireNameLock(renameLock)) {
+                throw new BusinessRunTimeException(409, "同名修改繁忙，请稍后重试");
+            }
         }
+        try {
+            if (patch.containsKey("name")) {
+                assertNameAvailable(actor.getTenantId(), patch.getString("name"), partnerType, partnerId);
+            }
+            return applyPartnerUpdate(actor, partnerId, partnerType, existing, patch);
+        } finally {
+            if (renameLock != null) {
+                releaseNameLock(renameLock);
+            }
+        }
+    }
+
+    private Map<String, Object> applyPartnerUpdate(User actor, long partnerId, String partnerType,
+                                                   Map<String, Object> existing, JSONObject patch) {
         List<Map<String, Object>> diffs = buildDiffs(existing, patch);
         if (diffs.isEmpty()) {
             throw new BusinessRunTimeException(400, "没有可更新的白名单字段变化");
@@ -666,20 +709,31 @@ public class AierpWecomMasterDataService {
     }
 
     private void assertCustomerVisible(User user, long partnerId) {
-        // If tenant has customerFlag-style restriction, require UserCustomer contains id.
-        // When no UserCustomer row exists for this user, treat as unrestricted (native empty list UX varies);
-        // if a row exists, require membership — matches "不能给所有用户全局权限" for newly created.
+        // Mirror native SupplierController: when customer_flag=1, only assigned UserCustomer ids are visible.
+        // Missing UserCustomer row under restriction = deny (do not treat as global access).
+        if (!isCustomerRestrictionEnabled()) {
+            return;
+        }
         List<Map<String, Object>> ubList = jdbcTemplate.queryForList(
                 "SELECT `value` FROM jsh_user_business WHERE type='UserCustomer' AND key_id=? "
                         + "AND IFNULL(delete_flag,'0')<>'1' LIMIT 1",
                 String.valueOf(user.getId()));
         if (ubList.isEmpty()) {
-            return;
+            throw new BusinessRunTimeException(403, "当前用户无权访问该客户（未分配客户权限）");
         }
         String value = ubList.get(0).get("value") == null ? "" : String.valueOf(ubList.get(0).get("value"));
         if (!value.contains("[" + partnerId + "]")) {
             throw new BusinessRunTimeException(403, "当前用户无权修改该客户");
         }
+    }
+
+    private boolean isCustomerRestrictionEnabled() {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT customer_flag FROM jsh_system_config WHERE IFNULL(delete_flag,'0')<>'1' LIMIT 1");
+        if (rows.isEmpty() || rows.get(0).get("customer_flag") == null) {
+            return false;
+        }
+        return "1".equals(String.valueOf(rows.get(0).get("customer_flag")).trim());
     }
 
     private void assertPartnerPermission(User user, String partnerType, String op) {
@@ -948,13 +1002,13 @@ public class AierpWecomMasterDataService {
         return o.toJSONString();
     }
 
-    private static ParsedConfirm parseConfirmPhrase(String rawText) {
+    static ParsedConfirm parseConfirmPhrase(String rawText) {
         Matcher m1 = CONFIRM_CREATE.matcher(rawText);
         if (m1.matches()) {
             ParsedConfirm p = new ParsedConfirm();
             p.op = "CREATE";
             p.requestId = Long.parseLong(m1.group(1));
-            p.phrase = "确认建档" + p.requestId;
+            p.phrase = phrasePrefixFor("CREATE") + p.requestId;
             return p;
         }
         Matcher m2 = CONFIRM_UPDATE.matcher(rawText);
@@ -962,10 +1016,77 @@ public class AierpWecomMasterDataService {
             ParsedConfirm p = new ParsedConfirm();
             p.op = "UPDATE";
             p.requestId = Long.parseLong(m2.group(1));
-            p.phrase = "确认修改" + p.requestId;
+            p.phrase = phrasePrefixFor("UPDATE") + p.requestId;
             return p;
         }
-        throw new BusinessRunTimeException(400, "不是有效的主数据确认指令，请回复「确认建档{申请号}」或「确认修改{申请号}」");
+        throw new BusinessRunTimeException(400,
+                "不是有效的往来单位确认指令，请回复「确认伙伴建档{申请号}」或「确认伙伴修改{申请号}」"
+                        + "（勿用裸「确认建档{号}」或物料确认语）");
+    }
+
+    /** Partner-namespaced confirm prefix (coordinated with AIERP-021B material phrases). */
+    static String phrasePrefixFor(String op) {
+        if ("CREATE".equals(op)) {
+            return "确认伙伴建档";
+        }
+        if ("UPDATE".equals(op)) {
+            return "确认伙伴修改";
+        }
+        throw new BusinessRunTimeException(400, "未知操作");
+    }
+
+    private void assertRequestOwnedByCurrentActor(AierpWecomBindingService.BoundContext ctx,
+                                                  Map<String, Object> req) {
+        if (!CHANNEL.equals(String.valueOf(req.get("channel")))
+                || !ctx.botId.equals(String.valueOf(req.get("bot_id")))
+                || !ctx.wecomUserId.equals(String.valueOf(req.get("wecom_user_id")))) {
+            throw new BusinessRunTimeException(403, "申请与当前企微身份不匹配");
+        }
+        long reqTenant = ((Number) req.get("tenant_id")).longValue();
+        long reqUser = ((Number) req.get("erp_user_id")).longValue();
+        if (!ctx.user.getTenantId().equals(reqTenant) || !ctx.user.getId().equals(reqUser)) {
+            throw new BusinessRunTimeException(403, "申请与当前绑定 ERP 用户不匹配");
+        }
+    }
+
+    private boolean sameActorBinding(AierpWecomBindingService.BoundContext ctx, Map<String, Object> row,
+                                     long liveBindingId, long liveBindingVersion) {
+        if (!CHANNEL.equals(String.valueOf(row.get("channel") == null ? CHANNEL : row.get("channel")))
+                || !ctx.botId.equals(String.valueOf(row.get("bot_id")))
+                || !ctx.wecomUserId.equals(String.valueOf(row.get("wecom_user_id")))) {
+            return false;
+        }
+        long reqTenant = ((Number) row.get("tenant_id")).longValue();
+        long reqUser = ((Number) row.get("erp_user_id")).longValue();
+        if (!ctx.user.getTenantId().equals(reqTenant) || !ctx.user.getId().equals(reqUser)) {
+            return false;
+        }
+        long reqBindingId = ((Number) row.get("binding_id")).longValue();
+        long reqBindingVersion = ((Number) row.get("binding_version")).longValue();
+        return liveBindingId == reqBindingId && liveBindingVersion == reqBindingVersion;
+    }
+
+    private static String nameLockKey(long tenantId, String partnerType, String name) {
+        // MySQL GET_LOCK name max 64 chars; hash keeps it short and stable.
+        String raw = "aierp:partner:name:" + tenantId + ":" + partnerType + ":" + name;
+        if (raw.length() <= 64) {
+            return raw;
+        }
+        return "aierp:pn:" + sha256Hex(raw).substring(0, 40);
+    }
+
+    private boolean acquireNameLock(String lockName) {
+        Integer got = jdbcTemplate.queryForObject(
+                "SELECT GET_LOCK(?, ?)", Integer.class, lockName, NAME_LOCK_TIMEOUT_SEC);
+        return got != null && got == 1;
+    }
+
+    private void releaseNameLock(String lockName) {
+        try {
+            jdbcTemplate.queryForObject("SELECT RELEASE_LOCK(?)", Integer.class, lockName);
+        } catch (Exception ignore) {
+            // best-effort
+        }
     }
 
     private static long requirePartnerId(JSONObject body) {
@@ -1117,7 +1238,7 @@ public class AierpWecomMasterDataService {
         }
     }
 
-    private static final class ParsedConfirm {
+    static final class ParsedConfirm {
         String op;
         long requestId;
         String phrase;

@@ -545,7 +545,7 @@ function registerErpTools(api) {
 
   make(
     "erp_partner_prepare",
-    "准备新建/修改供应商或客户（白名单：name/contacts/phone/address/remark）。只创建申请与确认口令，确认前 ERP 无写入。禁止银行/税号/余额。确认须本人回复「确认建档{申请号}」或「确认修改{申请号}」。无 commit 工具。",
+    "准备新建/修改供应商或客户（白名单：name/contacts/phone/address/remark）。只创建申请与确认口令，确认前 ERP 无写入。禁止银行/税号/余额。确认须本人回复「确认伙伴建档{申请号}」或「确认伙伴修改{申请号}」（勿用裸确认建档或物料口令）。无 commit 工具。",
     "/aierp/v1/wecom/master/partner/prepare",
     {
       type: "object",

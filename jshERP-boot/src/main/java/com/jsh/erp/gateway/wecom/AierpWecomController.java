@@ -35,7 +35,7 @@ public class AierpWecomController {
     @Resource
     private AierpWecomReceiptService receiptService;
     @Resource
-    private AierpWecomMasterDataService masterDataService;
+    private AierpWecomPartnerMasterDataService partnerMasterDataService;
     @Resource
     private com.jsh.erp.service.UserService userService;
 
@@ -207,17 +207,17 @@ public class AierpWecomController {
     @PostMapping("/master/partner/prepare")
     public BaseResponseInfo partnerPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
-        return ok(masterDataService.preparePartner(parse(raw)));
+        return ok(partnerMasterDataService.preparePartner(parse(raw)));
     }
 
     /**
-     * AIERP-021A: trusted WeCom before_dispatch commit for 确认建档{id} / 确认修改{id}.
-     * Never exposed as an LLM tool.
+     * AIERP-021A: trusted WeCom before_dispatch commit for 确认伙伴建档{id} / 确认伙伴修改{id}.
+     * Never exposed as an LLM tool. Partner-only — material uses separate service/phrases.
      */
     @PostMapping("/master/partner/commit")
     public BaseResponseInfo partnerCommit(@RequestBody String raw, HttpServletRequest request) throws Exception {
         adapterAuth.verify(request, raw);
-        return ok(masterDataService.commitPartner(parse(raw)));
+        return ok(partnerMasterDataService.commitPartner(parse(raw)));
     }
 
     private static JSONObject parse(String raw) {

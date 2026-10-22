@@ -54,6 +54,6 @@ deploy/openclaw/
 
 - 新增 `partner-upsert.mjs` 与 `material-upsert.mjs` 独立可导入模块，`AGENTS.md` 仅写“新建/修改供应商、客户、原料→这些 SOP”，不把原生 MaterialController/SupplierController 直接交给 LLM Tool。
 - LLM 只收集安全白名单字段；Java ERP 依据绑定当前 actor / tenant / 当前功能权限查重、正则/枚举、幂等及修改前版本。由可信企微**原始本人单独确认**提交，模型无 master commit Tool。
-- `确认建档{requestId}` 与 `确认采购/确认配制/确认耗料{draftId}` 是**不同授权**；前者不会调整库存/金额，后者是业务真实过账。客户和供应商名称相同也需要类型明确，物料编码 `MaterialExtend.bar_code` 不可与别的 SKU 冲突。
+- `确认伙伴建档{requestId}` / `确认伙伴修改{requestId}`（物料侧另用独立 namespaced 确认）与 `确认采购/确认配制/确认耗料{draftId}` 是**不同授权**；前者不会调整库存/金额，后者是业务真实过账。客户和供应商名称相同也需要类型明确，物料编码 `MaterialExtend.bar_code` 不可与别的 SKU 冲突。禁止裸 `确认建档{id}`。
 - 原生 jshERP MaterialService 传 `stock` 能写或重置期初库存/当前库存，SupplierService 的隐式 getCurrentUser/Request 日志不能直接从没有 Session 的企微套用。需明确身份安全 facade 和原生实体一致性。
 - 021C 实施业务缺档挂起/恢复，读取此前 server-authoritative 文件/槽位，完成建档后重新校验并**只继续创建未审核草稿**，绝不能自动确认入库/配制/耗料。测试清单 `docs/poc/DEMO_UAT_MASTERDATA_CHAT.md`。

@@ -1,7 +1,9 @@
 /**
  * AIERP-021A: partner prepare/commit against real ERP (no stock change).
  * Covers: prepare zero insert, commit real id, replay, update whitelist-only,
- * negatives: dup name, wrong type, no auth, group, LLM self-confirm.
+ * negatives: dup name, wrong type, no auth, group, LLM self-confirm,
+ * cross-sender same messageMsgId must not leak partnerId,
+ * bare/material confirm phrases rejected (namespace vs 021B).
  */
 import { createHmac, createHash, randomBytes } from "node:crypto";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
@@ -222,7 +224,7 @@ async function main() {
       prep.json.data?.dbWrite === false &&
       afterPrep === beforeCreate &&
       !!requestId &&
-      phrase === `确认建档${requestId}`,
+      phrase === `确认伙伴建档${requestId}`,
     { requestId, phrase, beforeCreate, afterPrep, summary: prep.json?.data?.summary },
   );
 
@@ -283,6 +285,137 @@ async function main() {
     replay.json?.data,
   );
 
+  // P0: foreign tenant CONSUMED row with same messageMsgId must not leak partnerId to current actor
+  {
+    const foreignMsg = `foreign-msg-${Date.now()}`;
+    const foreignPartner = 999001;
+    const challengeHex = randomBytes(16).toString("hex");
+    mysql(
+      `INSERT INTO aierp_master_partner_request (
+         challenge_id, channel, bot_id, wecom_user_id, tenant_id, erp_user_id, binding_id, binding_version,
+         op_type, partner_type, partner_id, record_digest, payload_json, payload_hash, expected_phrase,
+         status, result_partner_id, expires_at, consumed_at, consume_message_id, created_at
+       ) VALUES (
+         '${challengeHex}', 'wecom', '${BOT}', 'foreign-wecom-user', 999, 999, 999, 1,
+         'CREATE', '供应商', NULL, NULL, '{}', 'deadbeef', '确认伙伴建档0',
+         'CONSUMED', ${foreignPartner}, DATE_ADD(NOW(), INTERVAL 1 DAY), NOW(), '${foreignMsg}', NOW()
+       )`
+    );
+    const stealTenant = await signedPost("/aierp/v1/wecom/master/partner/commit", idBody({
+      eventSource: "WECOM_BEFORE_DISPATCH",
+      rawText: phrase,
+      messageMsgId: foreignMsg,
+      isGroup: false,
+    }));
+    const leaked = String(stealTenant.json?.data?.partnerId ?? "") === String(foreignPartner);
+    note(
+      "cross_tenant_same_msgid_no_partner_leak",
+      !leaked &&
+        (stealTenant.json?.code === 200
+          ? stealTenant.json?.data?.idempotentReplay === true &&
+            String(stealTenant.json?.data?.partnerId) === String(partnerId)
+          : [409, 403, 400].includes(stealTenant.json?.code)),
+      { code: stealTenant.json?.code, data: stealTenant.json?.data, foreignPartner },
+    );
+    mysql(`DELETE FROM aierp_master_partner_request WHERE consume_message_id='${foreignMsg}' AND tenant_id=999`);
+  }
+
+  // P0: other wecom sender must not replay via shared messageMsgId / steal partnerId
+  {
+    const WECOM_B = `${WECOM}-b`;
+    const idBodyB = (extra = {}) => ({ wecomUserId: WECOM_B, botId: BOT, channel: "wecom", ...extra });
+    const issueB = await signedPost("/aierp/v1/wecom/binding/issue", idBodyB());
+    await claim(token, issueB.json?.data?.bindCode);
+    const steal = await signedPost("/aierp/v1/wecom/master/partner/commit", idBodyB({
+      eventSource: "WECOM_BEFORE_DISPATCH",
+      rawText: phrase,
+      messageMsgId: msgId,
+      isGroup: false,
+    }));
+    const stealPid = steal.json?.data?.partnerId;
+    const stealJson = JSON.stringify(steal.json || {});
+    note(
+      "cross_sender_same_msgid_no_partner_leak",
+      (steal.json?.code === 403 || steal.json?.code === 404 || steal.json?.code === 400) &&
+        String(stealPid ?? "") !== String(partnerId) &&
+        !stealJson.includes('"idempotentReplay":true'),
+      { code: steal.json?.code, stealPid, ownerPartnerId: partnerId, hint: steal.json?.data?.hint || steal.json?.message },
+    );
+
+    // Same message id on a different actor's own pending request must not return A's partnerId
+    const prepB = await signedPost("/aierp/v1/wecom/master/partner/prepare", idBodyB({
+      op: "CREATE",
+      type: "供应商",
+      name: `${SUP_NAME}-B`,
+      contacts: "乙方",
+    }));
+    const phraseB = prepB.json?.data?.challenge?.phrase;
+    const commitB = await signedPost("/aierp/v1/wecom/master/partner/commit", idBodyB({
+      eventSource: "WECOM_BEFORE_DISPATCH",
+      rawText: phraseB,
+      messageMsgId: msgId, // collide with A's consumed message id
+      isGroup: false,
+    }));
+    const pidB = commitB.json?.data?.partnerId;
+    note(
+      "cross_sender_msgid_collision_fresh_commit_ok",
+      commitB.json?.code === 200 &&
+        !!pidB &&
+        String(pidB) !== String(partnerId) &&
+        commitB.json?.data?.idempotentReplay !== true,
+      { code: commitB.json?.code, pidB, ownerPartnerId: partnerId, phraseB },
+    );
+  }
+
+  // Namespace: bare 确认建档{id} and material 确认建档物料{id} must not commit partner
+  {
+    const bare = await signedPost("/aierp/v1/wecom/master/partner/commit", idBody({
+      eventSource: "WECOM_BEFORE_DISPATCH",
+      rawText: `确认建档${requestId}`,
+      messageMsgId: `bare-${Date.now()}`,
+    }));
+    note(
+      "bare_confirm_建档_rejected",
+      bare.json?.code === 400 || /不是有效|往来单位确认|物料/.test(JSON.stringify(bare)),
+      bare.json,
+    );
+    const mat = await signedPost("/aierp/v1/wecom/master/partner/commit", idBody({
+      eventSource: "WECOM_BEFORE_DISPATCH",
+      rawText: `确认建档物料${requestId}`,
+      messageMsgId: `mat-${Date.now()}`,
+    }));
+    note(
+      "material_confirm_phrase_not_partner",
+      mat.json?.code === 400 || /不是有效|往来单位确认/.test(JSON.stringify(mat)),
+      mat.json,
+    );
+  }
+
+  // Simultaneous pending partner + material-style phrase: partner pending must stay PENDING
+  {
+    const pend = await signedPost("/aierp/v1/wecom/master/partner/prepare", idBody({
+      op: "CREATE",
+      type: "供应商",
+      name: `${SUP_NAME}-pend-mat`,
+      contacts: "待确认",
+    }));
+    const pendId = pend.json?.data?.requestId;
+    const pendPhrase = pend.json?.data?.challenge?.phrase;
+    const wrong = await signedPost("/aierp/v1/wecom/master/partner/commit", idBody({
+      eventSource: "WECOM_BEFORE_DISPATCH",
+      rawText: `确认建档物料${pendId}`,
+      messageMsgId: `pend-mat-${Date.now()}`,
+    }));
+    const st = mysql(`SELECT status FROM aierp_master_partner_request WHERE id=${Number(pendId)}`)[0];
+    note(
+      "pending_partner_survives_material_phrase",
+      (wrong.json?.code === 400 || wrong.json?.code >= 400) &&
+        st === "PENDING" &&
+        String(pendPhrase || "").startsWith("确认伙伴建档"),
+      { code: wrong.json?.code, status: st, pendPhrase },
+    );
+    mysql(`UPDATE aierp_master_partner_request SET status='CANCELLED' WHERE id=${Number(pendId)} AND status='PENDING'`);
+  }
   {
     const r = await signedPost("/aierp/v1/wecom/master/partner/prepare", idBody({
       op: "CREATE",
@@ -362,8 +495,10 @@ async function main() {
     contacts: "王工",
   }));
   const cusCountBefore = countSupplier(CUS_NAME, "客户");
-  note("customer_prepare_zero_insert", cusPrep.json?.code === 200 && cusCountBefore === 0, {
+  note("customer_prepare_zero_insert", cusPrep.json?.code === 200 && cusCountBefore === 0 &&
+    cusPrep.json?.data?.challenge?.phrase === `确认建档客户${cusPrep.json?.data?.requestId}`, {
     requestId: cusPrep.json?.data?.requestId,
+    phrase: cusPrep.json?.data?.challenge?.phrase,
   });
   const cusCommit = await signedPost("/aierp/v1/wecom/master/partner/commit", idBody({
     eventSource: "WECOM_BEFORE_DISPATCH",
@@ -374,9 +509,54 @@ async function main() {
   const cusRow = cusId ? loadSupplier(cusId) : null;
   note(
     "customer_commit_type_客户",
-    cusCommit.json?.code === 200 && cusRow?.type === "客户" && cusRow?.supplier === CUS_NAME,
-    { cusId, cusRow },
+    cusCommit.json?.code === 200 &&
+      cusRow?.type === "客户" &&
+      cusRow?.supplier === CUS_NAME &&
+      cusPrep.json?.data?.challenge?.phrase === `确认建档客户${cusPrep.json?.data?.requestId}`,
+    { cusId, cusRow, phrase: cusPrep.json?.data?.challenge?.phrase },
   );
+
+  // When customer_flag restricts, missing UserCustomer assignment must deny UPDATE prepare.
+  {
+    mysql("UPDATE jsh_system_config SET customer_flag='1'");
+    try {
+      // Ensure current user has NO UserCustomer row covering this customer for the deny path.
+      // grantCustomerPermission on create may have assigned — strip assignment for this check.
+      mysql(
+        `UPDATE jsh_user_business SET \`value\`=REPLACE(IFNULL(\`value\`,''),'[${Number(cusId)}]','') WHERE type='UserCustomer' AND key_id='63'`,
+      );
+      const r = await signedPost("/aierp/v1/wecom/master/partner/prepare", idBody({
+        op: "UPDATE",
+        type: "客户",
+        partnerId: Number(cusId),
+        contacts: "无权改",
+      }));
+      note(
+        "customer_flag_denies_unassigned",
+        r.json?.code === 403 || /无权|未分配/.test(JSON.stringify(r)),
+        r.json,
+      );
+    } finally {
+      mysql("UPDATE jsh_system_config SET customer_flag='0'");
+      // Restore assignment so later flows / demo tenant stay usable.
+      if (cusId) {
+        const ub = mysql(
+          `SELECT id, IFNULL(\`value\`,'') FROM jsh_user_business WHERE type='UserCustomer' AND key_id='63' AND IFNULL(delete_flag,'0')<>'1' LIMIT 1`,
+        );
+        if (ub.length) {
+          const parts = ub[0].split("\t");
+          const val = parts[1] || "";
+          if (!val.includes(`[${cusId}]`)) {
+            mysql(`UPDATE jsh_user_business SET \`value\`=CONCAT(IFNULL(\`value\`,''),'[${Number(cusId)}]') WHERE id=${Number(parts[0])}`);
+          }
+        } else {
+          mysql(
+            `INSERT INTO jsh_user_business (type, key_id, \`value\`, delete_flag) VALUES ('UserCustomer','63','[${Number(cusId)}]','0')`,
+          );
+        }
+      }
+    }
+  }
 
   // Same name OK across types
   note(
@@ -440,7 +620,7 @@ async function main() {
     results,
     uat: {
       wecomLiveClient: "NOT_RUN",
-      note: "Automated HMAC prepare/commit against local aierp-boot. Live WeCom DM UAT deferred; plugin/index.js not wired (F: integrate later).",
+      note: "Automated HMAC prepare/commit against local aierp-boot. Live WeCom DM UAT deferred; light plugin wiring present; F: runtime not overwritten. Phrases: 确认建档供应商/客户{id}, 确认修改供应商/客户{id}.",
     },
     readyForReview: failed === 0,
   };
