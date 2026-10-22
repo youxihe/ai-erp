@@ -3,9 +3,9 @@
   "kind": "non-post-mix-prepare",
   "pass": true,
   "wecomUserIdMasked": "m16-mv***",
-  "draftId": 235,
-  "businessKey": "PZ-016M-MVJSHNSI",
-  "confirmPhrase": "确认配制235",
+  "draftId": 243,
+  "businessKey": "PZ-016M-MVJTBAMI",
+  "confirmPhrase": "确认配制243",
   "stockBefore": {
     "RM-A001": 250.7,
     "RM-B002": 4.8,
@@ -41,6 +41,11 @@
       "detail": "{}"
     },
     {
+      "name": "unit_recipe_ack_phrase",
+      "ok": true,
+      "detail": "{}"
+    },
+    {
       "name": "unit_model_boolean_alone_rejected",
       "ok": true,
       "detail": "model boolean must not skip recipeHash / must not claim 用户已确认"
@@ -53,12 +58,12 @@
     {
       "name": "preview_auto_mix_draft",
       "ok": true,
-      "detail": "{\"draftId\":235,\"confirmPhrase\":\"确认配制235\",\"recipeHash\":\"e248f607c73d621e\",\"summary\":\"配制单 PZ-016M-MVJSHNSI\\n待确认单 #235（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制235」（模型布尔无效）\"}"
+      "detail": "{\"draftId\":243,\"confirmPhrase\":\"确认配制243\",\"recipeHash\":\"e248f607c73d621e\",\"summary\":\"配制单 PZ-016M-MVJTBAMI\\n待确认单 #243（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制243」（模型布尔无效）\"}"
     },
     {
       "name": "one_bill_three_raw_lines",
       "ok": true,
-      "detail": "{\"rawLineCount\":3,\"businessKey\":\"PZ-016M-MVJSHNSI\"}"
+      "detail": "{\"rawLineCount\":3,\"businessKey\":\"PZ-016M-MVJTBAMI\"}"
     },
     {
       "name": "posted_false_on_prepare",
@@ -73,7 +78,7 @@
     {
       "name": "replay_idempotent_same_draft",
       "ok": true,
-      "detail": "{\"draftId1\":235,\"draftId2\":235,\"replayed\":true}"
+      "detail": "{\"draftId1\":243,\"draftId2\":243,\"replayed\":true}"
     },
     {
       "name": "replay_stock_still_unchanged",
@@ -88,12 +93,12 @@
     {
       "name": "reject_purchase_phrase_on_mix_draft",
       "ok": true,
-      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制235」\"}"
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制243」\"}"
     },
     {
       "name": "reject_service_phrase_on_mix_draft",
       "ok": true,
-      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制235」\"}"
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制243」\"}"
     },
     {
       "name": "never_auto_confirm_purchase_119",
@@ -116,9 +121,14 @@
       "detail": "{\"code\":400,\"msg\":\"缺少有效 recipeHash。请先 /mix/recipe-preview 展示完整配方草案，再携带服务端返回的 hash 准备草稿。禁止用模型布尔标记冒充用户确认；系统不会自动推导化学比例。\"}"
     },
     {
+      "name": "refuse_prepare_before_recipe_ack",
+      "ok": true,
+      "detail": "{\"code\":409,\"msg\":\"配方尚未经用户原文确认。请用户私聊回复「确认配方e1f3cbd7d189」后再准备草稿（模型代报哈希或布尔无效）。\"}"
+    },
+    {
       "name": "insufficient_stock_fails_prepare",
       "ok": true,
-      "detail": "{\"previewCode\":200,\"recipeHash\":\"e1f3cbd7d1897fcb\",\"code\":400,\"msg\":\"库存不足，整单拒绝。原料 RM-A001 @ 原料仓 可用 250.700000 需要 999999\"}"
+      "detail": "{\"previewCode\":200,\"ackCode\":200,\"code\":400,\"msg\":\"库存不足，整单拒绝。原料 RM-A001 @ 原料仓 可用 250.700000 需要 999999\"}"
     }
   ],
   "uatNotes": [

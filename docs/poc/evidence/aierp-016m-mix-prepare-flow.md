@@ -1,10 +1,10 @@
 # AIERP-016M non-post evidence
 
 - suite: `aierp-016m-mix-prepare-flow`
-- pass/fail: **25/0**
-- Excel draftId: `236` → phrase `确认配制236`
-- Slot draftId: `237`
-- businessKey: `MIX-016M-MVJSHVS9`
+- pass/fail: **28/0**
+- Excel draftId: `244` -> phrase `确认配制244`
+- Slot draftId: `245`
+- businessKey: `MIX-016M-MVJTBJ1J`
 - stock unchanged after prepare: **true**
 - LIVE_WECOM_CONFIRM: PENDING_USER (do not auto-confirm; never #119)
 
@@ -15,6 +15,7 @@
 - PASS phrase_reject_bare
 - PASS build_rejects_model_boolean_without_hash
 - PASS build_requires_recipe_hash
+- PASS phrase_recipe_ack
 - PASS phrase_only_confirm_mix_is_post_path
 - PASS binding_claim
 - PASS template_mix_3raw
@@ -31,6 +32,8 @@
 - PASS slot_prepare_requires_recipe_hash
 - PASS slot_recipe_preview_registers_hash
 - PASS slot_prepare_rejects_unknown_hash
+- PASS slot_prepare_rejects_unacked_hash
+- PASS slot_recipe_ack_trusted
 - PASS slot_prepare_draft
 - PASS reject_service_phrase_on_mix
 - PASS slot_prepare_stock_unchanged

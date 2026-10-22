@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   isMixConfirmPhrase,
+  isMixRecipeAckPhrase,
   extractMixDraftId,
   buildMixPrepareBody,
   buildMixRecipePreviewBody,
@@ -139,6 +140,12 @@ note(
     }
   })(),
   "must require recipeHash",
+);
+note(
+  "phrase_recipe_ack",
+  isMixRecipeAckPhrase("确认配方aabbccdd1122") &&
+    routeTrustedInbound({ text: "确认配方aabbccdd1122", wecomUserId: "x" })?.sopId === "mix_recipe_ack",
+  "确认配方{hash}",
 );
 note(
   "phrase_only_confirm_mix_is_post_path",
@@ -377,7 +384,9 @@ const previewBody = buildMixRecipePreviewBody({
 });
 const recipePrev = await signedPost("/aierp/v1/wecom/mix/recipe-preview", previewBody);
 const recipeHash = recipePrev.json?.data?.recipeHash;
+const recipeShort = String(recipePrev.json?.data?.recipeShortHash || "").toLowerCase();
 const recipeDisplay = String(recipePrev.json?.data?.recipeDisplayZh || "");
+const ackPhrase = String(recipePrev.json?.data?.ackPhrase || `确认配方${recipeShort}`);
 note(
   "slot_recipe_preview_registers_hash",
   recipePrev.json?.code === 200 &&
@@ -385,10 +394,11 @@ note(
     /FG-101/.test(recipeDisplay) &&
     /RM-A001|RM-B002|RM-C003/.test(recipeDisplay) &&
     recipePrev.json?.data?.recipeStatus === "PROPOSED" &&
-    /模型布尔/.test(recipeDisplay),
+    /确认配方/.test(ackPhrase),
   {
     recipeHash: String(recipeHash || "").slice(0, 16),
     status: recipePrev.json?.data?.recipeStatus,
+    ackPhrase,
     display: recipeDisplay.slice(0, 220),
   },
 );
@@ -410,19 +420,56 @@ note(
   { code: fakeHashPrep.json?.code, msg: fakeHashPrep.json?.data?.message || fakeHashPrep.json?.message },
 );
 
-let slot = { json: { code: 500, data: { message: "skip: no recipeHash from preview" } } };
-if (recipeHash) {
-  const slotBody = buildMixPrepareBody({
+const unackedSlot = await signedPost(
+  "/aierp/v1/wecom/mix/prepare",
+  buildMixPrepareBody({
     wecomUserId: WECOM,
     botId: BOT,
     recipeHash,
     finished: slotFinished,
     lines: slotLines,
-    idempotencyKey: `mix-slot-${Date.now()}`,
-    remark: "016M slot test after recipe-preview hash",
-  });
-  slot = await signedPost("/aierp/v1/wecom/mix/prepare", slotBody);
-}
+    idempotencyKey: `mix-unacked-${Date.now()}`,
+  }),
+);
+note(
+  "slot_prepare_rejects_unacked_hash",
+  unackedSlot.json?.code !== 200 &&
+    /确认配方|尚未经用户|原文确认/.test(
+      String(unackedSlot.json?.data?.message || unackedSlot.json?.message || ""),
+    ),
+  { code: unackedSlot.json?.code, msg: String(unackedSlot.json?.data?.message || "").slice(0, 200) },
+);
+
+const recipeAck = await signedPost("/aierp/v1/wecom/mix/recipe-ack", idBody({
+  rawText: ackPhrase,
+  messageMsgId: `recipe-ack-${Date.now()}`,
+  eventSource: "WECOM_BEFORE_DISPATCH",
+  isGroup: false,
+}));
+note(
+  "slot_recipe_ack_trusted",
+  recipeAck.json?.code === 200 &&
+    recipeAck.json?.data?.recipeAcked === true &&
+    recipeAck.json?.data?.recipeStatus === "USER_ACKED" &&
+    recipeAck.json?.data?.recipeHash === recipeHash,
+  {
+    status: recipeAck.json?.data?.recipeStatus,
+    acked: recipeAck.json?.data?.recipeAcked,
+    code: recipeAck.json?.code,
+    msg: recipeAck.json?.data?.message || recipeAck.json?.message,
+  },
+);
+
+const slotBody = buildMixPrepareBody({
+  wecomUserId: WECOM,
+  botId: BOT,
+  recipeHash,
+  finished: slotFinished,
+  lines: slotLines,
+  idempotencyKey: `mix-slot-${Date.now()}`,
+  remark: "016M slot test after trusted recipe ack",
+});
+const slot = await signedPost("/aierp/v1/wecom/mix/prepare", slotBody);
 const slotData = slot.json?.data;
 const slotId = slotData?.draftId;
 note(

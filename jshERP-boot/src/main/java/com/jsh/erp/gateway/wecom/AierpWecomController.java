@@ -222,8 +222,17 @@ public class AierpWecomController {
     }
 
     /**
-     * AIERP-016M: create MIX draft from a previously displayed recipeHash (not model booleans).
-     * Confirm/post remains trusted「确认配制{draftId}」only (no second recipe-ack phrase).
+     * AIERP-016M: trusted before_dispatch「确认配方{hash}」acks a displayed recipe proposal.
+     */
+    @PostMapping("/mix/recipe-ack")
+    public BaseResponseInfo mixRecipeAck(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(mixService.ackRecipeFromTrustedInbound(parse(raw)));
+    }
+
+    /**
+     * AIERP-016M: create MIX draft from a USER_ACKED recipeHash (trusted「确认配方」 first).
+     * Model booleans never equal approval. Posting remains「确认配制{draftId}」only.
      */
     @PostMapping("/mix/prepare")
     public BaseResponseInfo mixPrepare(@RequestBody String raw, HttpServletRequest request) throws Exception {

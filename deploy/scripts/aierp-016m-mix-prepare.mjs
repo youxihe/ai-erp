@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import {
   routeTrustedInbound,
   isMixConfirmPhrase,
+  isMixRecipeAckPhrase,
 } from "../openclaw/plugins/aierp-erp-tools/sop/registry.mjs";
 import {
   extractMixDraftId,
@@ -112,6 +113,12 @@ note(
     wecomUserId: "x",
     isConfirmPhrase: (t) => /^\s*确认\s*采购/.test(t),
   })?.sopId === "purchase_confirm",
+  {},
+);
+note(
+  "unit_recipe_ack_phrase",
+  isMixRecipeAckPhrase("确认配方abcdef12") &&
+    routeTrustedInbound({ text: "确认配方abcdef12", wecomUserId: "x" })?.sopId === "mix_recipe_ack",
   {},
 );
 note(
@@ -440,7 +447,7 @@ note(
   { code: invent.json?.code, msg: inventMsg.slice(0, 200) },
 );
 
-// Insufficient stock: recipe-preview → prepare with registered hash must fail (no invent via boolean)
+// Insufficient stock: preview → trusted recipe-ack → prepare must fail (no silent invent)
 const insuffFinished = { barCode: "FG-101", qty: "1", unit: "L", depotName: "成品仓" };
 const insuffLines = [
   { barCode: "RM-A001", qty: "999999", unit: "L", depotName: "原料仓" },
@@ -457,31 +464,58 @@ const insuffPrev = await signedPost(
   }),
 );
 const insuffHash = insuffPrev.json?.data?.recipeHash;
-let badPrep = { json: { code: 500, message: "skip: no recipeHash from preview" } };
-if (insuffHash) {
-  badPrep = await signedPost(
-    "/aierp/v1/wecom/mix/prepare",
-    buildMixPrepareBody({
-      wecomUserId: WECOM,
-      botId: BOT,
-      recipeHash: insuffHash,
-      idempotencyKey: `mix-insuff-${Date.now()}`,
-      finished: insuffFinished,
-      lines: insuffLines,
-      remark: "故意超量测试",
-    }),
-  );
-}
+const insuffShort = String(insuffPrev.json?.data?.recipeShortHash || "").toLowerCase();
+const unackedPrep = await signedPost(
+  "/aierp/v1/wecom/mix/prepare",
+  buildMixPrepareBody({
+    wecomUserId: WECOM,
+    botId: BOT,
+    recipeHash: insuffHash,
+    idempotencyKey: `mix-unacked-${Date.now()}`,
+    finished: insuffFinished,
+    lines: insuffLines,
+  }),
+);
+note(
+  "refuse_prepare_before_recipe_ack",
+  unackedPrep.json?.code !== 200 &&
+    /确认配方|尚未经用户|USER_ACKED|原文确认/.test(
+      String(unackedPrep.json?.data?.message || unackedPrep.json?.message || ""),
+    ),
+  { code: unackedPrep.json?.code, msg: String(unackedPrep.json?.data?.message || "").slice(0, 200) },
+);
+const insuffAck = await signedPost("/aierp/v1/wecom/mix/recipe-ack", {
+  wecomUserId: WECOM,
+  botId: BOT,
+  channel: "wecom",
+  eventSource: "WECOM_BEFORE_DISPATCH",
+  rawText: `确认配方${insuffShort || String(insuffHash || "").slice(0, 12)}`,
+  messageMsgId: `mix-ack-insuff-${Date.now()}`,
+  isGroup: false,
+});
+const badPrep = await signedPost(
+  "/aierp/v1/wecom/mix/prepare",
+  buildMixPrepareBody({
+    wecomUserId: WECOM,
+    botId: BOT,
+    recipeHash: insuffHash,
+    idempotencyKey: `mix-insuff-${Date.now()}`,
+    finished: insuffFinished,
+    lines: insuffLines,
+    remark: "故意超量测试",
+  }),
+);
 const badCode = badPrep.json?.code;
 const badMsg = String(badPrep.json?.data?.message || badPrep.json?.message || "");
 note(
   "insufficient_stock_fails_prepare",
   insuffPrev.json?.code === 200 &&
     !!insuffHash &&
+    insuffAck.json?.code === 200 &&
     (badCode === 400 || badCode === 409 || /库存不足/.test(badMsg)),
   {
     previewCode: insuffPrev.json?.code,
-    recipeHash: String(insuffHash || "").slice(0, 16),
+    ackCode: insuffAck.json?.code,
     code: badCode,
     msg: badMsg.slice(0, 200),
   },

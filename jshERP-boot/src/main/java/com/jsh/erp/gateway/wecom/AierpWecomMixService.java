@@ -16,11 +16,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * AIERP-016M: WeCom MIX (组装/配制) unposted DRAFT from Excel preview or slot recipe.
  * Never posts inventory; post remains trusted before_dispatch「确认配制{draftId}」only.
- * Slot path: recipe-preview (PROPOSED + recipeHash) → prepare(recipeHash) → 确认配制{id}.
+ * Slot path: recipe-preview (PROPOSED) → trusted「确认配方{hash}」(USER_ACKED) → prepare.
  * Model booleans never equal human approval; ratios are never AI-derived.
  */
 @Service
@@ -28,15 +30,21 @@ public class AierpWecomMixService {
 
     private static final String WF_PREFIX = "aierp:excel-wf:";
     private static final String RECIPE_PREFIX = "aierp:mix-recipe:";
+    private static final String RECIPE_LATEST_PREFIX = "aierp:mix-recipe-latest:";
     private static final long WF_TTL_SECONDS = 6L * 60L * 60L;
     private static final long RECIPE_TTL_SECONDS = 6L * 60L * 60L;
     private static final String CHANNEL = "wecom";
     private static final String DEFAULT_FG_DEPOT = "成品仓";
     private static final String DEFAULT_RM_DEPOT = "原料仓";
     private static final String RECIPE_STATUS_PROPOSED = "PROPOSED";
+    private static final String RECIPE_STATUS_USER_ACKED = "USER_ACKED";
     private static final String RECIPE_SOURCE_EXCEL = "EXCEL";
     private static final String RECIPE_SOURCE_SLOT = "SLOT_PREVIEW";
+    private static final int RECIPE_ACK_SHORT_LEN = 12;
     private static final int RECIPE_HASH_SHORT_LEN = 12;
+    /** Trusted inbound only: 「确认配方{8–64 hex}」 — never model tool args. */
+    private static final Pattern RECIPE_ACK_PHRASE = Pattern.compile(
+            "^\\s*确认\\s*配方\\s*[：:#＃]?\\s*([0-9a-fA-F]{8,64})\\s*$");
 
     @Resource
     private AierpWecomBindingService bindingService;
@@ -81,13 +89,17 @@ public class AierpWecomMixService {
         JSONObject finished = parseFinished(body == null ? null : body.getJSONObject("finished"));
         JSONArray lines = parseRawLines(body == null ? null : body.getJSONArray("lines"));
         String recipeHash = computeRecipeHash(finished, lines);
-        String displayZh = buildRecipeDisplayZh(finished, lines, recipeHash, RECIPE_STATUS_PROPOSED);
+        String shortH = shortHash(recipeHash);
+        String ackPhrase = "确认配方" + shortH;
+        String displayZh = buildRecipeDisplayZh(finished, lines, recipeHash, RECIPE_STATUS_PROPOSED, ackPhrase);
         Map<String, Object> stored = new LinkedHashMap<String, Object>();
         stored.put("recipeHash", recipeHash);
+        stored.put("recipeShortHash", shortH);
         stored.put("recipeStatus", RECIPE_STATUS_PROPOSED);
         stored.put("finished", finished);
         stored.put("lines", lines);
         stored.put("recipeDisplayZh", displayZh);
+        stored.put("ackPhrase", ackPhrase);
         stored.put("erpUserId", ctx.user.getId());
         stored.put("tenantId", ctx.user.getTenantId());
         stored.put("bindingId", ctx.binding.get("id"));
@@ -100,9 +112,12 @@ public class AierpWecomMixService {
         } catch (Exception ignore) {
             // best-effort TTL
         }
+        putLatestRecipePointer(ctx, recipeHash);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("recipeHash", recipeHash);
         out.put("recipeConfirmHash", recipeHash);
+        out.put("recipeShortHash", shortH);
+        out.put("ackPhrase", ackPhrase);
         out.put("recipeStatus", RECIPE_STATUS_PROPOSED);
         out.put("recipeSource", RECIPE_SOURCE_SLOT);
         out.put("recipeDisplayZh", displayZh);
@@ -110,36 +125,114 @@ public class AierpWecomMixService {
         out.put("lines", lines);
         out.put("posted", false);
         out.put("stockUnchanged", true);
-        out.put("hintZh", displayZh + "\n核对无误后携带本 recipeHash 调用 /mix/prepare 生成未审核草稿，"
-                + "再私聊原文「确认配制{草稿号}」过账。模型布尔不能代替用户核对或过账授权。");
+        out.put("hintZh", displayZh + "\n请用户核对以上成品与全部原料用量后，私聊原文回复「"
+                + ackPhrase + "」。模型布尔/代报哈希不能代替用户确认；确认配方后才能 /mix/prepare。");
         out.put("userSummaryZh", out.get("hintZh"));
         return out;
     }
 
     /**
-     * Create MIX draft from a previously displayed recipeHash (PROPOSED), never from model booleans.
-     * Body: recipeHash (required), idempotencyKey, optional finished/lines (must match stored).
-     * Posting remains trusted「确认配制{draftId}」only — no second confirm phrase.
+     * Trusted WeCom before_dispatch: 「确认配方{hash}」marks displayed proposal USER_ACKED.
+     * Does not post inventory. Model tool args alone cannot reach this path.
+     */
+    public Map<String, Object> ackRecipeFromTrustedInbound(JSONObject body) throws Exception {
+        String source = trimToNull(body == null ? null : body.getString("eventSource"));
+        if (!"WECOM_BEFORE_DISPATCH".equals(source)) {
+            throw new BusinessRunTimeException(403, "配方确认事件来源必须是 WECOM_BEFORE_DISPATCH");
+        }
+        if (body != null && (Boolean.TRUE.equals(body.getBoolean("isGroup"))
+                || Boolean.TRUE.equals(body.getBoolean("groupChat")))) {
+            throw new BusinessRunTimeException(403, "禁止在群聊中确认配制配方");
+        }
+        String rawText = trimToNull(body == null ? null : body.getString("rawText"));
+        if (rawText == null) {
+            throw new BusinessRunTimeException(400, "缺少 rawText（须为企微原始私聊原文）");
+        }
+        String presented = parseRecipeAckHash(rawText);
+        if (presented == null) {
+            throw new BusinessRunTimeException(400, "不是有效的配方确认指令，请回复「确认配方」加配方哈希");
+        }
+        AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
+        String recipeHash = resolveRecipeHashFromAck(ctx, presented);
+        Map<String, Object> stored = loadRecipePreview(ctx, recipeHash);
+        if (stored == null) {
+            throw new BusinessRunTimeException(404, "没有待确认的配制配方，请先预览完整成品/原料配比。");
+        }
+        String status = String.valueOf(stored.get("recipeStatus"));
+        if (RECIPE_STATUS_USER_ACKED.equals(status)) {
+            Map<String, Object> replay = new LinkedHashMap<String, Object>();
+            replay.putAll(stored);
+            replay.put("recipeAcked", true);
+            replay.put("recipeConfirmHash", recipeHash);
+            replay.put("replayed", true);
+            replay.put("posted", false);
+            replay.put("stockUnchanged", true);
+            replay.put("hintZh", "配方哈希已确认过。可携带 recipeHash 调用 /mix/prepare 生成未审核配制草稿；"
+                    + "过账仍须原文「确认配制{草稿号}」。配制回执为文字（无 MIX 专用 PDF）。");
+            return replay;
+        }
+        if (!RECIPE_STATUS_PROPOSED.equals(status)) {
+            throw new BusinessRunTimeException(409, "配方状态不可确认：" + status);
+        }
+        stored.put("recipeStatus", RECIPE_STATUS_USER_ACKED);
+        stored.put("ackedAt", System.currentTimeMillis());
+        stored.put("ackRawText", rawText);
+        String messageMsgId = trimToNull(body.getString("messageMsgId"));
+        if (messageMsgId != null) {
+            stored.put("ackMessageMsgId", messageMsgId);
+        }
+        String key = recipeKey(ctx, recipeHash);
+        redisService.setCacheObject(key, JSON.toJSONString(stored));
+        try {
+            redisService.redisTemplate.expire(key, RECIPE_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception ignore) {
+            // best-effort TTL
+        }
+        String shortH = shortHash(recipeHash);
+        String displayZh = buildRecipeDisplayZh(
+                toJsonObject(stored.get("finished")), toJsonArray(stored.get("lines")),
+                recipeHash, RECIPE_STATUS_USER_ACKED, "确认配方" + shortH);
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("recipeHash", recipeHash);
+        out.put("recipeConfirmHash", recipeHash);
+        out.put("recipeShortHash", shortH);
+        out.put("recipeStatus", RECIPE_STATUS_USER_ACKED);
+        out.put("recipeAcked", true);
+        out.put("recipeDisplayZh", displayZh);
+        out.put("finished", stored.get("finished"));
+        out.put("lines", stored.get("lines"));
+        out.put("posted", false);
+        out.put("stockUnchanged", true);
+        out.put("hintZh", displayZh + "\n用户已原文确认配方哈希。可调用 /mix/prepare（携带 recipeHash+"
+                + "idempotencyKey）生成未审核配制草稿；过账须再回复「确认配制{草稿号}」。"
+                + "配制场景仅文字回执，无采购 PDF。");
+        out.put("userSummaryZh", out.get("hintZh"));
+        return out;
+    }
+
+    /**
+     * Create MIX draft from a USER_ACKED recipeHash (trusted「确认配方」 first).
+     * Model booleans never equal approval. Posting remains「确认配制{draftId}」only.
      */
     public Map<String, Object> mixPrepare(JSONObject body) throws Exception {
+        // Reject model-boolean shortcuts before workflow gates (so boolean alone never looks like success).
+        rejectModelRecipeBooleanAlone(body);
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
-        // Validate recipeHash / refuse model booleans BEFORE workflow gate so an open
-        // Excel DRAFT_READY cannot mask the 400「布尔不能证明用户已核对」response.
-        JSONObject draftBody = buildMixBodyFromSlots(ctx, body);
         assertNoBlockingWorkflow(ctx);
+        JSONObject draftBody = buildMixBodyFromSlots(ctx, body);
         AierpGatewayService.WecomDraftOwner owner = toOwner(ctx);
         Map<String, Object> created = gatewayService.createDraftAs(ctx.user, "MIX", draftBody, owner);
         Map<String, Object> view = enrichMixView(ctx, created, draftBody.getString("businessKey"), false);
         view.put("recipeHash", draftBody.getString("recipeHash"));
         view.put("recipeConfirmHash", draftBody.getString("recipeHash"));
-        view.put("recipeStatus", RECIPE_STATUS_PROPOSED);
+        view.put("recipeStatus", RECIPE_STATUS_USER_ACKED);
         view.put("recipeSource", RECIPE_SOURCE_SLOT);
         Object finishedObj = draftBody.get("finished");
         Object linesObj = draftBody.get("lines");
         if (finishedObj instanceof JSONObject && linesObj instanceof JSONArray) {
             view.put("recipeDisplayZh", buildRecipeDisplayZh(
                     (JSONObject) finishedObj, (JSONArray) linesObj,
-                    draftBody.getString("recipeHash"), RECIPE_STATUS_PROPOSED));
+                    draftBody.getString("recipeHash"), RECIPE_STATUS_USER_ACKED, null));
         }
         return view;
     }
@@ -246,7 +339,7 @@ public class AierpWecomMixService {
         out.put("recipeSource", RECIPE_SOURCE_EXCEL);
         out.put("recipeDisplayZh", buildRecipeDisplayZh(
                 draftBody.getJSONObject("finished"), draftBody.getJSONArray("lines"),
-                recipeHash, RECIPE_STATUS_PROPOSED));
+                recipeHash, RECIPE_STATUS_PROPOSED, "确认配方" + shortHash(recipeHash)));
         return out;
     }
 
@@ -294,7 +387,28 @@ public class AierpWecomMixService {
     }
 
     /**
-     * Slot prepare: recipeHash from prior /mix/recipe-preview only.
+     * Model booleans alone never authorize prepare — fail fast before workflow gates.
+     */
+    private static void rejectModelRecipeBooleanAlone(JSONObject body) {
+        if (body == null) {
+            return;
+        }
+        if (!(body.getBooleanValue("recipeUserConfirmed") || body.getBooleanValue("userConfirmedRecipe"))) {
+            return;
+        }
+        String maybeHash = firstNonBlank(
+                trimToNull(body.getString("recipeHash")),
+                trimToNull(body.getString("recipeConfirmHash")));
+        if (maybeHash == null) {
+            throw new BusinessRunTimeException(400,
+                    "模型布尔 recipeUserConfirmed/userConfirmedRecipe 不能证明用户已核对配方。"
+                            + "请先调用 /mix/recipe-preview 展示完整成品/原料配比，再用返回的 recipeHash 准备草稿。"
+                            + "系统不会自动推导化学比例；过账仅接受原文「确认配制{草稿号}」。");
+        }
+    }
+
+    /**
+     * Slot prepare: recipeHash must be USER_ACKED via trusted「确认配方{hash}」.
      * Never treat recipeUserConfirmed / userConfirmedRecipe as approval evidence.
      * 「确认配制{id}」remains the only trusted confirm/post path.
      */
@@ -302,19 +416,7 @@ public class AierpWecomMixService {
         if (body == null) {
             throw new BusinessRunTimeException(400, "缺少配制槽位");
         }
-        // Model booleans prove nothing — reject when used without a registered recipeHash.
-        if (body.getBooleanValue("recipeUserConfirmed") || body.getBooleanValue("userConfirmedRecipe")) {
-            String maybeHash = firstNonBlank(
-                    trimToNull(body.getString("recipeHash")),
-                    trimToNull(body.getString("recipeConfirmHash")));
-            if (maybeHash == null) {
-                throw new BusinessRunTimeException(400,
-                        "模型布尔 recipeUserConfirmed/userConfirmedRecipe 不能证明用户已核对配方。"
-                                + "请先调用 /mix/recipe-preview 展示完整成品/原料配比，再用返回的 recipeHash 准备草稿。"
-                                + "系统不会自动推导化学比例；过账仅接受原文「确认配制{草稿号}」。");
-            }
-            // Boolean present with hash: ignored — only server-stored recipeHash authorizes prepare.
-        }
+        rejectModelRecipeBooleanAlone(body);
         String recipeHash = firstNonBlank(
                 trimToNull(body.getString("recipeHash")),
                 trimToNull(body.getString("recipeConfirmHash")));
@@ -336,6 +438,11 @@ public class AierpWecomMixService {
         if (stored == null) {
             throw new BusinessRunTimeException(404,
                     "recipeHash 未登记或已过期。请重新 /mix/recipe-preview 展示完整成品/原料配比后再准备草稿。");
+        }
+        if (!RECIPE_STATUS_USER_ACKED.equals(String.valueOf(stored.get("recipeStatus")))) {
+            throw new BusinessRunTimeException(409,
+                    "配方尚未经用户原文确认。请用户私聊回复「确认配方" + shortHash(recipeHash)
+                            + "」后再准备草稿（模型代报哈希或布尔无效）。");
         }
         JSONObject finished = toJsonObject(stored.get("finished"));
         JSONArray lines = toJsonArray(stored.get("lines"));
@@ -447,6 +554,76 @@ public class AierpWecomMixService {
         return RECIPE_PREFIX + ctx.botId + ":" + ctx.wecomUserId + ":" + recipeHash.toLowerCase(Locale.ROOT);
     }
 
+    private static String latestRecipeKey(AierpWecomBindingService.BoundContext ctx) {
+        return RECIPE_LATEST_PREFIX + ctx.botId + ":" + ctx.wecomUserId;
+    }
+
+    /** Remember last PROPOSED recipe so short-hash「确认配方{12hex}」can resolve. */
+    private void putLatestRecipePointer(AierpWecomBindingService.BoundContext ctx, String recipeHash) {
+        if (ctx == null || recipeHash == null) {
+            return;
+        }
+        String key = latestRecipeKey(ctx);
+        String full = recipeHash.toLowerCase(Locale.ROOT);
+        redisService.setCacheObject(key, full);
+        try {
+            redisService.redisTemplate.expire(key, RECIPE_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception ignore) {
+            // best-effort TTL
+        }
+    }
+
+    private String getLatestRecipeHash(AierpWecomBindingService.BoundContext ctx) {
+        try {
+            Object v = redisService.getCacheObject(latestRecipeKey(ctx));
+            if (v == null) {
+                return null;
+            }
+            String s = String.valueOf(v).trim().toLowerCase(Locale.ROOT);
+            return s.matches("[0-9a-f]{64}") ? s : null;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    /**
+     * Parse hash from trusted WeCom rawText「确认配方{hash}」.
+     * Returns lowercase hex fragment (8–64) or null — never invents ratios.
+     */
+    private static String parseRecipeAckHash(String rawText) {
+        if (rawText == null) {
+            return null;
+        }
+        Matcher m = RECIPE_ACK_PHRASE.matcher(rawText.trim());
+        if (!m.matches()) {
+            return null;
+        }
+        return m.group(1).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Resolve presented short/full hash to full SHA-256 via latest pointer or exact key.
+     */
+    private String resolveRecipeHashFromAck(AierpWecomBindingService.BoundContext ctx, String presented) {
+        if (presented == null || presented.isEmpty()) {
+            throw new BusinessRunTimeException(400, "缺少配方哈希");
+        }
+        String p = presented.toLowerCase(Locale.ROOT);
+        if (p.matches("[0-9a-f]{64}")) {
+            return p;
+        }
+        if (p.length() < 8 || p.length() > RECIPE_ACK_SHORT_LEN || !p.matches("[0-9a-f]+")) {
+            throw new BusinessRunTimeException(400, "配方哈希格式无效，请使用预览返回的短哈希或完整哈希");
+        }
+        String latest = getLatestRecipeHash(ctx);
+        if (latest != null && latest.startsWith(p)) {
+            return latest;
+        }
+        throw new BusinessRunTimeException(404,
+                "无法匹配配方哈希「" + p + "」。请先 /mix/recipe-preview 展示完整成品/原料配比，"
+                        + "再原文回复「确认配方」加预览短哈希（模型代报无效）。");
+    }
+
     /** Canonical SHA-256 of finished + sorted raw lines (no model flags). */
     static String computeRecipeHash(JSONObject finished, JSONArray lines) {
         StringBuilder canon = new StringBuilder();
@@ -480,7 +657,8 @@ public class AierpWecomMixService {
     }
 
     private static String buildRecipeDisplayZh(JSONObject finished, JSONArray lines,
-                                               String recipeHash, String recipeStatus) {
+                                               String recipeHash, String recipeStatus,
+                                               String ackPhrase) {
         StringBuilder sb = new StringBuilder();
         sb.append("【配制配方草案】").append(recipeStatus == null ? RECIPE_STATUS_PROPOSED : recipeStatus);
         sb.append(" recipeHash=").append(shortHash(recipeHash)).append("\n");
@@ -498,7 +676,14 @@ public class AierpWecomMixService {
                     .append(" @ ").append(nullTo(line.getString("depotName"), DEFAULT_RM_DEPOT))
                     .append("\n");
         }
-        sb.append("此为提案展示，不是过账授权；模型布尔不能代替用户核对。");
+        if (RECIPE_STATUS_USER_ACKED.equals(recipeStatus)) {
+            sb.append("用户已原文确认本配方哈希（非模型布尔）。");
+        } else {
+            sb.append("此为提案展示，不是过账授权；模型布尔不能代替用户核对。");
+            if (ackPhrase != null && !ackPhrase.isEmpty()) {
+                sb.append("核对无误请回复「").append(ackPhrase).append("」。");
+            }
+        }
         sb.append("系统不会自动推导化学比例。过账仅接受原文「确认配制{草稿号}」。");
         return sb.toString().trim();
     }

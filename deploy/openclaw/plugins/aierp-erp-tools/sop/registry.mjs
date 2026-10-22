@@ -1,16 +1,16 @@
 /**
  * SOP registry — priority routing for trusted WeCom inbound.
- * receipt > mix/purchase confirm > excel cancel/followup > excel file > fallback LLM
+ * receipt > mix recipe-ack > mix/purchase confirm > excel cancel/followup > excel file > fallback LLM
  *
- * AIERP-016M: mix_confirm / mix_prepare; keep PURCHASE confirm+PDF paths intact.
- * Confirm/post for MIX is only 「确认配制{id}」— no second recipe-ack phrase.
+ * AIERP-016M: mix_recipe_ack / mix_confirm / mix_prepare; keep PURCHASE confirm+PDF paths intact.
  */
 import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
-import { isMixConfirmPhrase, MIX_SOP } from "./mix-prepare.mjs";
+import { isMixConfirmPhrase, isMixRecipeAckPhrase, MIX_SOP } from "./mix-prepare.mjs";
 
 export const SOP_PRIORITY = [
   "receipt_request",
   "receipt_followup",
+  "mix_recipe_ack",
   "mix_confirm",
   "purchase_confirm",
   "mix_prepare",
@@ -45,6 +45,9 @@ export function routeTrustedInbound({
     };
   }
 
+  if (isMixRecipeAckPhrase(t)) {
+    return { sopId: "mix_recipe_ack" };
+  }
   if (isMixConfirmPhrase(t)) {
     return { sopId: "mix_confirm" };
   }
@@ -64,5 +67,6 @@ export {
   isReceiptRequest,
   isReceiptFollowup,
   isMixConfirmPhrase,
+  isMixRecipeAckPhrase,
   MIX_SOP,
 };

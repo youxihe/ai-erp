@@ -19,7 +19,8 @@ import {
   sanitizeForChannel,
 } from "./sop/renderers/wecom-business.mjs";
 import { registerMixConfirmDispatch } from "./sop/register-mix-confirm.mjs";
-import { isMixConfirmPhrase } from "./sop/mix-prepare.mjs";
+import { registerMixRecipeAckDispatch } from "./sop/register-mix-recipe-ack.mjs";
+import { isMixConfirmPhrase, isMixRecipeAckPhrase } from "./sop/mix-prepare.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -161,7 +162,12 @@ function num(v) {
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
   // MIX 「确认配制{n}」owned by registerMixConfirmDispatch (priority 55).
-  return CONFIRM_PURCHASE.test(t) || CONFIRM_SIMPLE.test(t) || isMixConfirmPhrase(t);
+  return (
+    CONFIRM_PURCHASE.test(t) ||
+    CONFIRM_SIMPLE.test(t) ||
+    isMixConfirmPhrase(t) ||
+    isMixRecipeAckPhrase(t)
+  );
 }
 
 
@@ -1144,7 +1150,7 @@ function registerConfirmAndExcelDispatchHook(api) {
     }
 
         // MIX「确认配制{n}」is owned by registerMixConfirmDispatch (priority 55).
-        if (isMixConfirmPhrase(text)) {
+        if (isMixRecipeAckPhrase(text) || isMixConfirmPhrase(text)) {
           return;
         }
         if (isConfirmPhrase(text)) {
@@ -1374,10 +1380,16 @@ const plugin = {
   register(api) {
     registerErpTools(api);
     registerExcelObserveHook(api);
-    // AIERP-016M: thin MIX draft confirm (before purchase confirm hook).
+    // AIERP-016M: recipe-hash ack (确认配方) then draft confirm (确认配制).
     // Does not alter PURCHASE confirm + receipt PDF auto-send paths.
     // MIX has no dedicated PDF — text receipt only.
-    // Confirm phrase remains 「确认配制{draftId}」only (no separate 确认配方 ack).
+    registerMixRecipeAckDispatch(api, {
+      botId,
+      signedPost,
+      trustedWecomUserId,
+      isWecomGroupChat,
+      channelId: CHANNEL_ID,
+    });
     registerMixConfirmDispatch(api, {
       botId,
       signedPost,
