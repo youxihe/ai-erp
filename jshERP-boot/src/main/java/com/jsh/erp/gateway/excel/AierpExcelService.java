@@ -293,8 +293,7 @@ public class AierpExcelService {
                         .append("\n");
             }
         }
-        sb.append("数据无误，尚未入库。本阶段仅核对；正式入库将在下一阶段生成待确认采购单后，由您本人确认。");
-        sb.append("不必重新上传同一文件。若改口头采购，请回复「取消文件」。");
+        sb.append("数据无误，尚未入库。");
         return sb.toString().trim();
     }
 

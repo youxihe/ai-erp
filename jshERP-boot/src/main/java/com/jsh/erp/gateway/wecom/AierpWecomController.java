@@ -172,6 +172,16 @@ public class AierpWecomController {
         return ok(excelService.workflowCancel(parse(raw)));
     }
 
+    /**
+     * AIERP-017B1: create/reuse unposted PURCHASE draft from persisted Excel preview.
+     * Never posts inventory; confirm remains trusted before_dispatch only.
+     */
+    @PostMapping("/excel/prepare-verified")
+    public BaseResponseInfo excelPrepareVerified(@RequestBody String raw, HttpServletRequest request) throws Exception {
+        adapterAuth.verify(request, raw);
+        return ok(excelService.prepareVerified(parse(raw)));
+    }
+
     private static JSONObject parse(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
             return new JSONObject();

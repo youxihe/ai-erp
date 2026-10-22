@@ -1,0 +1,69 @@
+{
+  "suite": "aierp-017b1-verified-draft",
+  "at": "2026-10-22T04:08:18.637Z",
+  "wecomMasked": "b1-m***",
+  "draftId": 117,
+  "businessKey": "CG-B1-MVJ0TJFP",
+  "stockBefore": 170.7,
+  "stockAfter": 170.7,
+  "results": [
+    {
+      "name": "template_80L",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "preview_auto_draft_80L_not_filename_or_chat_20",
+      "ok": true,
+      "detail": "{\"draftId\":117,\"businessKey\":\"CG-B1-MVJ0TJFP\",\"summary\":\"采购单 CG-B1-MVJ0TJFP｜华东化工\\n表面活性剂 RM-A001｜原料仓｜80L × 20 元＝1600 元\\n未入库\\n待确认单 #117\\n请回复「确认采购117」完成入库\",\"qtyOk\":true}"
+    },
+    {
+      "name": "businessKey_not_used_as_draftId",
+      "ok": true,
+      "detail": "{\"draftId\":117,\"businessKey\":\"CG-B1-MVJ0TJFP\"}"
+    },
+    {
+      "name": "summary_no_tech_jargon",
+      "ok": true,
+      "detail": "采购单 CG-B1-MVJ0TJFP｜华东化工\n表面活性剂 RM-A001｜原料仓｜80L × 20 元＝1600 元\n未入库\n待确认单 #117\n请回复「确认采购117」完成入库"
+    },
+    {
+      "name": "workflow_draft_ready",
+      "ok": true,
+      "detail": "{\"userSummaryZh\":\"采购单 CG-B1-MVJ0TJFP｜华东化工\\n表面活性剂 RM-A001｜原料仓｜80L × 20 元＝1600 元\\n未入库\\n待确认单 #117\\n请回复「确认采购117」完成入库\",\"draftId\":117,\"hasValidPreview\":true,\"erpUserId\":63,\"bindingVersion\":1,\"blocksPurchasePrepare\":true,\"fileSha256\":\"fbfbbcc4919ec38ac3a6fc370102f637143c2ea2ba25cc49262e271beffe817d\",\"confirmPhrase\":\"确认采购117\",\"hasAwaitingDraft\":true,\"wecomUserIdMasked\":\"b1***\",\"businessKey\":\"CG-B1-MVJ0TJFP\",\"tenantId\":63,\"bindingId\":33,\"previewId\":\"pv-e20ca4ffbb91415890d1b1bade0233b9\",\"status\":\"DRAFT_RE"
+    },
+    {
+      "name": "verbal_prepare_blocked_while_excel_draft",
+      "ok": true,
+      "detail": "{\"code\":409,\"msg\":\"当前有待确认的 Excel 采购单 #117。请回复「确认采购117」入库，或「取消文件」后口头下单。\"}"
+    },
+    {
+      "name": "same_file_idempotent_same_draft",
+      "ok": true,
+      "detail": "{\"draftId1\":117,\"draftId2\":117,\"replayed\":true}"
+    },
+    {
+      "name": "changed_file_new_draft_invalidates_old",
+      "ok": true,
+      "detail": "{\"old\":117,\"neu\":118,\"summary\":\"采购单 CG-B1-MVJ0TJFP-V2｜华东化工\\n表面活性剂 RM-A001｜原料仓｜50L × 20 元＝1000 元\\n未入库\\n待确认单 #118\\n请回复「确认采购118」完成入库\"}"
+    },
+    {
+      "name": "old_draft_cancelled_after_file_change",
+      "ok": true,
+      "detail": "{\"draftId\":117,\"status\":\"CANCELLED\",\"replayed\":false,\"billNumber\":null,\"payload\":{\"organName\":\"华东化工\",\"accountId\":17,\"idempotencyKey\":\"wx:f6aa77eb85249d25fcd912dd11fdab61b24ee3ad2d9553caa02623eb24adb713\",\"organId\":901,\"remark\":\"017b1-cell-80L\",\"lines\":[{\"unitPrice\":20,\"taxRate\":0,\"depotName\":\"原料仓\",\"unit\":\"L\",\"allPrice\":1600,\"operNumber\":80,\"depotId\":\"14\",\"name\":\"表面活性剂\",\"taxLastMoney\":1600,\"materialId\":901,\"taxMoney\":0,\"barCode\":\"RM-A001\"}]},\"posted\":false,\"stockUnchanged\":true,\"nature\":\"REAL_ERP\""
+    },
+    {
+      "name": "stock_unchanged",
+      "ok": true,
+      "detail": "{\"stockBefore\":170.7,\"stockAfter\":170.7}"
+    },
+    {
+      "name": "excel_confirm_not_exposed",
+      "ok": true,
+      "detail": "route absent or rejected"
+    }
+  ],
+  "pass": 11,
+  "fail": 0,
+  "note": "No posting. Do not confirm #113. Live WeCom confirm uses a fresh dedicated draft."
+}

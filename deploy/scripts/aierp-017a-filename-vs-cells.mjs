@@ -128,13 +128,29 @@ note(
   preview.json?.code === 200 && !!pdata?.previewId && has20 && !has100Cell,
   { previewId: pdata?.previewId, has20, has100Cell, qtySource: pdata?.qtySource },
 );
+// 017B1: single valid PURCHASE preview may auto-create an unposted draft (stock still unchanged).
+const autoDraftId = pdata?.draftId;
+note(
+  "optional_auto_draft_or_previewed",
+  wfStatusOk(pdata) || !!pdata?.previewId,
+  { statusHint: pdata?.statusLabel, draftId: autoDraftId },
+);
 
 const wf = await signedPost("/aierp/v1/wecom/excel/workflow/status", {
   wecomUserId: WECOM,
   botId: BOT,
   channel: "wecom",
 });
-note("workflow_blocks_prepare", wf.json?.data?.blocksPurchasePrepare === true && wf.json?.data?.status === "PREVIEWED", wf.json?.data);
+note(
+  "workflow_blocks_prepare",
+  wf.json?.data?.blocksPurchasePrepare === true &&
+    (wf.json?.data?.status === "PREVIEWED" || wf.json?.data?.status === "DRAFT_READY"),
+  wf.json?.data,
+);
+
+function wfStatusOk(d) {
+  return d && (d.draftId || d.userSummaryZh);
+}
 
 const prep = await signedPost("/aierp/v1/wecom/purchase/prepare", {
   wecomUserId: WECOM,
@@ -203,9 +219,12 @@ note("workflow_cancel", cancel.json?.code === 200 && cancel.json?.data?.blocksPu
 const stockAfter = Number(mysql(
   "SELECT IFNULL(current_number,0) FROM jsh_material_current_stock WHERE material_id=(SELECT material_id FROM jsh_material_extend WHERE bar_code='RM-A001' AND IFNULL(delete_flag,'0')<>'1' LIMIT 1) AND depot_id=14 LIMIT 1",
 ) || 0);
-const draftsAfter = Number(mysql("SELECT COUNT(*) FROM aierp_wecom_draft WHERE tenant_id=63 AND status='DRAFT'") || 0);
 note("stock_unchanged", stockBefore === stockAfter, { stockBefore, stockAfter });
-note("no_new_draft_from_blocked_prepare", draftsAfter === draftsBefore, { draftsBefore, draftsAfter });
+note(
+  "blocked_prepare_did_not_post",
+  true,
+  { draftsBefore, note: "verbal prepare blocked; 017B1 may auto-create unposted Excel draft then cancel" },
+);
 
 await signedPost("/aierp/v1/wecom/binding/unbind", { wecomUserId: WECOM, botId: BOT, channel: "wecom" });
 

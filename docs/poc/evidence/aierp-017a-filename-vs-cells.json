@@ -1,8 +1,8 @@
 {
   "suite": "aierp-017a-filename-vs-cells",
-  "at": "2026-10-21T13:51:53.966Z",
+  "at": "2026-10-22T04:07:48.671Z",
   "trickyName": "采购入库模板---100L---.xlsx",
-  "previewId": "pv-fd1678c2f4c1494f819940633d49f13f",
+  "previewId": "pv-95ed7bc4924f4303b4a3e918e08ffe70",
   "results": [
     {
       "name": "template_20L_cells",
@@ -12,37 +12,42 @@
     {
       "name": "preview_qty_from_cells_20_not_filename_100",
       "ok": true,
-      "detail": "{\"previewId\":\"pv-fd1678c2f4c1494f819940633d49f13f\",\"has20\":true,\"has100Cell\":false,\"qtySource\":\"XLSX_CELLS\"}"
+      "detail": "{\"previewId\":\"pv-95ed7bc4924f4303b4a3e918e08ffe70\",\"has20\":true,\"has100Cell\":false,\"qtySource\":\"XLSX_CELLS\"}"
+    },
+    {
+      "name": "optional_auto_draft_or_previewed",
+      "ok": 116,
+      "detail": "{\"statusHint\":\"待确认、未入库\",\"draftId\":116}"
     },
     {
       "name": "workflow_blocks_prepare",
       "ok": true,
-      "detail": "{\"fileSha256\":\"1b1583d8e16bf28304cf2476be5ea1784142dd716776c31673b4f3b2d8cee3c2\",\"userSummaryZh\":\"文件已核对：1 张业务单 / 1 行明细。\\n采购单 FN-20｜华东化工\\n  RM-A001｜原料仓｜20L × 12.5 元＝250 元\\n数据无误，尚未入库。本阶段仅核对；正式入库将在下一阶段生成待确认采购单后，由您本人确认。不必重新上传同一文件。若改口头采购，请回复「取消文件」。\",\"hasValidPreview\":true,\"erpUserId\":63,\"wecomUserIdMasked\":\"fn***\",\"tenantId\":63,\"previewId\":\"pv-fd1678c2f4c1494f819940633d49f13f\",\"messageMsgId\":\"msg-17925"
+      "detail": "{\"userSummaryZh\":\"采购单 FN-20｜华东化工\\n表面活性剂 RM-A001｜原料仓｜20L × 12.5 元＝250 元\\n未入库\\n待确认单 #116\\n请回复「确认采购116」完成入库\",\"draftId\":116,\"hasValidPreview\":true,\"erpUserId\":63,\"bindingVersion\":1,\"blocksPurchasePrepare\":true,\"fileSha256\":\"ad3c5f635fac2f3a73d3a3cce1266f6684b90420ce30720011fad77eb72e6782\",\"confirmPhrase\":\"确认采购116\",\"hasAwaitingDraft\":true,\"wecomUserIdMasked\":\"fn***\",\"businessKey\":\"FN-20\",\"tenantId\":63,"
     },
     {
       "name": "prepare_blocked_while_workflow_open",
       "ok": true,
-      "detail": "{\"code\":409,\"msg\":\"当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建采购草稿。请先按已核对的文件继续，或回复「取消文件」后再口头下单。\"}"
+      "detail": "{\"code\":409,\"msg\":\"当前有待确认的 Excel 采购单 #116。请回复「确认采购116」入库，或「取消文件」后口头下单。\"}"
     },
     {
       "name": "prepare_blocked_despite_excelWorkflowCancel_model_arg",
       "ok": true,
-      "detail": "{\"code\":409,\"msg\":\"当前有未关闭的 Excel 文件核对流程，不能用口头或文件名猜测创建采购草稿。请先按已核对的文件继续，或回复「取消文件」后再口头下单。\"}"
+      "detail": "{\"code\":409,\"msg\":\"当前有待确认的 Excel 采购单 #116。请回复「确认采购116」入库，或「取消文件」后口头下单。\"}"
     },
     {
       "name": "user_summary_no_tech_jargon",
       "ok": true,
-      "detail": "{\"sample\":\"文件已核对：1 张业务单 / 1 行明细。\\n采购单 FN-20｜华东化工\\n  RM-A001｜原料仓｜20L × 12.5 元＝250 元\\n数据无误，尚未入库。本阶段仅核对；正式入库将在下一阶段生成待确认采购单后，由您本人确认。不必重新上传同一文件。若改口头采购，请回复「取消文件」。\"}"
+      "detail": "{\"sample\":\"采购单 FN-20｜华东化工\\n表面活性剂 RM-A001｜原料仓｜20L × 12.5 元＝250 元\\n未入库\\n待确认单 #116\\n请回复「确认采购116」完成入库\"}"
     },
     {
       "name": "workflow_retains_preview_summary",
       "ok": true,
-      "detail": "{\"status\":\"PREVIEWED\",\"hasValidPreview\":true,\"summaryLen\":142}"
+      "detail": "{\"status\":\"DRAFT_READY\",\"hasValidPreview\":true,\"summaryLen\":82}"
     },
     {
       "name": "workflow_cancel",
       "ok": true,
-      "detail": "{\"status\":\"CANCELLED\",\"blocksPurchasePrepare\":false,\"hasValidPreview\":false,\"hint\":\"Excel 文件流程已关闭，可重新口头采购。\"}"
+      "detail": "{\"status\":\"CANCELLED\",\"blocksPurchasePrepare\":false,\"hasValidPreview\":false,\"hasAwaitingDraft\":false,\"hint\":\"文件流程已关闭，可重新口头采购。\"}"
     },
     {
       "name": "stock_unchanged",
@@ -50,12 +55,12 @@
       "detail": "{\"stockBefore\":170.7,\"stockAfter\":170.7}"
     },
     {
-      "name": "no_new_draft_from_blocked_prepare",
+      "name": "blocked_prepare_did_not_post",
       "ok": true,
-      "detail": "{\"draftsBefore\":0,\"draftsAfter\":0}"
+      "detail": "{\"draftsBefore\":0,\"note\":\"verbal prepare blocked; 017B1 may auto-create unposted Excel draft then cancel\"}"
     }
   ],
-  "pass": 10,
+  "pass": 11,
   "fail": 0,
   "LIVE_WECOM_FILE_PREVIEW": "PASS_PRIOR_UAT",
   "note": "Do not confirm draft #113. Filename ---100L--- must not become qty. Model excelWorkflowCancel must not bypass gate."

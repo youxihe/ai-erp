@@ -22,6 +22,8 @@ public class AierpWecomConfirmService {
     private AierpGatewayService gatewayService;
     @Resource
     private AierpWecomReceiptService receiptService;
+    @Resource
+    private AierpWecomExcelService excelService;
 
     /**
      * Adapter entry: HMAC body carries trusted wecomUserId + raw inbound text + messageId.
@@ -51,6 +53,11 @@ public class AierpWecomConfirmService {
         AierpGatewayService.ConfirmEventProof proof =
                 new AierpGatewayService.ConfirmEventProof(rawText, messageMsgId, false, source);
         Map<String, Object> confirmed = gatewayService.confirmAs(ctx.user, owner, draftId, proof);
+        try {
+            excelService.markWorkflowPosted(ctx, draftId);
+        } catch (Exception ignore) {
+            // workflow cleanup is best-effort
+        }
         return receiptService.enrichConfirmResult(ctx.user, owner, confirmed);
     }
 
