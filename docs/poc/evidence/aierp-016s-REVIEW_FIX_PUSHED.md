@@ -3,30 +3,43 @@
 **Branch:** `feat/aierp-016s-service-outbound-sop`  
 **PR:** https://github.com/youxihe/ai-erp/pull/43  
 **Status:** `REVIEW_FIX_PUSHED` — no Merge; no F: plugin overwrite; no re-post of `GW-SERVICE-136`.  
-**Remote HEAD:** `7066e71dd3e5b4f707f87024a75ecf0937fe2b66`  
-**Evidence:** `2d3b89f4` · **Code fix:** `48fecfef` (UserCustomer / depot / cross-type / audited replay).
+**Code fix:** `48fecfef` (UserCustomer / depot / cross-type / audited replay).  
+**This evidence commit HEAD:** *(filled after push — see tip of branch)*
 
 ## Round-1 fixes
 
 ### P0
-- Trusted phrases: PURCHASE / MIX / SERVICE cross-type mismatch rejected (`assertConfirmKindMatchesBiz`; plugin accepts `确认配制` into trusted confirm path so Java can reject on SERVICE).
-- 015C PDF media path preserved: `receipt-send.mjs` + registry `canHandleReceipt` still first; SERVICE only adds text-receipt workflow labels (`已出库`), does not retitle purchase PDF; PURCHASE confirm still auto-sends receipt PDF via `runReceiptSend`.
+- Trusted phrases: PURCHASE / MIX / SERVICE cross-type mismatch rejected (`assertConfirmKindMatchesBiz`; plugin routes `确认配制` into trusted confirm path so Java rejects on SERVICE).
+- 015C PDF media path preserved: `receipt-send.mjs` + registry `canHandleReceipt` still first; SERVICE only adds text-receipt workflow labels (`已出库`), does not retitle purchase PDF.
 - F: shared OpenClaw runtime not overwritten from this branch.
 
 ### P1
 - Customer visibility: `assertCustomerVisible` via `UserCustomer` when `customerFlag=1` (prepare `resolveOrgan`, confirm `reassertParties`, Excel SERVICE preview) — not tenant-only.
 - Depot: `assertDepotAllowed` / `reassertAccess` re-check `UserDepot` at prepare and native posting (empty assignment denies).
-- No AR/sales posting: gateway rejects `SALE`/`SALES`/`AR`.
+- No AR/sales posting: gateway rejects `SALE`/`SALES`.
 - Audited replay: CONFIRMED same `idempotencyKey` returns posted bill (ignores live stock-snapshot drift); same XLSX `prepare-verified` on POSTED workflow returns posted bill, never a new DRAFT.
+
+## Files
+
+| Path | Role |
+|---|---|
+| `jshERP-boot/.../AierpGatewayService.java` | UserCustomer + depot recheck; CONFIRMED idempotent replay; cross-type phrase |
+| `jshERP-boot/.../excel/AierpExcelService.java` | SERVICE preview UserCustomer (not tenant-only) |
+| `jshERP-boot/.../AierpWecomServiceConsumeService.java` | POSTED / same-file prepare-verified → posted bill |
+| `jshERP-boot/.../AierpWecomExcelService.java` | SERVICE posted summary; preserve PURCHASE PDF path |
+| `jshERP-boot/.../AierpWecomConfirmService.java` | markWorkflowPosted(bizType) |
+| `deploy/openclaw/plugins/aierp-erp-tools/index.js` | trusted `确认配制` phrase |
+| `deploy/scripts/aierp-016s-service-consume.mjs` | non-post REVIEW_FIX suite |
 
 ## Evidence (non-post) — ALL PASS
 
-- Command: `AIERP_016S_CONFIRM` unset; `AIERP_MYSQL_TCP=1` (host `127.0.0.1:13306` when Docker CLI pipe flaky).
+- Command: `AIERP_016S_CONFIRM` **unset** (prepare + negatives only; no stock write).
 - Script: `deploy/scripts/aierp-016s-service-consume.mjs`
 - JSON: `docs/poc/evidence/aierp-016s-service-consume.json` (`pass: true`, `doConfirm: false`)
-- Negatives: bad customer, UserCustomer invisible (flag=1 → 苏州精密电子 403), cross-depot 403, cross-owner confirm, `确认采购`/`确认配制` on SERVICE, `确认耗料` on PURCHASE, no native bill after prepare.
-- Audited replay fixture `GW-SERVICE-136` → `CONFIRMED` / `posted=true` / stock unchanged; XLSX POSTED replay → same draft, not new DRAFT.
-- Fresh prepare draft `#209` cancelled unposted (no stock write).
+- Negatives: bad customer, UserCustomer invisible (`customerFlag=1` → 苏州精密电子 403), cross-depot 403, cross-owner confirm, `确认采购`/`确认配制` on SERVICE, `确认耗料` on PURCHASE, no native bill after prepare.
+- Audited replay fixture `GW-SERVICE-136` → `CONFIRMED` / `posted=true` / stock unchanged (no second outbound).
+- XLSX POSTED `prepare-verified` → same draft #136, `replayed=true`, not new DRAFT.
+- Fresh prepare draft cancelled unposted (latest run `#217`).
 
 ## NOT_VERIFIED
 

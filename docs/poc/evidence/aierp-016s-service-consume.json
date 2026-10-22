@@ -1,7 +1,7 @@
 {
   "ticket": "AIERP-016S",
   "suite": "REVIEW_FIX non-post",
-  "at": "2026-10-22T16:47:01.480Z",
+  "at": "2026-10-22T16:49:18.852Z",
   "doConfirm": false,
   "pass": true,
   "results": [
@@ -49,7 +49,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792687618081"
+          "message": "未找到当前租户下的客户: 不存在的客户XYZ-1792687756713"
         }
       }
     },
@@ -66,7 +66,7 @@
       "ok": true,
       "detail": {
         "code": 403,
-        "msg": "当前用户无权使用仓库: 禁仓mvjrx71c"
+        "msg": "当前用户无权使用仓库: 禁仓mvjs060i"
       }
     },
     {
@@ -82,8 +82,8 @@
       "name": "prepare_service_draft",
       "ok": true,
       "detail": {
-        "draftId": 209,
-        "phrase": "确认耗料209",
+        "draftId": 217,
+        "phrase": "确认耗料217",
         "status": "AWAITING_CONFIRM"
       }
     },
@@ -101,7 +101,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配（PURCHASE≠SERVICE），请回复「确认耗料209」"
+          "message": "确认指令与单据类型不匹配（PURCHASE≠SERVICE），请回复「确认耗料217」"
         }
       }
     },
@@ -111,7 +111,7 @@
       "detail": {
         "code": 400,
         "data": {
-          "message": "确认指令与单据类型不匹配（MIX≠SERVICE），请回复「确认耗料209」"
+          "message": "确认指令与单据类型不匹配（MIX≠SERVICE），请回复「确认耗料217」"
         }
       }
     },
@@ -119,7 +119,7 @@
       "name": "no_post_after_prepare",
       "ok": true,
       "detail": {
-        "draftId": 209
+        "draftId": 217
       }
     },
     {
@@ -135,8 +135,8 @@
       "ok": true,
       "detail": {
         "reason": "set AIERP_016S_CONFIRM=1 to post FG-101 -1L (do not repost GW-SERVICE-136)",
-        "draftId": 209,
-        "confirmPhrase": "确认耗料209",
+        "draftId": 217,
+        "confirmPhrase": "确认耗料217",
         "LIVE_WECOM_CONFIRM": "PENDING_USER",
         "NOT_VERIFIED": "human WeCom UAT"
       }
@@ -145,23 +145,23 @@
       "name": "cancel_unposted_test_draft",
       "ok": true,
       "detail": {
-        "draftId": 209
+        "draftId": 217
       }
     },
     {
       "name": "reject_service_phrase_on_purchase",
       "ok": true,
       "detail": {
-        "draftId": 210,
+        "draftId": 218,
         "code": 400,
-        "msg": "确认指令与单据类型不匹配（SERVICE≠PURCHASE），请回复「确认采购210」"
+        "msg": "确认指令与单据类型不匹配（SERVICE≠PURCHASE），请回复「确认采购218」"
       }
     },
     {
       "name": "cancel_purchase_cross_type_fixture",
       "ok": true,
       "detail": {
-        "draftId": 210
+        "draftId": 218
       }
     },
     {
