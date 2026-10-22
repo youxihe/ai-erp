@@ -10,7 +10,7 @@
 | This note | **REVIEW_FIX_PUSHED** |
 | Merge | **Do not merge** to master from this agent |
 
-> Exact post-fix remote HEAD is filled after `git push` (see bottom).
+> Post-fix HEAD: `a0d2fde402548953400e709998764035641db1ca`
 
 ## Fixes
 
@@ -68,8 +68,10 @@ Did **not** re-confirm or post inventory for `GW-PURCHASE-119` or any live audit
 - OpenClaw runtime on `F:\aierp-openclaw` **not** overwritten / not redeployed by this agent
 - Production inventory / live confirm of audited bills **not** exercised
 
-## Remote HEAD (filled after push)
+## Remote HEAD
 
 ```
-PENDING_PUSH
+a0d2fde402548953400e709998764035641db1ca
 ```
+
+Branch tip after push: `origin/feat/aierp-017b2-multi-purchase-draft` @ above sha.
