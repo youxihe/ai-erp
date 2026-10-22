@@ -2,7 +2,7 @@
 
 ## HEAD
 
-见 push 后最新 commit。
+`60067efb50085c2fd533b50f4a488f985c9c0460` · branch `feat/aierp-017b2-multi-purchase-draft` · **READY_FOR_REVIEW**（勿 merge）
 
 ## 行为
 
