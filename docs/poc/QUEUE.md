@@ -1,5 +1,7 @@
 # AI-ERP POC · Demo-first Delivery Queue
 
+> 最新交付机制：`docs/poc/FAST_DEMO_DELIVERY.md`。业务开发/本机 Demo 发布/UAT/Review 并行，历史「必须 PR Merge 才能本机预览」以本机制为准。
+
 > **唯一工作域**：`youxihe/ai-erp`，与所有 HR/HCM 及其它项目完全隔离。
 
 ## 2026-10-20 交付状态
@@ -26,12 +28,12 @@
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | **DONE / PR #37** | **真实企微已收到 PDF 文件消息（GW-PURCHASE-119）；SOP receipt-send + 自动发送已合并，最新自动发送 / PDF 新排版仍待客户端验收** |
 
-| **AIERP-017B2** | **DONE / PR #41 merged** | **多张采购 Excel → 真实多草稿/批次状态；audited replay / RECONCILIATION_REQUIRED 已合入 master** |
-| AIERP-017C1 | PLANNED / after 017B2 | 一次可信“确认批次”→采购逐单原生入库 + 批次 XLSX 回执 |
-| **AIERP-016M** | **DONE / PR #42 merged** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
-| **AIERP-016S** | **INTEGRATION / PR #43 · next_order #3** | **SERVICE 客户服务耗料 SOP：确认耗料{id}；与 master 017B2+016M+hot-reload 整合中** |
-| **AIERP-021A** | **REVIEW_FIX_REQUIRED / PR #44 · next_order #4** | **OpenClaw 对话新增/修改真实供应商与客户：查重、受控字段、独立本人确认，原生 ERP 持久化** |
-| **AIERP-021B** | **REVIEW_FIX_REQUIRED / PR #45 · next_order #5** | **OpenClaw 对话新增/修改原料/物料：Material+MaterialExtend 条码、单位/分类，建档时库存不变** |
+| AIERP-017B2 | **DONE / PR #41 `db13699f`** | 多张采购 Excel → 已审核事实重查、真实多草稿及版本幂等；已入 master，真人多单 UAT 待完成 |
+| **AIERP-017C1** | **RELEASED / next_order #3 (parallel CODE)** | 单个可信批次清单一次确认、逐单幂等原生入库、部分成功与企微真实 XLSX 批次回执；必须先过批次写入安全闸门 |
+| AIERP-016M | **DONE / PR #42 `bccd9f52`** | MIX 配方预览/确认/草稿及本人原始确认；已入 master，真人 MIX UAT 待完成 |
+| AIERP-016S | **DONE / PR #43 `baefd2a4`** | SERVICE 客户耗料草稿/本人可信确认与真实其它出库；已入 master，真人 SERVICE UAT 待完成 |
+| **AIERP-021A** | **INTEGRATION / PR #44 · next_order #1** | 供应商/客户真实主数据增加/修改；尽快整合 master + DB 并发/可信确认负例，可先 Demo 预览 |
+| **AIERP-021B** | **INTEGRATION / PR #45 · next_order #2** | 原料/物料真实主数据增加/修改；尽快整合 master + 物料写权限/条码并发负例，可先 Demo 预览 |
 | AIERP-021C | PLANNED / after 021A+021B | **缺档挂起采购/配制/耗料→建档后恢复原业务，不要求用户重复讲需求** |
 | AIERP-016 | SUPERSEDED by 016M/016S | 配制与客户耗料拆分独立业务交付和 UAT |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
@@ -43,6 +45,14 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-23 · 快速并行 Demo 流程（覆盖旧串行规则）
+
+用户已批准：Cursor **开发/自动化/本地单一 Demo 部署**与用户企微 UAT、ChatGPT PR Review/Merge **并行**；**不再强制所有代码先 Review+Merge 后才可进行 Demo 预览/草稿测试**。必须遵循 `docs/poc/FAST_DEMO_DELIVERY.md`：未完成权限、幂等、绑定版本、原始本人确认安全负例时，功能仅开放 PREVIEW/DRAFT，不允许实际过账/主数据提交；通过安全闸门后用户可本人确认真实测试业务。
+
+截至当前 GitHub：#41 合并 `db13699f`、#42 `bccd9f52`、#43 `baefd2a4`、#47 热换 JAR `0c841fbd`。最新 master 已有 PURCHASE/MIX/SERVICE 三线；**GitHub 合并不代表本机 F: 已部署最新 #43**，需要唯一 Deploy Owner 提供 bootJarSha、F: 插件源版本及健康证明，部署后用户先测试 **2采购单/3行、配制FG-101/3原料、服务FG-101/1L 的无过账准备**。
+
+并行开发 #44 Partner、#45 Material 两种建档（需真实 DB/角色/并发检查），新释放 **017C1 批次本人一次确认/部分成功/XLSX回执**，渠道 SOP/格式 020A 非阻断。后续补齐 021C 缺档续办。队列历史段落的 REVIEW_FIX_REQUIRED 均为历史快照，不能覆盖本节和上述最新表格。
 
 ## 2026-10-22 23:10 · 首轮五支远端 READY 全部正式 Review，五个 P0/P1 Fix 排队
 
