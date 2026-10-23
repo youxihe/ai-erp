@@ -1,14 +1,19 @@
-# AI-ERP Cursor · 2026-10-22 23:10 首轮五 PR Review Fix 接力
+# AI-ERP Cursor · 2026-10-23 本地 Demo 并行快线（本段优先于旧 handoff）
 
-**Repo only:** youxihe/ai-erp。五条分支已经在 GitHub 建 PR，Cursor 不自行 Merge、不覆盖 F:。ChatGPT 已对每个 PR 提交正式 Review Fix 评论，务必逐条阅读：
-- PR #41 / AIERP-017B2 HEAD 525d4286：优先修 Confirmed 无真实原生单据误报已入库、同文件 batch revision 重试递增；13/13 本地非过账通过仅作为基础。Push REVIEW_FIX_PUSHED 让 ChatGPT 先审并合并。
-- PR #42 / AIERP-016M HEAD d2266e7c：model 传 recipeUserConfirmed=true **不等于用户核对配方**；必须对原料/产出数量显示明确确认 hash，禁止 AI 自行配方。MIX 与 PURCHASE/SERVICE 原始消息确认必须严格区分。PR #41 合并后 rebase 最新 master 并保留批次代码。
-- PR #43 / AIERP-016S HEAD 9d816546：服务耗料客户权限/仓库权限、重复已审核数据状态、跨类型确认、官方 receipt media 不回归；PR #42 后集成代码并复测，不复用已审核 GW-SERVICE-136 的过账。
-- PR #44 / AIERP-021A HEAD cf509055：修复 consume_message_id 全局重放早返回导致跨 sender/tenant 漏出 partnerId；重放必须先按本人/当前绑定验证；与 021B 的 MasterDataService 同类同路径及相同“确认建档数字号”歧义都要消除。重命名为 PartnerMasterDataService 或其他唯一类，专用命名空间确认协议。
-- PR #45 / AIERP-021B HEAD 66ea17ba：物料 prepare+commit 均需真实 ERP 角色功能权限，拒空 eventSource，专用 MaterialMasterDataService/独立确认命名空间、条码唯一并发与零库存测试；不可用无权限库存查询账号建档。
+用户明确同意：**持续开发 → 本地自动化 → 提前 Demo 部署 ↔ 用户实时企微验收 ↔ ChatGPT 并行 Review/Merge**。完整安全/部署/验收约束见 `docs/poc/FAST_DEMO_DELIVERY.md`。不再等所有功能审完再让用户看页面/发送 Excel。
 
-**Priority order:** 017B2 → 016M → 016S → 021A → 021B。各分支可并行改 Review Fix，但 merge 后后续分支须重新集成最新 master，合并共享 Java Controller/GatewayService/ExcelService、registry、plugin/index.js 与 SOP。绝不能覆盖 master 当前已跑通的可信采购确认、PDF 企微附件、采购 Excel 与回执样式。
+## GitHub 当前
+- 017B2 #41 **DONE** `db13699f`；016M #42 **DONE** `bccd9f52`；016S #43 **DONE** `baefd2a4`；Ops #47 **DONE** `0c841fbd`。
+- #44 (Partner) / #45 (Material) **INTEGRATION**：先同步最新 master，修角色、并发唯一性、可信消息隔离，运行真实 DB 回归；允许在未完整 Review 时提前部署业务**字段预览/申请准备**，写入确认入口待最小安全负例通过。
+- **017C1 RELEASED NOW**：从最新 master 并行开 `feat/aierp-017c1-purchase-batch-confirm`。批次 manifestHash + revision、本人真实企微 `确认批次{batchId}`、逐单原生幂等审核、PARTIAL_SUCCESS 与 XLSX 回执。可以提前部署**批次清单/草稿展示**，可信批次提交未经过角色/绑定/幂等测试前必须禁用。不要模型直接调用旧 excel.confirm。
+- 020A WeCom/Feishu 各自消息渲染及 SOP script 可并行，不因字体/卡片阻塞业务演示。
 
-**交付格式:** REVIEW_FIX_PUSHED + exact branch HEAD + changed files + automated nonposting pass/fail + any required real tests NOT_VERIFIED. Cursor 不自行 Merge；GitHub 合并由 ChatGPT 逐一审阅与执行。
+## 立刻执行两条流水线
+**Deploy Owner（单 Agent、单运行态）**：从当前最新 `origin/master` clean-build / hot-reload（#47），备份并同步 F: OpenClaw 插件；核对 jar host=container SHA、Boot/Gateway health、当前渠道工具/SOP；先跑 017B2 18/18、MIX 22/22+28/28、SERVICE 不入账回归。报告用户可立即测试的**自然语言**和 3 场景，**不强迫用户等 #44/#45**。记录原料/成品当前库存，不复用昨天值。部署动作只有唯一负责人，别让 5 条分支同时写 `deploy/runtime/app.jar` 或 F:。
+**Dev Agents（并行）**：#44/#45 从自己的 worktree 合并最新 master 并尽快 Push 新 HEAD + 实际 DB 回归；017C1 独立开工 Push 早期可运行子 PR；在已部署安全版本上处理用户当场反馈，修完即可重新部署预览，不要求 ChatGPT 在每一轮先 Review。
+**ChatGPT（本对话）**：同时审实质差异，快速合并低风险/安全闸门通过的功能；若发现跨租户/代际权限或重复过账风险，暂停**对应写入口**但不阻塞其它场景的预览、SOP 研发或本地用户体验测试。
 
-**客户 Demo 后续:** 采购 2 单/3 行、FG-101 测试配方组装、真实客户 FG-101 耗料、测试供应商/客户与新 RM 编码物料建档。原生库存真实变更必须由企微用户本人先核对业务摘要并在可信原文中明确确认后进行。
+## 进度交接固定格式
+`PR/HEAD, Java BUILD, non-post regressions, live UAT, deployed Boot JAR SHA, F-plugin SHA, enabled business routes, gated write capabilities, rollback artifact`。区分 GitHub MERGED、LOCAL_DEPLOYED、LIVE_UAT_PASS；不得混同。
+
+**请立即认领工作，不需等我下一次“继续”才开工。** 对 #44/#45 与 017C1 可并行 Push，但不自行对用户真实历史单据确认或重复入库。人可以明确批准新的测试草稿和本人确认。
