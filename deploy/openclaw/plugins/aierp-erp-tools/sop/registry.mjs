@@ -1,12 +1,15 @@
 /**
  * SOP registry — priority routing for trusted WeCom inbound.
- * receipt > mix recipe-ack > mix/purchase confirm > purchase_batch_prepare >
+ * receipt > mix recipe-ack > service/mix/purchase confirm > purchase_batch_prepare >
  * mix_prepare > excel cancel/followup > excel file > fallback LLM
  *
+ * AIERP-016S: service_confirm registered for unified deploy wiring.
  * AIERP-016M: mix_recipe_ack / mix_confirm / mix_prepare; keep PURCHASE confirm+PDF paths intact.
  * AIERP-017B2: purchase_batch_prepare (DRAFT only); preview auto-prepare + HMAC batch API cover the path.
+ * Do not overwrite shared F: OpenClaw runtime from this branch.
  */
 import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
+import { isServiceConfirmPhrase } from "./service-consume.mjs";
 import { isMixConfirmPhrase, isMixRecipeAckPhrase, MIX_SOP } from "./mix-prepare.mjs";
 import {
   SOP_ID as PURCHASE_BATCH_SOP,
@@ -20,12 +23,14 @@ export const SOP_PRIORITY = [
   "receipt_followup",
   "mix_recipe_ack",
   "mix_confirm",
+  "service_confirm",
   "purchase_confirm",
   "purchase_batch_prepare",
   "mix_prepare",
   "excel_cancel",
   "excel_followup",
   "excel_file",
+  "service_consume",
   "fallback_llm",
 ];
 
@@ -60,6 +65,9 @@ export function routeTrustedInbound({
   if (isMixConfirmPhrase(t)) {
     return { sopId: "mix_confirm" };
   }
+  if (isServiceConfirmPhrase(t)) {
+    return { sopId: "service_confirm" };
+  }
   if (typeof isConfirmPhrase === "function" && isConfirmPhrase(t)) {
     return { sopId: "purchase_confirm" };
   }
@@ -78,6 +86,7 @@ export function routeTrustedInbound({
 export {
   isReceiptRequest,
   isReceiptFollowup,
+  isServiceConfirmPhrase,
   isMixConfirmPhrase,
   isMixRecipeAckPhrase,
   MIX_SOP,

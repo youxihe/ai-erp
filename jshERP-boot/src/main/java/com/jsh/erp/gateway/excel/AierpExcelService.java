@@ -511,6 +511,10 @@ public class AierpExcelService {
         } else if ("SERVICE".equals(scene)) {
             record.put("businessKey", cell(row, headers, formatter, errors, "服务单号"));
             normalized.put("organName", cell(row, headers, formatter, errors, "客户名称"));
+            String serviceProject = optional(row, headers, formatter, errors, "服务项目");
+            if (serviceProject != null && !serviceProject.trim().isEmpty()) {
+                normalized.put("serviceProject", serviceProject.trim());
+            }
             normalized.put("remark", optional(row, headers, formatter, errors, "备注"));
             JSONArray lines = new JSONArray();
             lines.add(line(row, headers, formatter, errors, "药水编码", "出库仓库", "耗用数量", "单位", null));
@@ -613,11 +617,20 @@ public class AierpExcelService {
         if ("PURCHASE".equals(scene) || "SERVICE".equals(scene)) {
             String type = "PURCHASE".equals(scene) ? "供应商" : "客户";
             String organ = normalized.getString("organName");
-            Integer organs = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM jsh_supplier WHERE supplier=? AND type=? AND tenant_id=? AND IFNULL(delete_flag,'0')<>'1'",
-                    Integer.class, organ, type, user.getTenantId());
-            if (organs == null || organs == 0) {
+            List<Map<String, Object>> organs = jdbcTemplate.queryForList(
+                    "SELECT id FROM jsh_supplier WHERE supplier=? AND type=? AND tenant_id=? AND enabled=b'1' "
+                            + "AND IFNULL(delete_flag,'0')<>'1' ORDER BY id ASC LIMIT 1",
+                    organ, type, user.getTenantId());
+            if (organs == null || organs.isEmpty()) {
                 errors.add("未找到当前租户下的" + type + ": " + organ);
+            } else if ("SERVICE".equals(scene)) {
+                // UserCustomer when customerFlag=1 — not tenant-only visibility.
+                try {
+                    long organId = ((Number) organs.get(0).get("id")).longValue();
+                    gatewayService.assertCustomerVisible(user, organId, organ);
+                } catch (BusinessRunTimeException ex) {
+                    errors.add(ex.getMessage() == null ? ("无权使用客户: " + organ) : ex.getMessage());
+                }
             }
         }
         if ("MIX".equals(scene)) {

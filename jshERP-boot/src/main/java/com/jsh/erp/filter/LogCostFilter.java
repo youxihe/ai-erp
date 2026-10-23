@@ -21,7 +21,9 @@ import java.io.IOException;
                               "/jshERP-boot/aierp/v1/wecom/material/search#/jshERP-boot/aierp/v1/wecom/partner/search#" +
                               "/jshERP-boot/aierp/v1/wecom/bill/search#/jshERP-boot/aierp/v1/wecom/bill/detail#" +
                               "/jshERP-boot/aierp/v1/wecom/report/query#" +
-                              "/jshERP-boot/aierp/v1/wecom/purchase/prepare#/jshERP-boot/aierp/v1/wecom/draft/status#" +
+                              "/jshERP-boot/aierp/v1/wecom/purchase/prepare#/jshERP-boot/aierp/v1/wecom/service/prepare#" +
+                              "/jshERP-boot/aierp/v1/wecom/service/prepare-verified#" +
+                              "/jshERP-boot/aierp/v1/wecom/draft/status#" +
                               "/jshERP-boot/aierp/v1/wecom/draft/cancel#/jshERP-boot/aierp/v1/wecom/draft/confirm#" +
                               "/jshERP-boot/aierp/v1/wecom/excel/template#/jshERP-boot/aierp/v1/wecom/excel/preview#" +
                               "/jshERP-boot/aierp/v1/wecom/excel/workflow/status#/jshERP-boot/aierp/v1/wecom/excel/workflow/cancel#" +

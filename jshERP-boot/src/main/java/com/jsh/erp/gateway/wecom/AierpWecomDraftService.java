@@ -29,6 +29,8 @@ public class AierpWecomDraftService {
     private AierpGatewayService gatewayService;
     @Resource
     private AierpWecomExcelService excelService;
+    @Resource
+    private AierpWecomServiceConsumeService serviceConsumeService;
 
     public Map<String, Object> purchasePrepare(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
@@ -47,6 +49,9 @@ public class AierpWecomDraftService {
         Map<String, Object> status = gatewayService.draftStatusAs(ctx.user, draftId, toOwner(ctx));
         if ("PURCHASE".equals(String.valueOf(status.get("bizType")))) {
             return enrichPurchaseView(ctx.user, status);
+        }
+        if ("SERVICE".equals(String.valueOf(status.get("bizType")))) {
+            return serviceConsumeService.enrichServiceView(ctx.user, status);
         }
         status.put("boundErpLoginName", ctx.user.getLoginName());
         status.put("statusLabel", statusLabel(String.valueOf(status.get("status"))));

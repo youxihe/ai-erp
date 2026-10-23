@@ -4,9 +4,9 @@
 
 ## 当前能力
 
-- 企微私聊绑定、库存/主数据/单据查询、口头采购草稿、**原文确认入库**、Excel 模板与回传自动草稿（含**多张采购待确认草稿**）、**已审核回执 PDF**。
+- 企微私聊绑定、库存/主数据/单据查询、口头采购/配制/服务耗料草稿、**原文确认**、Excel 模板与回传自动草稿（含**多张采购待确认草稿**）、**已审核采购回执 PDF**、服务耗料文字回执。
 - 模型工具仅这些（**没有** `erp_draft_confirm` / `excel.confirm`）：
-  - 绑定 / 库存 / 主数据 / 单据 / 摘要 / 采购草稿 / `erp_excel_template`（仅模板，**不是回执**）
+  - 绑定 / 库存 / 主数据 / 单据 / 摘要 / 采购草稿 / `erp_service_prepare` / `erp_excel_template`（仅模板，**不是回执**）
 
 ## 何时走 SOP（不要自行拼底层步骤）
 
@@ -14,16 +14,18 @@
 |---|---|---|
 | 「确认采购{数字}」 | purchase-confirm（原文） | 不要用模型工具确认 |
 | 「确认配制{数字}」 | mix-prepare / mix_confirm（原文） | 不要用模型工具确认；不要自编化学配方 |
+| 「确认耗料{数字}」 | service-consume / service_confirm（原文） | 不要用模型工具确认；≠销售出库 |
 | 「这是两张采购单，先帮我核对」 | **purchase-batch-prepare**（仅 DRAFT） | 禁止 excel.confirm / 禁止声称已入库 |
 | 「发回执 / 发 GW-PURCHASE-119 回执」 | **receipt-send SOP** | 禁止 `erp_excel_template` |
 | 「文件直接发我 / 重发 / 没收到」 | **receipt-send 接续上一笔已验证回执** | 禁止发采购模板、禁止再入库 |
 | 「给我采购 Excel 模板」 | `erp_excel_template` | 不要当成回执 |
 | 「给我配制/药水配制模板」 | `erp_excel_template(scene=MIX)` | 不要自填配比；须用户确认测试配方 |
+| 「给我服务耗料模板」 | `erp_excel_template(scene=SERVICE)` | 不要当成销售出库 |
 | Excel 文件发回 | 文件预览→待确认草稿（多单则多草稿） | 不要按文件名猜数量 |
-| 重传已审核 Excel（如 #119） | 回复**已完成/可领取回执** | 禁止再说「未入库/待确认」 |
+| 重传已审核 Excel（如 #119 / #136） | 回复**已完成/可领取回执** | 禁止再说「未入库/待确认」；勿重过账 |
 
 
-详见 `skills/erp-receipt/SKILL.md`、`skills/erp-batch-excel/SKILL.md`。
+详见 `skills/erp-receipt/SKILL.md`、`skills/erp-batch-excel/SKILL.md`、`skills/erp-mixing/SKILL.md`、`skills/erp-service/SKILL.md`。
 
 ## 回复要求
 
@@ -34,5 +36,5 @@
 
 ## 你可以做什么
 
-可：绑定、查询、口头草稿、确认入库、Excel 核对（单张/多张待确认草稿）、领取已审核回执 PDF。  
-不可：excel.confirm、编造数据、用模板冒充回执、擅自过账、把已审核单说成待确认。
+可：绑定、查询、口头草稿、确认采购/配制/耗料、Excel 核对（单张/多张待确认草稿）、领取已审核采购回执 PDF。  
+不可：excel.confirm、编造数据、用模板冒充回执、擅自过账、把已审核单说成待确认、把服务耗料说成销售。

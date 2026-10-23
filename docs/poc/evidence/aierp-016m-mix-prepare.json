@@ -3,20 +3,20 @@
   "kind": "non-post-mix-prepare",
   "pass": true,
   "wecomUserIdMasked": "m16-mv***",
-  "draftId": 267,
-  "businessKey": "PZ-016M-MVJUFJAR",
-  "confirmPhrase": "确认配制267",
+  "draftId": 301,
+  "businessKey": "PZ-016M-MVJWQDDR",
+  "confirmPhrase": "确认配制301",
   "stockBefore": {
-    "RM-A001": 250.7,
-    "RM-B002": 4.8,
-    "RM-C003": 36.4,
-    "FG-101": 149
+    "RM-A001": 349.2,
+    "RM-B002": 4.3,
+    "RM-C003": 35.9,
+    "FG-101": 151
   },
   "stockFinal": {
-    "RM-A001": 250.7,
-    "RM-B002": 4.8,
-    "RM-C003": 36.4,
-    "FG-101": 149
+    "RM-A001": 349.2,
+    "RM-B002": 4.3,
+    "RM-C003": 35.9,
+    "FG-101": 151
   },
   "purchase119": "1\tGW-PURCHASE-119",
   "results": [
@@ -58,12 +58,12 @@
     {
       "name": "preview_auto_mix_draft",
       "ok": true,
-      "detail": "{\"draftId\":267,\"confirmPhrase\":\"确认配制267\",\"recipeHash\":\"e248f607c73d621e\",\"summary\":\"配制单 PZ-016M-MVJUFJAR\\n待确认单 #267（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制267」（模型布尔无效）\"}"
+      "detail": "{\"draftId\":301,\"confirmPhrase\":\"确认配制301\",\"recipeHash\":\"e248f607c73d621e\",\"summary\":\"配制单 PZ-016M-MVJWQDDR\\n待确认单 #301（未过账，库存未变）\\n配方草案 recipeHash=e248f607c73d\\n成品：PCB清洗液（FG-101） 1 L → 成品仓\\n原料（预计扣减，确认后生效）：\\n- 表面活性剂（RM-A001） 0.6 L @ 原料仓\\n- 络合剂（RM-B002） 0.1 L @ 原料仓\\n- 纯水（RM-C003） 0.3 L @ 原料仓\\n测试配方草案已展示；过账须原文「确认配制301」（模型布尔无效）\"}"
     },
     {
       "name": "one_bill_three_raw_lines",
       "ok": true,
-      "detail": "{\"rawLineCount\":3,\"businessKey\":\"PZ-016M-MVJUFJAR\"}"
+      "detail": "{\"rawLineCount\":3,\"businessKey\":\"PZ-016M-MVJWQDDR\"}"
     },
     {
       "name": "posted_false_on_prepare",
@@ -73,17 +73,17 @@
     {
       "name": "prepare_stock_unchanged",
       "ok": true,
-      "detail": "{\"stockBefore\":{\"RM-A001\":250.7,\"RM-B002\":4.8,\"RM-C003\":36.4,\"FG-101\":149},\"stockAfterPrepare\":{\"RM-A001\":250.7,\"RM-B002\":4.8,\"RM-C003\":36.4,\"FG-101\":149}}"
+      "detail": "{\"stockBefore\":{\"RM-A001\":349.2,\"RM-B002\":4.3,\"RM-C003\":35.9,\"FG-101\":151},\"stockAfterPrepare\":{\"RM-A001\":349.2,\"RM-B002\":4.3,\"RM-C003\":35.9,\"FG-101\":151}}"
     },
     {
       "name": "replay_idempotent_same_draft",
       "ok": true,
-      "detail": "{\"draftId1\":267,\"draftId2\":267,\"replayed\":true}"
+      "detail": "{\"draftId1\":301,\"draftId2\":301,\"replayed\":true}"
     },
     {
       "name": "replay_stock_still_unchanged",
       "ok": true,
-      "detail": "{\"RM-A001\":250.7,\"FG-101\":149}"
+      "detail": "{\"RM-A001\":349.2,\"FG-101\":151}"
     },
     {
       "name": "refuse_model_boolean_while_excel_draft_open",
@@ -93,12 +93,12 @@
     {
       "name": "reject_purchase_phrase_on_mix_draft",
       "ok": true,
-      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制267」\"}"
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制301」\"}"
     },
     {
       "name": "reject_service_phrase_on_mix_draft",
       "ok": true,
-      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制267」\"}"
+      "detail": "{\"code\":400,\"msg\":\"确认指令与单据类型不匹配，请回复「确认配制301」\"}"
     },
     {
       "name": "never_auto_confirm_purchase_119",
@@ -108,7 +108,7 @@
     {
       "name": "final_stock_unchanged_non_post",
       "ok": true,
-      "detail": "{\"stockBefore\":{\"RM-A001\":250.7,\"RM-B002\":4.8,\"RM-C003\":36.4,\"FG-101\":149},\"stockFinal\":{\"RM-A001\":250.7,\"RM-B002\":4.8,\"RM-C003\":36.4,\"FG-101\":149}}"
+      "detail": "{\"stockBefore\":{\"RM-A001\":349.2,\"RM-B002\":4.3,\"RM-C003\":35.9,\"FG-101\":151},\"stockFinal\":{\"RM-A001\":349.2,\"RM-B002\":4.3,\"RM-C003\":35.9,\"FG-101\":151}}"
     },
     {
       "name": "refuse_model_boolean_as_recipe_approval",
@@ -128,7 +128,7 @@
     {
       "name": "insufficient_stock_fails_prepare",
       "ok": true,
-      "detail": "{\"previewCode\":200,\"ackCode\":200,\"code\":400,\"msg\":\"库存不足，整单拒绝。原料 RM-A001 @ 原料仓 可用 250.700000 需要 999999\"}"
+      "detail": "{\"previewCode\":200,\"ackCode\":200,\"code\":400,\"msg\":\"库存不足，整单拒绝。原料 RM-A001 @ 原料仓 可用 349.200000 需要 999999\"}"
     }
   ],
   "uatNotes": [

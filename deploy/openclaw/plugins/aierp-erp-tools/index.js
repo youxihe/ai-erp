@@ -18,6 +18,11 @@ import {
   factsFromConfirm,
   sanitizeForChannel,
 } from "./sop/renderers/wecom-business.mjs";
+import {
+  CONFIRM_SERVICE,
+  formatServiceDraft,
+  formatServiceConfirmed,
+} from "./sop/service-consume.mjs";
 import { registerMixConfirmDispatch } from "./sop/register-mix-confirm.mjs";
 import { registerMixRecipeAckDispatch } from "./sop/register-mix-recipe-ack.mjs";
 import { isMixConfirmPhrase, isMixRecipeAckPhrase } from "./sop/mix-prepare.mjs";
@@ -26,6 +31,7 @@ const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
 const MIN_SECRET_LEN = 32;
 const BANNED_SECRET_SNIPPETS = ["change-me", "changeme", "example", "placeholder", "aierp-local-wecom-adapter"];
+const CONFIRM_MIX = /^\s*确认\s*配制\s*[：:#＃]?\s*(\d+)\s*$/;
 const CONFIRM_PURCHASE = /^\s*确认\s*采购\s*[：:#＃]?\s*(\d+)\s*$/;
 const CONFIRM_SIMPLE = /^\s*确认\s*$/;
 
@@ -161,9 +167,12 @@ function num(v) {
 
 function isConfirmPhrase(text) {
   const t = String(text || "").trim();
-  // MIX 「确认配制{n}」owned by registerMixConfirmDispatch (priority 55).
+  // Trusted phrases: PURCHASE / SERVICE / MIX (+ bare「确认」→ Java rejects non-PURCHASE).
+  // MIX 「确认配制{n}」also owned by registerMixConfirmDispatch (priority 55).
   return (
     CONFIRM_PURCHASE.test(t) ||
+    CONFIRM_SERVICE.test(t) ||
+    CONFIRM_MIX.test(t) ||
     CONFIRM_SIMPLE.test(t) ||
     isMixConfirmPhrase(t) ||
     isMixRecipeAckPhrase(t)
@@ -260,6 +269,11 @@ function formatPurchaseDraft(data) {
 }
 
 function formatConfirm(data) {
+  const bill = data?.billNumber || "";
+  const biz = String(data?.bizType || "");
+  if (biz === "SERVICE" || String(bill).startsWith("GW-SERVICE-")) {
+    return sanitizeForChannel(formatServiceConfirmed(data || {}), { markdown: false });
+  }
   const isMix =
     data?.bizType === "MIX" ||
     data?.receiptKind === "MIX" ||
@@ -282,14 +296,12 @@ function formatConfirm(data) {
   } catch {
     // fall through
   }
-  const bill = data?.billNumber || "?";
   const hint = data?.hint || data?.receiptText;
   if (hint && !String(hint).includes("{") && !/MEDIA:/i.test(String(hint))) {
     return sanitizeForChannel(String(hint).slice(0, 500), { markdown: false });
   }
-  return `✅ 采购入库完成\n${bill} · 已审核`;
+  return `✅ 采购入库完成\n${bill || "?"} · 已审核`;
 }
-
 
 function registerErpTools(api) {
   const make = (name, description, path, paramSchema, buildBody, format) => {
@@ -556,6 +568,56 @@ function registerErpTools(api) {
         rowCount: data?.rowCount ?? 0,
         rows: data?.rows || [],
         hint: data?.hint || null,
+      },
+    }),
+  );
+
+  // AIERP-016S: SERVICE consume draft only — confirm via DM「确认耗料{id}」, never model confirm tool.
+  make(
+    "erp_service_prepare",
+    "创建真实未审核服务耗料（其它出库）草稿，不改库存、不审核、不是销售出库。需要客户、物料编码、数量、单位、出库仓库与幂等键；可选服务项目。确认请用户私聊回复「确认耗料{草稿号}」。",
+    "/aierp/v1/wecom/service/prepare",
+    {
+      type: "object",
+      properties: {
+        barCode: { type: "string", description: "耗用物料编码，如 FG-101" },
+        qty: { type: "number", description: "耗用数量" },
+        unit: { type: "string", description: "单位，如 L" },
+        depotName: { type: "string", description: "出库仓库，如 成品仓" },
+        organName: { type: "string", description: "客户名称（ERP 真实客户）" },
+        serviceProject: { type: "string", description: "服务项目（可选）" },
+        idempotencyKey: { type: "string", description: "幂等键" },
+        remark: { type: "string", description: "备注（可选）" },
+      },
+      required: ["barCode", "qty", "unit", "depotName", "organName", "idempotencyKey"],
+      additionalProperties: false,
+    },
+    (wecomUserId, p) => ({
+      wecomUserId,
+      botId: botId(),
+      channel: CHANNEL_ID,
+      barCode: str(p.barCode),
+      qty: num(p.qty),
+      unit: str(p.unit),
+      depotName: str(p.depotName),
+      organName: str(p.organName),
+      serviceProject: str(p.serviceProject),
+      idempotencyKey: str(p.idempotencyKey),
+      remark: str(p.remark),
+    }),
+    (data) => ({
+      text: formatServiceDraft(data),
+      details: {
+        draftId: data?.draftId ?? null,
+        bizType: "SERVICE",
+        status: data?.status || null,
+        statusLabel: data?.statusLabel || null,
+        posted: !!data?.posted,
+        stockUnchanged: data?.stockUnchanged !== false,
+        summary: data?.summary || null,
+        challenge: data?.challenge || null,
+        confirmPhrase: data?.confirmPhrase || null,
+        replayed: !!data?.replayed,
       },
     }),
   );
@@ -1166,9 +1228,11 @@ function registerConfirmAndExcelDispatchHook(api) {
         });
         let reply = formatConfirm(data);
         const bill = data?.billNumber;
+        const isServiceBill =
+          data?.bizType === "SERVICE" || String(bill || "").startsWith("GW-SERVICE-");
         const isMixBill = String(bill || "").startsWith("GW-MIX-") || data?.bizType === "MIX";
-        // Auto-send receipt PDF after successful purchase confirm only (never fake purchase PDF for MIX).
-        if (bill && data?.status === "CONFIRMED" && !isMixBill) {
+        // Auto-send receipt PDF after PURCHASE confirm only (never fake PDF for MIX/SERVICE).
+        if (bill && data?.status === "CONFIRMED" && !isServiceBill && !isMixBill) {
           try {
             const sent = await runReceiptSend({
               wecomUserId: senderId,

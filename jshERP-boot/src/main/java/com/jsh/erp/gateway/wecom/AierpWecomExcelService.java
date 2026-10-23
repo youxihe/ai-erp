@@ -8,6 +8,7 @@ import com.jsh.erp.gateway.AierpGatewayService;
 import com.jsh.erp.gateway.excel.AierpExcelService;
 import com.jsh.erp.service.RedisService;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
@@ -47,6 +48,9 @@ public class AierpWecomExcelService {
     private JdbcTemplate jdbcTemplate;
     @Resource
     private AierpWecomMixService mixService;
+    @Resource
+    @Lazy
+    private AierpWecomServiceConsumeService serviceConsumeService;
 
     public Map<String, Object> template(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
@@ -76,7 +80,13 @@ public class AierpWecomExcelService {
         data.put("posted", false);
         data.put("confirmSupported", isConfirmableScene(scene));
         data.put("boundErpLoginName", ctx.user.getLoginName());
-        data.put("summary", "已生成 " + fileName + "。请填写后发回；合法采购单将生成待确认采购草稿。");
+        if ("SERVICE".equals(scene)) {
+            data.put("summary", "已生成 " + fileName + "。请填写后发回；单张合法服务耗料单将生成待确认草稿，回复「确认耗料{草稿号}」出库（非销售）。");
+        } else if ("MIX".equals(scene)) {
+            data.put("summary", "已生成 " + fileName + "。请填写后发回；配制单确认协议见 016M。");
+        } else {
+            data.put("summary", "已生成 " + fileName + "。请填写后发回；合法采购单将生成待确认采购草稿。");
+        }
         data.put("hint", data.get("summary"));
         return data;
     }
@@ -136,6 +146,16 @@ public class AierpWecomExcelService {
                             String.valueOf(preview.get("previewId")), fileSha256, false);
                     if (mixDrafted != null && Boolean.TRUE.equals(mixDrafted.get("autoDraft"))) {
                         preview.putAll(mixDrafted);
+                    }
+                    else {
+                        // AIERP-016S: single SERVICE Excel → unposted draft or audited CONFIRMED replay.
+                        Map<String, Object> serviceDrafted = serviceConsumeService.tryPrepareVerifiedServiceFromPreview(
+                                ctx, String.valueOf(preview.get("previewId")), fileSha256, false);
+                        if (serviceDrafted != null && (Boolean.TRUE.equals(serviceDrafted.get("autoDraft"))
+                                || Boolean.TRUE.equals(serviceDrafted.get("posted"))
+                                || Boolean.TRUE.equals(serviceDrafted.get("replayed")))) {
+                            preview.putAll(serviceDrafted);
+                        }
                     }
                 }
             } catch (Exception ex) {
@@ -241,6 +261,14 @@ public class AierpWecomExcelService {
 
     /** Clear Excel workflow after native confirm so verbal purchase is unblocked. */
     public void markWorkflowPosted(AierpWecomBindingService.BoundContext ctx, long draftId) {
+        markWorkflowPosted(ctx, draftId, null);
+    }
+
+    /**
+     * Mark Excel workflow POSTED after native confirm.
+     * PURCHASE keeps「已入库」; SERVICE uses「已出库」; do not retitle purchase/PDF paths.
+     */
+    public void markWorkflowPosted(AierpWecomBindingService.BoundContext ctx, long draftId, String bizType) {
         Map<String, Object> current = getWorkflow(ctx);
         if (current == null) {
             return;
@@ -264,16 +292,44 @@ public class AierpWecomExcelService {
         if (!matched) {
             return;
         }
+        String phrase = current.get("confirmPhrase") == null ? "" : String.valueOf(current.get("confirmPhrase"));
+        boolean service = "SERVICE".equals(bizType) || phrase.startsWith("确认耗料");
+        String summary = service
+                ? ("服务耗料单 #" + draftId + " 已出库。")
+                : ("采购单 #" + draftId + " 已入库。");
         putWorkflow(ctx, "POSTED",
                 current.get("previewId") == null ? null : String.valueOf(current.get("previewId")),
                 current.get("fileSha256") == null ? null : String.valueOf(current.get("fileSha256")),
                 null, "CONFIRMED",
-                "采购单 #" + draftId + " 已入库。",
+                summary,
                 draftId, current.get("businessKey") == null ? null : String.valueOf(current.get("businessKey")),
                 null,
                 current.get("batchId") == null ? null : String.valueOf(current.get("batchId")),
                 current.get("drafts"));
     }
+
+
+    /** Package helper for AIERP-016S SERVICE verified prepare. */
+    public Map<String, Object> peekWorkflow(AierpWecomBindingService.BoundContext ctx) {
+        return getWorkflow(ctx);
+    }
+
+    /** Load preview payload owned by the bound ERP user. */
+    public JSONObject loadOwnedPreviewPayload(AierpWecomBindingService.BoundContext ctx, String previewId) {
+        return loadPreviewPayload(ctx, previewId);
+    }
+
+    public void putOwnedWorkflow(AierpWecomBindingService.BoundContext ctx, String status, String previewId,
+                                 String fileSha256, String messageMsgId, String reason, String userSummaryZh,
+                                 Object draftId, String businessKey, String confirmPhrase) {
+        putWorkflow(ctx, status, previewId, fileSha256, messageMsgId, reason, userSummaryZh, draftId, businessKey, confirmPhrase, null, null);
+    }
+
+    public String shortIdempotencyKeyFor(AierpWecomBindingService.BoundContext ctx,
+                                         String fileSha256, String businessKey) {
+        return shortIdempotencyKey(ctx, fileSha256, businessKey);
+    }
+
 
     public void assertNoOpenFileWorkflow(AierpWecomBindingService.BoundContext ctx) {
         Map<String, Object> current = getWorkflow(ctx);
@@ -1324,11 +1380,21 @@ public class AierpWecomExcelService {
             Map<String, Object> st = gatewayService.draftStatusAs(ctx.user, draftId, toOwner(ctx));
             String status = String.valueOf(st.get("status"));
             if ("CONFIRMED".equals(status)) {
+                String biz = String.valueOf(st.get("bizType"));
+                String phrase = current.get("confirmPhrase") == null ? "" : String.valueOf(current.get("confirmPhrase"));
+                boolean service = "SERVICE".equals(biz) || phrase.startsWith("确认耗料");
                 current.put("status", "POSTED");
                 String bill = st.get("billNumber") == null ? null : String.valueOf(st.get("billNumber"));
-                String summary = bill == null
-                        ? ("采购单 #" + draftId + " 已入库。可回复「发回执」领取 PDF。")
-                        : ("采购单 #" + draftId + " 已入库（" + bill + "）。可回复「发 " + bill + " 回执」领取 PDF。");
+                String summary;
+                if (service) {
+                    summary = bill == null
+                            ? ("服务耗料单 #" + draftId + " 已出库。")
+                            : ("服务耗料单 #" + draftId + " 已出库（" + bill + "）。");
+                } else {
+                    summary = bill == null
+                            ? ("采购单 #" + draftId + " 已入库。可回复「发回执」领取 PDF。")
+                            : ("采购单 #" + draftId + " 已入库（" + bill + "）。可回复「发 " + bill + " 回执」领取 PDF。");
+                }
                 current.put("userSummaryZh", summary);
                 putWorkflow(ctx, "POSTED",
                         current.get("previewId") == null ? null : String.valueOf(current.get("previewId")),

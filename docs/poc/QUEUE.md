@@ -26,10 +26,10 @@
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | **DONE / PR #37** | **真实企微已收到 PDF 文件消息（GW-PURCHASE-119）；SOP receipt-send + 自动发送已合并，最新自动发送 / PDF 新排版仍待客户端验收** |
 
-| **AIERP-017B2** | **REVIEW_FIX_REQUIRED / PR #41 · next_order #1** | **多张采购 Excel → 真实多草稿/批次状态；修复已审核 #119 再上传却提示待确认的重放问题** |
+| **AIERP-017B2** | **DONE / PR #41 merged** | **多张采购 Excel → 真实多草稿/批次状态；audited replay / RECONCILIATION_REQUIRED 已合入 master** |
 | AIERP-017C1 | PLANNED / after 017B2 | 一次可信“确认批次”→采购逐单原生入库 + 批次 XLSX 回执 |
-| **AIERP-016M** | **REVIEW_FIX_REQUIRED / PR #42 · next_order #2** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
-| **AIERP-016S** | **REVIEW_FIX_REQUIRED / PR #43 · next_order #3** | **SERVICE 客户服务耗料 SOP：确认后真实成品仓扣减，客户与回执记录** |
+| **AIERP-016M** | **DONE / PR #42 merged** | **MIX 配制生产 SOP：多原料领用→成品产出，可信确认，原生单据和库存双向变化** |
+| **AIERP-016S** | **INTEGRATION / PR #43 · next_order #3** | **SERVICE 客户服务耗料 SOP：确认耗料{id}；与 master 017B2+016M+hot-reload 整合中** |
 | **AIERP-021A** | **REVIEW_FIX_REQUIRED / PR #44 · next_order #4** | **OpenClaw 对话新增/修改真实供应商与客户：查重、受控字段、独立本人确认，原生 ERP 持久化** |
 | **AIERP-021B** | **REVIEW_FIX_REQUIRED / PR #45 · next_order #5** | **OpenClaw 对话新增/修改原料/物料：Material+MaterialExtend 条码、单位/分类，建档时库存不变** |
 | AIERP-021C | PLANNED / after 021A+021B | **缺档挂起采购/配制/耗料→建档后恢复原业务，不要求用户重复讲需求** |

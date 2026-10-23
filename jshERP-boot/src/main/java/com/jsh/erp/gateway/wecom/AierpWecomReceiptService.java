@@ -143,9 +143,13 @@ public class AierpWecomReceiptService {
         String pdfSha = null;
         String pdfRef = null;
         String delivery = "TEXT_ONLY";
+        boolean serviceReceipt = isServiceBiz(confirmed, facts);
         boolean mixReceipt = isMixFacts(facts);
-        // AIERP-016M: never generate a purchase-titled PDF for MIX (do not fake 采购入库业务回执).
-        if (!mixReceipt) {
+        if (serviceReceipt) {
+            facts.put("pdfNote", "服务耗料专用 PDF 模板尚未独立交付；当前仅文字《服务耗料出库回执》。");
+            text = renderText(facts);
+        } else if (!mixReceipt) {
+            // AIERP-016M: never generate a purchase-titled PDF for MIX.
             try {
                 byte[] pdf = renderPdf(facts);
                 File dir = new File(storageDir);
@@ -167,7 +171,7 @@ public class AierpWecomReceiptService {
                 facts.put("pdfError", String.valueOf(ex.getMessage()));
             }
         } else {
-            facts.put("pdfSkipped", "MIX_NO_PURCHASE_PDF");
+            facts.put("pdfSkipped", serviceReceipt ? "SERVICE_TEXT_ONLY" : "MIX_NO_PURCHASE_PDF");
             delivery = "TEXT_ONLY";
         }
 
@@ -629,16 +633,23 @@ public class AierpWecomReceiptService {
                         + "LEFT JOIN jsh_depot d ON d.id=i.depot_id "
                         + "WHERE i.header_id=? AND IFNULL(i.delete_flag,'0')<>'1'",
                 head.get("id"));
+        boolean service = isServiceBiz(confirmed, head);
         boolean mix = isMixBill(billNumber, head);
         Map<String, Object> facts = new LinkedHashMap<String, Object>();
-        facts.put("title", mix ? "组装配制业务回执" : "采购入库业务回执");
-        facts.put("receiptKind", mix ? "MIX" : "PURCHASE");
-        facts.put("disclaimer", "此文件仅作业务记录，不作为税务发票或付款证明。");
+        facts.put("bizType", service ? "SERVICE" : (mix ? "MIX" : String.valueOf(confirmed.get("bizType") == null
+                ? "PURCHASE" : confirmed.get("bizType"))));
+        facts.put("title", service ? "服务耗料出库回执" : (mix ? "组装配制业务回执" : "采购入库业务回执"));
+        facts.put("receiptKind", service ? "SERVICE" : (mix ? "MIX" : "PURCHASE"));
+        facts.put("disclaimer", service
+                ? "此文件仅作业务记录，不作为税务发票或付款证明。服务耗料≠销售出库/收入确认。"
+                : "此文件仅作业务记录，不作为税务发票或付款证明。");
         facts.put("billNumber", billNumber);
         facts.put("billStatus", "已审核");
         facts.put("operTime", String.valueOf(head.get("oper_time")));
         facts.put("creatorLogin", head.get("creator_login"));
         facts.put("partnerName", head.get("organ_name"));
+        facts.put("partnerRole", service ? "客户" : "供应商");
+        facts.put("serviceProject", resolveServiceProject(confirmed, head));
         facts.put("actorLogin", user.getLoginName());
         facts.put("lines", lines);
         facts.put("stockBefore", confirmed.get("stockBefore"));
@@ -646,6 +657,71 @@ public class AierpWecomReceiptService {
         facts.put("confirmTime", confirmed.get("confirmTime"));
         facts.put("replayed", confirmed.get("replayed"));
         return facts;
+    }
+
+    private static boolean isServiceBiz(Map<String, Object> confirmed, Map<String, Object> headOrFacts) {
+        if (confirmed != null) {
+            Object bt = confirmed.get("bizType");
+            if (bt != null && "SERVICE".equalsIgnoreCase(String.valueOf(bt))) {
+                return true;
+            }
+            Object bill = confirmed.get("billNumber");
+            if (bill != null && String.valueOf(bill).startsWith("GW-SERVICE-")) {
+                return true;
+            }
+        }
+        if (headOrFacts != null) {
+            Object bt = headOrFacts.get("bizType");
+            if (bt != null && "SERVICE".equalsIgnoreCase(String.valueOf(bt))) {
+                return true;
+            }
+            String type = headOrFacts.get("type") == null ? "" : String.valueOf(headOrFacts.get("type"));
+            String sub = headOrFacts.get("sub_type") == null
+                    ? (headOrFacts.get("nativeSubType") == null ? "" : String.valueOf(headOrFacts.get("nativeSubType")))
+                    : String.valueOf(headOrFacts.get("sub_type"));
+            if ("出库".equals(type) && "其它".equals(sub)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String resolveServiceProject(Map<String, Object> confirmed, Map<String, Object> head) {
+        if (confirmed != null && confirmed.get("serviceProject") != null
+                && String.valueOf(confirmed.get("serviceProject")).trim().length() > 0) {
+            return String.valueOf(confirmed.get("serviceProject")).trim();
+        }
+        if (confirmed != null && confirmed.get("payload") != null) {
+            Object payload = confirmed.get("payload");
+            Object sp = null;
+            if (payload instanceof Map) {
+                sp = ((Map<?, ?>) payload).get("serviceProject");
+            } else if (payload instanceof JSONObject) {
+                sp = ((JSONObject) payload).get("serviceProject");
+            } else {
+                try {
+                    JSONObject parsed = JSON.parseObject(String.valueOf(payload));
+                    if (parsed != null) {
+                        sp = parsed.get("serviceProject");
+                    }
+                } catch (Exception ignored) {
+                    // optional
+                }
+            }
+            if (sp != null && String.valueOf(sp).trim().length() > 0) {
+                return String.valueOf(sp).trim();
+            }
+        }
+        if (head != null && head.get("remark") != null) {
+            String remark = String.valueOf(head.get("remark")).trim();
+            if (remark.startsWith("服务项目：")) {
+                return remark.substring("服务项目：".length()).trim();
+            }
+            if (!remark.isEmpty() && remark.contains("服务")) {
+                return remark;
+            }
+        }
+        return null;
     }
 
     private static boolean isMixBill(String billNumber, Map<String, Object> head) {
@@ -667,10 +743,21 @@ public class AierpWecomReceiptService {
         if (isMixFacts(facts)) {
             return renderMixText(facts);
         }
+        boolean service = isServiceBiz(null, facts) || "SERVICE".equals(String.valueOf(facts.get("bizType")));
         StringBuilder sb = new StringBuilder();
-        sb.append("采购入库已完成（已审核）\n");
-        sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
-        sb.append("供应商：").append(nullToDash(facts.get("partnerName"))).append("\n");
+        if (service) {
+            sb.append("服务耗料出库已完成（已审核）\n");
+            sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
+            sb.append("客户：").append(nullToDash(facts.get("partnerName"))).append("\n");
+            if (facts.get("serviceProject") != null) {
+                sb.append("服务项目：").append(facts.get("serviceProject")).append("\n");
+            }
+            sb.append("单据类型：出库/其它（非销售）\n");
+        } else {
+            sb.append("采购入库已完成（已审核）\n");
+            sb.append("原生单号：").append(facts.get("billNumber")).append("\n");
+            sb.append("供应商：").append(nullToDash(facts.get("partnerName"))).append("\n");
+        }
         sb.append("操作人：").append(nullToDash(facts.get("creatorLogin"))).append("\n");
         sb.append("处理时间：").append(fmtTime(facts.get("operTime"))).append("\n");
         @SuppressWarnings("unchecked")
@@ -681,8 +768,8 @@ public class AierpWecomReceiptService {
                         .append("（").append(nullToDash(line.get("bar_code"))).append("）")
                         .append(" ").append(fmtQty(line.get("oper_number")))
                         .append(" ").append(nullToDash(line.get("material_unit")))
-                        .append(" → ").append(nullToDash(line.get("depot_name")));
-                if (line.get("all_price") != null) {
+                        .append(service ? " ← " : " → ").append(nullToDash(line.get("depot_name")));
+                if (!service && line.get("all_price") != null) {
                     sb.append(" 金额 ").append(fmtMoney(line.get("all_price")));
                 }
                 sb.append("\n");
@@ -697,7 +784,14 @@ public class AierpWecomReceiptService {
                         .append("（").append(r[4]).append("）\n");
             }
         }
-        sb.append("《采购入库业务回执》已生成（非发票）。");
+        if (service) {
+            sb.append("《服务耗料出库回执》已生成（非发票、非销售收入）。");
+            if (facts.get("pdfNote") != null) {
+                sb.append("\n").append(facts.get("pdfNote"));
+            }
+        } else {
+            sb.append("《采购入库业务回执》已生成（非发票）。");
+        }
         return sb.toString();
     }
 

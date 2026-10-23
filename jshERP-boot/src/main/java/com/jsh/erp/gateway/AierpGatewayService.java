@@ -8,6 +8,8 @@ import com.jsh.erp.datasource.entities.Material;
 import com.jsh.erp.datasource.entities.MaterialExtend;
 import com.jsh.erp.datasource.entities.User;
 import com.jsh.erp.exception.BusinessRunTimeException;
+import com.jsh.erp.service.SystemConfigService;
+import com.jsh.erp.service.UserBusinessService;
 import com.jsh.erp.service.DepotHeadService;
 import com.jsh.erp.service.DepotItemService;
 import com.jsh.erp.service.DepotService;
@@ -62,6 +64,10 @@ public class AierpGatewayService {
 
     @Resource
     private JdbcTemplate jdbcTemplate;
+    @Resource
+    private SystemConfigService systemConfigService;
+    @Resource
+    private UserBusinessService userBusinessService;
     @Resource
     private UserService userService;
     @Resource
@@ -272,11 +278,10 @@ public class AierpGatewayService {
         if (user == null || user.getId() == null || user.getTenantId() == null) {
             throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份");
         }
+        assertGatewayBizType(bizType);
         assertFunction(user, functionOf(bizType), BTN_ADD, bizType);
         String key = required(body, "idempotencyKey");
-        JSONObject normalized = normalize(bizType, body, user);
-        String payload = normalized.toJSONString();
-        String payloadHash = sha256Hex(payload);
+        // Look up before normalize so CONFIRMED replay is not blocked by post-outbound stock drift.
         List<Map<String, Object>> existing = jdbcTemplate.queryForList(
                 "SELECT id, status, payload_json, bill_number, biz_type, channel, bot_id, wecom_user_id, binding_id, "
                         + "binding_bound_at, binding_version, draft_version, payload_hash "
@@ -285,6 +290,19 @@ public class AierpGatewayService {
         if (!existing.isEmpty()) {
             Map<String, Object> row = existing.get(0);
             assertWecomOwnerMatches(row, wecomOwner);
+            // Already posted: return audited bill even if live stock snapshot would fail normalize.
+            if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
+                if (!bizType.equals(String.valueOf(row.get("biz_type")))) {
+                    throw new BusinessRunTimeException(409, "幂等键已用于其他业务类型，拒绝覆盖");
+                }
+                return draftFlags(draftView(row, true), row);
+            }
+        }
+        JSONObject normalized = normalize(bizType, body, user);
+        String payload = normalized.toJSONString();
+        String payloadHash = sha256Hex(payload);
+        if (!existing.isEmpty()) {
+            Map<String, Object> row = existing.get(0);
             if (!payload.equals(String.valueOf(row.get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
@@ -321,6 +339,12 @@ public class AierpGatewayService {
                 throw ex;
             }
             assertWecomOwnerMatches(raced.get(0), wecomOwner);
+            if ("CONFIRMED".equals(String.valueOf(raced.get(0).get("status")))) {
+                if (!bizType.equals(String.valueOf(raced.get(0).get("biz_type")))) {
+                    throw new BusinessRunTimeException(409, "幂等键已用于其他业务类型，拒绝覆盖");
+                }
+                return draftFlags(draftView(raced.get(0), true), raced.get(0));
+            }
             if (!payload.equals(String.valueOf(raced.get(0).get("payload_json")))) {
                 throw new BusinessRunTimeException(409, "幂等键已存在且内容不同，拒绝覆盖");
             }
@@ -641,6 +665,7 @@ public class AierpGatewayService {
     private Map<String, Object> confirmLockedRowAs(User user, Map<String, Object> row,
                                                    HttpServletRequest request) throws Exception {
         String bizType = String.valueOf(row.get("biz_type"));
+        assertGatewayBizType(bizType);
         assertFunction(user, functionOf(bizType), BTN_AUDIT, bizType);
         if ("CONFIRMED".equals(String.valueOf(row.get("status")))) {
             Map<String, Object> replay = confirmView(row, user, true);
@@ -687,7 +712,7 @@ public class AierpGatewayService {
         }
         List<Map<String, Object>> rows = listAwaitingOwnedDrafts(user, owner);
         if (rows.size() != 1) {
-            throw new BusinessRunTimeException(400, "存在多个或没有待确认草稿，请回复「确认采购/确认配制{草稿号}」");
+            throw new BusinessRunTimeException(400, "存在多个或没有待确认草稿，请回复「确认采购/确认配制/确认耗料{草稿号}」");
         }
         return ((Number) rows.get(0).get("id")).longValue();
     }
@@ -759,6 +784,7 @@ public class AierpGatewayService {
         if (actor == null || actor.getId() == null || actor.getTenantId() == null) {
             throw new BusinessRunTimeException(403, "缺少受控 ERP 用户身份，无法过账");
         }
+        assertGatewayBizType(bizType);
         JSONObject info = new JSONObject();
         info.put("operTime", LocalDateTime.now().format(TS));
         info.put("number", number);
@@ -881,6 +907,11 @@ public class AierpGatewayService {
             JSONObject line = rawLines.getJSONObject(i);
             ResolvedLine resolved = resolveLine(user, required(line, "barCode"), required(line, "depotName"),
                     decimal(line, "qty"), required(line, "unit"), "SERVICE".equals(bizType));
+            if ("SERVICE".equals(bizType) && resolved.stockShort) {
+                throw new BusinessRunTimeException(400,
+                        "库存不足，拒绝创建服务耗料草稿：" + resolved.barCode + " @ " + resolved.depotName
+                                + "（当前可用库存不足）");
+            }
             if (line.get("unitPrice") != null) {
                 resolved.unitPrice = decimal(line, "unitPrice");
             }
@@ -1012,6 +1043,11 @@ public class AierpGatewayService {
                     Integer.class, organId, user.getTenantId(), organType);
             if (n == null || n != 1) {
                 throw new BusinessRunTimeException(400, "确认时" + organType + "不可用或不属于当前租户");
+            }
+            // SERVICE: UserCustomer visibility (native customerFlag), not tenant-only.
+            if ("SERVICE".equals(bizType)) {
+                String organName = payload.getString("organName");
+                assertCustomerVisible(user, organId, organName == null ? String.valueOf(organId) : organName);
             }
         }
         if ("PURCHASE".equals(bizType)) {
@@ -1233,7 +1269,12 @@ public class AierpGatewayService {
         if (ids.isEmpty()) {
             throw new BusinessRunTimeException(400, "未找到当前租户下的" + type + ": " + name);
         }
-        return ids.get(0);
+        Long organId = ids.get(0);
+        // AIERP-016S: SERVICE prepare resolves 客户 via UserCustomer when customerFlag=1 (not tenant-only).
+        if ("客户".equals(type)) {
+            assertCustomerVisible(user, organId, name);
+        }
+        return organId;
     }
 
     private Long defaultAccountId(User user) {
@@ -1482,6 +1523,18 @@ public class AierpGatewayService {
     }
 
     /** Public for WeCom confirm-ui / SOP phrase alignment by bizType. */
+    /**
+     * Gateway only posts PURCHASE / MIX / SERVICE (其它出库). Never SALE/SALES/AR.
+     */
+    private static void assertGatewayBizType(String bizType) {
+        if ("SALE".equals(bizType) || "SALES".equals(bizType) || "AR".equals(bizType)) {
+            throw new BusinessRunTimeException(400, "禁止销售出库/应收过账；服务耗料仅走其它出库");
+        }
+        if (!"PURCHASE".equals(bizType) && !"MIX".equals(bizType) && !"SERVICE".equals(bizType)) {
+            throw new BusinessRunTimeException(400, "未知业务类型");
+        }
+    }
+
     public static String confirmPhraseFor(String bizType, long draftId) {
         if ("MIX".equals(bizType)) {
             return "确认配制" + draftId;
@@ -1553,6 +1606,36 @@ public class AierpGatewayService {
             return out;
         }
         return out;
+    }
+
+    /**
+     * Match native ERP customer pickers: when system customerFlag=1 (role restricts), organ must
+     * appear in UserCustomer for this user — not tenant-only. When flag=0, any enabled tenant
+     * customer is allowed. Used by prepare + confirm reassert and Excel SERVICE preview.
+     */
+    public void assertCustomerVisible(User user, Long organId, String name) {
+        if (user == null || user.getId() == null || organId == null) {
+            throw new BusinessRunTimeException(403, "客户权限校验缺少用户或客户");
+        }
+        boolean customerFlag;
+        try {
+            customerFlag = systemConfigService.getCustomerFlag();
+        } catch (Exception ex) {
+            throw new BusinessRunTimeException(500, "读取客户权限开关失败");
+        }
+        if (!customerFlag) {
+            return;
+        }
+        String ubValue;
+        try {
+            ubValue = userBusinessService.getUBValueByTypeAndKeyId("UserCustomer", String.valueOf(user.getId()));
+        } catch (Exception ex) {
+            throw new BusinessRunTimeException(500, "读取 UserCustomer 失败");
+        }
+        // Missing / empty UserCustomer assignment while flag restricts → deny (not tenant-only).
+        if (ubValue == null || ubValue.trim().isEmpty() || !ubValue.contains("[" + organId + "]")) {
+            throw new BusinessRunTimeException(403, "当前用户无权使用客户: " + name);
+        }
     }
 
     private static String sha256Hex(String value) {
