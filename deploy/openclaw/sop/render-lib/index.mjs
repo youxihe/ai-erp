@@ -2,16 +2,18 @@
  * AIERP-020C reusable table/chart render library.
  *
  * Contract:
- * - Data only from authorized ERP query results / datasetRef
+ * - Data only from server-sealed ERP datasetRef (opaque id)
  * - AI picks renderId only — no invented numbers, HTML, SQL, or paths
  * - Output PNG (system Chinese fonts) + optional XLSX for long tables
+ * - Media files are identity-scoped under a fixed root (no model outDir)
  * - Empty/invalid data degrades to table/explanation — never fake charts
  */
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync, realpathSync, existsSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
 import { RENDER_IDS, PNG_LIMITS, resolveRenderId } from "./catalog.mjs";
 import { validateRenderRequest } from "./validate.mjs";
+import { sealDataset } from "./dataset-registry.mjs";
 import { svgToPng, resvgAvailable } from "./svg-to-png.mjs";
 import { datasetToXlsxBuffer, shouldExportXlsx } from "./xlsx-export.mjs";
 import { listSystemChineseFonts, primaryChineseFontFamily } from "./fonts.mjs";
@@ -30,7 +32,13 @@ export {
   listSystemChineseFonts,
   primaryChineseFontFamily,
   resvgAvailable,
+  sealDataset,
 };
+export {
+  resolveSealedDataset,
+  __clearDatasetRegistryForTests,
+  __registrySizeForTests,
+} from "./dataset-registry.mjs";
 
 const RENDERERS = {
   "table.basic": renderTableBasic,
@@ -41,15 +49,98 @@ const RENDERERS = {
   "kpi.tiles": renderKpiTiles,
 };
 
+const DEFAULT_MEDIA_ROOT = join(
+  process.env.OPENCLAW_STATE_DIR ||
+    join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state"),
+  "media",
+  "aierp-render",
+);
+
+function safeSeg(v) {
+  return String(v || "x")
+    .replace(/[^\w.-]+/g, "_")
+    .slice(0, 48) || "x";
+}
+
 /**
- * Render a whitelist template from an authorized dataset.
+ * Fixed media root; optional override must realpath under the default root.
+ */
+export function resolveMediaRoot(requested) {
+  const base = resolve(DEFAULT_MEDIA_ROOT);
+  mkdirSync(base, { recursive: true });
+  if (!requested) return base;
+  const abs = resolve(String(requested));
+  let realBase = base;
+  let realAbs = abs;
+  try {
+    if (existsSync(base)) realBase = realpathSync(base);
+    if (existsSync(abs)) realAbs = realpathSync(abs);
+  } catch {
+    // use resolve() paths
+  }
+  const prefix = realBase.endsWith(sep) ? realBase : realBase + sep;
+  if (realAbs !== realBase && !realAbs.startsWith(prefix)) {
+    throw new Error("outDir_outside_allowlisted_media_root");
+  }
+  return abs;
+}
+
+/**
+ * Per-tenant / per-actor isolation directory.
+ */
+export function identityMediaDir(authCtx, requestedRoot) {
+  const root = resolveMediaRoot(requestedRoot);
+  const tenant = safeSeg(authCtx?.tenantId ?? authCtx?.tenant_id ?? "unknown");
+  const actor = safeSeg(authCtx?.actorUserId ?? authCtx?.erpUserId ?? authCtx?.userId ?? "unknown");
+  const dir = join(root, tenant, actor);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function uniqueStem(authCtx, renderId, pngSha) {
+  const tenant = safeSeg(authCtx?.tenantId ?? "t");
+  const actor = safeSeg(authCtx?.actorUserId ?? authCtx?.erpUserId ?? "a");
+  const rnd = randomBytes(6).toString("hex");
+  const sha8 = String(pngSha || createHash("sha256").update(rnd).digest("hex")).slice(0, 8);
+  return `${tenant}_${actor}_${Date.now()}_${rnd}_${safeSeg(renderId)}_${sha8}`;
+}
+
+/**
+ * Trusted ERP adapter entry: seal query result, then render by opaque ref only.
  *
- * @param {object} request { renderId, datasetRef?, dataset?, schemaVersion? }
- * @param {object} [opts] { outDir?, writeFiles?, maxPngRows?, exportXlsx? }
- * @returns {Promise<object>}
+ * @param {object} authCtx tenantId, actorUserId, wecomUserId, botId, bindingVersion
+ * @param {object} plan { renderId, dataset, sourceKind?, sourcePath?, depotScope?, ttlMs? }
+ * @param {object} [opts] writeFiles, exportXlsx, maxPngRows (outDir ignored unless under media root)
+ */
+export async function sealAndRender(authCtx, plan, opts = {}) {
+  if (!plan?.dataset || typeof plan.dataset !== "object") {
+    throw new Error("sealAndRender_requires_dataset_from_trusted_erp_query");
+  }
+  const seal = sealDataset(authCtx, plan.dataset, {
+    sourceKind: plan.sourceKind || "ERP_QUERY",
+    sourcePath: plan.sourcePath,
+    depotScope: plan.depotScope,
+    ttlMs: plan.ttlMs,
+  });
+  return renderDataset(
+    {
+      renderId: plan.renderId,
+      datasetRef: { id: seal.id },
+      schemaVersion: plan.schemaVersion,
+    },
+    { ...opts, authCtx },
+  );
+}
+
+/**
+ * Model / channel path: renderId + opaque datasetRef.id + authCtx.
+ *
+ * @param {object} request { renderId, datasetRef }
+ * @param {object} [opts] { authCtx, writeFiles?, exportXlsx?, maxPngRows? }
  */
 export async function renderDataset(request, opts = {}) {
-  const checked = validateRenderRequest(request);
+  const authCtx = opts.authCtx || request?.authCtx;
+  const checked = validateRenderRequest(request, { authCtx });
 
   if (!checked.ok && checked.degrade === "explanation") {
     return finalize(
@@ -62,7 +153,7 @@ export async function renderDataset(request, opts = {}) {
         checked.reason,
       ),
       checked,
-      opts,
+      { ...opts, authCtx },
       { forceDegraded: true },
     );
   }
@@ -78,17 +169,13 @@ export async function renderDataset(request, opts = {}) {
     degradeReason = checked.reason;
     renderId = "table.basic";
     dataset = materializeTableDataset(dataset);
-    const tableCheck = validateRenderRequest({
-      ...request,
-      renderId: "table.basic",
-      dataset,
-      datasetRef: checked.datasetRef || request.datasetRef || { id: "degrade", authorized: true },
-    });
+    // Re-validate shape only — dataset already sealed; skip auth re-entry by using sealed body
+    const tableCheck = validateShapeOnly("table.basic", dataset);
     if (!tableCheck.ok) {
       return finalize(
         renderExplanation(meta, degradeReason),
         { ...checked, renderId: "explanation", meta },
-        opts,
+        { ...opts, authCtx },
         { forceDegraded: true, degradeReason },
       );
     }
@@ -96,19 +183,35 @@ export async function renderDataset(request, opts = {}) {
 
   const fn = RENDERERS[renderId];
   if (!fn) {
-    return finalize(renderExplanation(meta, "renderId_not_whitelisted"), checked, opts, {
+    return finalize(renderExplanation(meta, "renderId_not_whitelisted"), checked, { ...opts, authCtx }, {
       forceDegraded: true,
     });
   }
 
   const drawn = fn(dataset, meta, { maxPngRows: opts.maxPngRows || PNG_LIMITS.tablePreviewRows });
-  return finalize(drawn, { ok: true, renderId, dataset, meta, datasetRef: checked.datasetRef }, opts, {
-    degraded,
-    degradeReason,
-  });
+  return finalize(
+    drawn,
+    { ok: true, renderId, dataset, meta, datasetRef: checked.datasetRef, sealMeta: checked.sealMeta },
+    { ...opts, authCtx },
+    { degraded, degradeReason },
+  );
+}
+
+/** Shape-only check used after degrade materialization (dataset already sealed). */
+function validateShapeOnly(renderId, dataset) {
+  // Lightweight: reuse validateRenderRequest path is blocked without seal; check rows present
+  if (renderId === "table.basic") {
+    const rows = Array.isArray(dataset?.rows) ? dataset.rows : Array.isArray(dataset?.lines) ? dataset.lines : [];
+    if (!rows.length && !(Array.isArray(dataset?.columns) && dataset.columns.length)) {
+      return { ok: false, reason: "empty_table" };
+    }
+    return { ok: true };
+  }
+  return { ok: true };
 }
 
 async function finalize(drawn, checked, opts, extra = {}) {
+  const authCtx = opts.authCtx;
   const png = svgToPng(drawn.svg);
   const sha256 = createHash("sha256").update(png).digest("hex");
   const result = {
@@ -118,6 +221,7 @@ async function finalize(drawn, checked, opts, extra = {}) {
     degradeReason: extra.degradeReason || drawn.degradeReason || null,
     alt: drawn.alt,
     meta: checked.meta,
+    sealMeta: checked.sealMeta || null,
     png,
     pngSha256: sha256,
     pngBytes: png.length,
@@ -147,29 +251,34 @@ async function finalize(drawn, checked, opts, extra = {}) {
     }
   }
 
-  if (opts.writeFiles && opts.outDir) {
-    mkdirSync(opts.outDir, { recursive: true });
-    const stem = safeStem(checked.meta?.title || checked.renderId || "render");
-    const pngPath = join(opts.outDir, `${stem}.png`);
-    writeFileSync(pngPath, png);
-    result.files.png = pngPath;
-    // Never put absolute path into user-facing alt/text — keep in files only for adapters
-    if (result.xlsx) {
-      const xlsxPath = join(opts.outDir, `${stem}.xlsx`);
-      writeFileSync(xlsxPath, result.xlsx);
-      result.files.xlsx = xlsxPath;
+  if (opts.writeFiles) {
+    if (!authCtx) {
+      result.writeError = "authCtx_required_for_media_write";
+    } else {
+      try {
+        // Model cannot choose arbitrary outDir; only identity-scoped under allowlisted root.
+        const outDir = identityMediaDir(authCtx, opts.outDir);
+        const stem = uniqueStem(authCtx, result.renderId, sha256);
+        const pngPath = join(outDir, `${stem}.png`);
+        writeFileSync(pngPath, png);
+        result.files.png = pngPath;
+        if (result.xlsx) {
+          const xlsxPath = join(outDir, `${stem}.xlsx`);
+          writeFileSync(xlsxPath, result.xlsx);
+          result.files.xlsx = xlsxPath;
+        }
+        const svgPath = join(outDir, `${stem}.svg`);
+        writeFileSync(svgPath, drawn.svg, "utf8");
+        result.files.svg = svgPath;
+        result.files.stem = stem;
+        result.files.outDir = outDir;
+      } catch (err) {
+        result.writeError = String(err?.message || err).slice(0, 200);
+      }
     }
-    writeFileSync(join(opts.outDir, `${stem}.svg`), drawn.svg, "utf8");
-    result.files.svg = join(opts.outDir, `${stem}.svg`);
   }
 
   return result;
-}
-
-function safeStem(s) {
-  return String(s || "render")
-    .replace(/[^\w\u4e00-\u9fff-]+/g, "_")
-    .slice(0, 40) || "render";
 }
 
 /** When a chart cannot be drawn, still show authorized facts as a table — never invent values. */
@@ -223,7 +332,7 @@ function materializeTableDataset(dataset) {
 export function listRenderCatalog() {
   return RENDER_IDS.map((id) => ({
     renderId: id,
-    aiMayPass: ["renderId", "datasetRef"],
-    aiMustNotPass: ["values", "numbers", "html", "sql", "filePath"],
+    aiMayPass: ["renderId", "datasetRef.id"],
+    aiMustNotPass: ["values", "numbers", "html", "sql", "filePath", "outDir", "authorized", "nature", "dataset"],
   }));
 }

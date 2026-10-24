@@ -1,7 +1,7 @@
 {
   "ticket": "AIERP-020C",
   "status": "CODE_READY",
-  "startedAt": "2026-10-24T02:17:08.042Z",
+  "startedAt": "2026-10-24T02:56:51.923Z",
   "baseCommitHint": "origin/master",
   "checks": [
     {
@@ -38,48 +38,97 @@
       ]
     },
     {
+      "name": "reject_forged_authorized_flag",
+      "pass": true,
+      "detail": {
+        "reason": "forged_authorized_claim_on_datasetRef"
+      }
+    },
+    {
+      "name": "reject_forged_nature_REAL_ERP",
+      "pass": true,
+      "detail": {
+        "reason": "forged_nature_REAL_ERP_on_datasetRef"
+      }
+    },
+    {
+      "name": "reject_unknown_datasetRef",
+      "pass": true,
+      "detail": {
+        "reason": "datasetRef_unknown_or_expired",
+        "renderId": "explanation"
+      }
+    },
+    {
+      "name": "reject_inline_dataset",
+      "pass": true,
+      "detail": {
+        "reason": "inline_dataset_rejected_use_opaque_datasetRef"
+      }
+    },
+    {
       "name": "table.basic",
       "pass": true,
       "detail": {
-        "pngBytes": 110554,
+        "pngBytes": 109373,
         "xlsx": true,
-        "previewRows": 12
+        "previewRows": 12,
+        "fixtureOnly": true
+      }
+    },
+    {
+      "name": "reject_cross_actor_datasetRef",
+      "pass": true,
+      "detail": {
+        "reason": "datasetRef_actor_mismatch"
+      }
+    },
+    {
+      "name": "reject_binding_version_mismatch",
+      "pass": true,
+      "detail": {
+        "reason": "datasetRef_binding_version_mismatch"
       }
     },
     {
       "name": "bar.compare",
       "pass": true,
       "detail": {
-        "pngBytes": 46883,
-        "sha": "9ce3d27193bf"
+        "pngBytes": 50035,
+        "sha": "85e463c56d70",
+        "fixtureOnly": true
       }
     },
     {
       "name": "line.trend",
       "pass": true,
       "detail": {
-        "pngBytes": 69532
+        "pngBytes": 71827,
+        "fixtureOnly": true
       }
     },
     {
       "name": "pie.share",
       "pass": true,
       "detail": {
-        "pngBytes": 76278
+        "pngBytes": 78976,
+        "fixtureOnly": true
       }
     },
     {
       "name": "delta.before_after",
       "pass": true,
       "detail": {
-        "pngBytes": 59003
+        "pngBytes": 62006,
+        "fixtureOnly": true
       }
     },
     {
       "name": "kpi.tiles",
       "pass": true,
       "detail": {
-        "pngBytes": 40261
+        "pngBytes": 43086,
+        "fixtureOnly": true
       }
     },
     {
@@ -107,28 +156,30 @@
       }
     },
     {
-      "name": "reject_sql_or_path_probe",
+      "name": "xlsx_formula_sanitize",
       "pass": true,
       "detail": {
-        "degraded": true,
-        "renderId": "explanation",
-        "reason": "forbidden_html_sql_or_path"
+        "s1": "'=CMD|'/c calc'!A0",
+        "s2": "'+1+1",
+        "s3": "'@SUM(A1)"
       }
     },
     {
-      "name": "reject_unauthorized",
+      "name": "media_identity_isolation",
       "pass": true,
       "detail": {
-        "renderId": "explanation",
-        "reason": "dataset_must_be_authorized_erp_or_datasetRef"
+        "dirA": "media\\aierp-render\\63\\63",
+        "dirB": "media\\aierp-render\\63\\999",
+        "unique": true
       }
     },
     {
       "name": "wecom_hook_prepare",
       "pass": true,
       "detail": {
-        "alt": "企微钩子预渲染 · 柱状对比 · 单位kg · 来源ERP 授权查询（smoke） · A仓:11，B仓:22",
-        "png": "企微钩子预渲染.png"
+        "alt": "企微钩子预渲染(fixture) · 柱状对比 · 单位kg · 来源SMOKE_FIXTURE_NOT_ERP_STATS · A仓:11，B仓:22",
+        "png": "63_63_1792810668643_c428bb80f83d_bar.compare_278d00cb.png",
+        "pngBytes": 45052
       }
     },
     {
@@ -137,6 +188,59 @@
       "detail": {
         "reason": "line_needs_three_plus_time_points",
         "renderId": "table.basic"
+      }
+    },
+    {
+      "name": "real_erp_boot_up",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "real_erp_bind_claim",
+      "pass": true,
+      "detail": {
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "name": "real_erp_stock_query",
+      "pass": true,
+      "detail": {
+        "nature": "BOUND_ERP_STOCK",
+        "boundErpLoginName": "jsh",
+        "rowCount": 1,
+        "sampleQty": 347.7,
+        "sampleBarCode": "RM-A001"
+      }
+    },
+    {
+      "name": "real_erp_stock_table_render",
+      "pass": true,
+      "detail": {
+        "pngBytes": 40154,
+        "provenance": "SERVER_SEALED_ERP",
+        "datasetRefId": "ds_c4e6a78fa3dd5ebdba755933ee5ba9ec"
+      }
+    },
+    {
+      "name": "real_erp_purchase_summary",
+      "pass": true,
+      "detail": {
+        "nature": "REAL_ERP",
+        "billCount": 32,
+        "hint": null
+      }
+    },
+    {
+      "name": "real_erp_report_chart_render",
+      "pass": true,
+      "detail": {
+        "renderId": "bar.compare",
+        "degraded": false,
+        "pngBytes": 53022,
+        "provenance": "SERVER_SEALED_ERP"
       }
     }
   ],
@@ -155,36 +259,62 @@
   },
   "artifacts": [
     {
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\采购入库明细表.png",
-      "xlsx": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\采购入库明细表.xlsx",
-      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\采购入库明细表.svg"
+      "label": "table_basic",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792810629422_15b3ba230d75_table.basic_dfbc4928.png",
+      "xlsx": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792810629422_15b3ba230d75_table.basic_dfbc4928.xlsx"
     },
     {
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\各仓库存对比.png",
-      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\各仓库存对比.svg"
+      "label": "bar_compare",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\bar_compare_63_63_1792810641942_7297d9887823_bar.compare_85e463c5.png"
     },
     {
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\近7日采购金额.png",
-      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\近7日采购金额.svg"
+      "label": "line_trend",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\line_trend_63_63_1792810647161_591e2f74986c_line.trend_dcac0557.png"
     },
     {
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\供应商采购金额占比.png",
-      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\供应商采购金额占比.svg"
+      "label": "pie_share",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\pie_share_63_63_1792810650526_f0b136182753_pie.share_857f5573.png"
     },
     {
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\配制前后库存差异.png",
-      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\配制前后库存差异.svg"
+      "label": "delta",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\delta_63_63_1792810654193_9703e7d6f2ad_delta.before_after_d6b66d6a.png"
     },
     {
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\今日经营摘要.png",
-      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\今日经营摘要.svg"
+      "label": "kpi",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\kpi_63_63_1792810656616_3de437972617_kpi.tiles_3ac00183.png"
+    },
+    {
+      "label": "real_erp_stock_table",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_stock_table_63_63_1792810677522_118734ceb9fc_table.basic_c8c73f20.png"
+    },
+    {
+      "label": "real_erp_purchase_chart",
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_purchase_chart_63_63_1792810680340_b055090a1578_bar.compare_0dd4ead1.png"
     }
   ],
-  "finishedAt": "2026-10-24T02:17:27.347Z",
+  "realErp": {
+    "attempted": true,
+    "ok": true,
+    "stock": {
+      "rowCount": 1,
+      "nature": "BOUND_ERP_STOCK",
+      "boundErpLoginName": "jsh",
+      "sampleBarCode": "RM-A001",
+      "sampleQty": 347.7
+    },
+    "purchaseSummary": {
+      "nature": "REAL_ERP",
+      "billCount": 32,
+      "rowCount": 1
+    }
+  },
+  "deployState": "NOT_LOCAL_DEPLOYED",
+  "weComUat": "LIVE_UAT_PENDING",
+  "note": "Auth-hardened render-lib CODE_READY. Fixtures cover templates only. REAL_ERP stock+report sealed and rendered. NOT LOCAL_DEPLOYED / WE_COM_UAT_PENDING (no Bot WS image send; no F: sync).",
+  "finishedAt": "2026-10-24T02:58:00.344Z",
   "modulePaths": [
     "deploy/openclaw/sop/render-lib/",
     "deploy/openclaw/plugins/aierp-erp-tools/sop/render-lib/",
     "deploy/scripts/aierp-020c-render-smoke.mjs"
-  ],
-  "note": "CODE_READY only — not LOCAL_DEPLOYED. Do not merge into F: runtime from this branch without deploy owner."
+  ]
 }

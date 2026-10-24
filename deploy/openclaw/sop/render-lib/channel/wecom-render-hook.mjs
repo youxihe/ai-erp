@@ -4,22 +4,20 @@
  * Safety:
  * - Does not invent numbers or accept HTML/SQL/paths from the model
  * - Caption/alt never include Windows paths or MEDIA: dumps
+ * - Model cannot pass outDir / toUserId / filePath (server authCtx drives isolation)
  * - Actual Bot WS image send is optional; adapters call send when ready
  * - Keeps channel adapter thin — rendering stays in render-lib
  */
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { renderDataset, validateRenderRequest } from "../index.mjs";
+import { randomBytes } from "node:crypto";
+import {
+  renderDataset,
+  sealAndRender,
+  validateRenderRequest,
+  identityMediaDir,
+} from "../index.mjs";
 import { looksForbiddenInput } from "../validate.mjs";
-
-function stateMediaDir() {
-  const root =
-    process.env.OPENCLAW_STATE_DIR ||
-    join(process.env.LOCALAPPDATA || "C:/Users/Public", "aierp-openclaw", "state");
-  const dir = join(root, "media", "aierp-render");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 function stripPaths(text) {
   return String(text || "")
@@ -32,16 +30,29 @@ function stripPaths(text) {
 
 /**
  * Build a channel-safe payload from an authorized render request.
- * Does NOT send yet unless `sendFn` is provided (keeps adapter safe for later wiring).
+ * Requires authCtx; model only supplies renderId + opaque datasetRef.id.
  *
- * @param {object} request render plan (renderId + dataset / datasetRef)
- * @param {object} [opts]
- * @param {(args: { mediaPath: string, captionText?: string, toUserId?: string }) => Promise<{ok:boolean,error?:string}>} [opts.sendFn]
- * @param {string} [opts.toUserId]
- * @returns {Promise<object>}
+ * @param {object} request { renderId, datasetRef }
+ * @param {object} opts { authCtx (required), sendFn?, exportXlsx?, maxPngRows? }
  */
 export async function prepareWecomRender(request, opts = {}) {
-  if (looksForbiddenInput(request)) {
+  const authCtx = opts.authCtx || request?.authCtx;
+  if (!authCtx || typeof authCtx !== "object") {
+    return {
+      ok: false,
+      error: "authCtx_required",
+      userText: "无法渲染：缺少当前用户/租户授权上下文。",
+    };
+  }
+
+  // Strip model attempts to set destinations / paths
+  const safeRequest = {
+    renderId: request?.renderId || request?.templateId,
+    datasetRef: request?.datasetRef || request?.sourceRef,
+    schemaVersion: request?.schemaVersion,
+  };
+
+  if (looksForbiddenInput(safeRequest)) {
     return {
       ok: false,
       error: "forbidden_input",
@@ -49,19 +60,18 @@ export async function prepareWecomRender(request, opts = {}) {
     };
   }
 
-  const gate = validateRenderRequest(request);
+  const gate = validateRenderRequest(safeRequest, { authCtx });
   if (!gate.ok && gate.degrade === "explanation" && !gate.dataset) {
     return {
       ok: false,
       error: gate.reason,
-      userText: "无法渲染：需要授权的 ERP 查询结果或 datasetRef，且只能选择白名单 renderId。",
+      userText: "无法渲染：需要服务端密封的 datasetRef，且只能选择白名单 renderId。",
     };
   }
 
-  const outDir = opts.outDir || stateMediaDir();
-  const rendered = await renderDataset(request, {
+  const rendered = await renderDataset(safeRequest, {
     writeFiles: true,
-    outDir,
+    authCtx,
     exportXlsx: opts.exportXlsx !== false,
     maxPngRows: opts.maxPngRows,
   });
@@ -77,6 +87,7 @@ export async function prepareWecomRender(request, opts = {}) {
     _media: {
       pngPath: rendered.files?.png || null,
       xlsxPath: rendered.files?.xlsx || null,
+      outDir: rendered.files?.outDir || null,
       pngSha256: rendered.pngSha256,
       pngBytes: rendered.pngBytes,
     },
@@ -84,17 +95,19 @@ export async function prepareWecomRender(request, opts = {}) {
     sent: null,
   };
 
+  // toUserId must come from verified session, never from model request
+  const toUserId = opts.toUserId || authCtx.wecomUserId;
   if (typeof opts.sendFn === "function" && payload._media.pngPath && existsSync(payload._media.pngPath)) {
     try {
       const sent = await opts.sendFn({
-        toUserId: opts.toUserId,
+        toUserId,
         mediaPath: payload._media.pngPath,
         captionText: caption,
       });
       payload.sent = sent;
       if (rendered.files?.xlsx && opts.sendXlsx !== false) {
         payload.sentXlsx = await opts.sendFn({
-          toUserId: opts.toUserId,
+          toUserId,
           mediaPath: rendered.files.xlsx,
           captionText: "完整表格见附件（XLSX）",
         });
@@ -108,14 +121,21 @@ export async function prepareWecomRender(request, opts = {}) {
 }
 
 /**
- * Persist PNG buffer to the controlled media root (for adapters that already rendered).
+ * Persist PNG buffer under identity-scoped media root (adapters that already rendered).
+ * Name is randomized — never overwrite by caller title.
  */
-export function stagePngBuffer(pngBuffer, name = "chart.png") {
-  const dir = stateMediaDir();
-  const safe = String(name).replace(/[^\w.\u4e00-\u9fff-]+/g, "_").slice(0, 64) || "chart.png";
-  const path = join(dir, safe.endsWith(".png") ? safe : `${safe}.png`);
+export function stagePngBuffer(pngBuffer, authCtx, nameHint = "chart") {
+  if (!authCtx || typeof authCtx !== "object") {
+    throw new Error("stagePngBuffer_requires_authCtx");
+  }
+  const dir = identityMediaDir(authCtx);
+  const hint = String(nameHint || "chart")
+    .replace(/[^\w.\u4e00-\u9fff-]+/g, "_")
+    .slice(0, 24) || "chart";
+  const safe = `${hint}_${Date.now()}_${randomBytes(6).toString("hex")}.png`;
+  const path = join(dir, safe);
   writeFileSync(path, pngBuffer);
   return path;
 }
 
-export { stripPaths };
+export { stripPaths, sealAndRender, identityMediaDir };

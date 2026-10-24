@@ -1,11 +1,12 @@
 /**
  * Optional XLSX export for long tables (full data; PNG shows preview rows only).
+ * All cell values are sanitized against formula injection.
  */
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { rowsOf } from "./validate.mjs";
+import { rowsOf, sanitizeSpreadsheetCell } from "./validate.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "../../../..");
@@ -42,7 +43,7 @@ export async function datasetToXlsxBuffer(dataset, meta = {}) {
     : inferColumns(dataset);
 
   sheet.columns = columns.map((c) => ({
-    header: c.label || c.key,
+    header: sanitizeSpreadsheetCell(c.label || c.key),
     key: c.key,
     width: Math.min(28, Math.max(10, String(c.label || c.key).length + 4)),
   }));
@@ -51,14 +52,29 @@ export async function datasetToXlsxBuffer(dataset, meta = {}) {
   for (const row of rows) {
     const out = {};
     for (const c of columns) {
-      out[c.key] = row[c.key] ?? row[c.field] ?? "";
+      out[c.key] = sanitizeSpreadsheetCell(row[c.key] ?? row[c.field] ?? "");
     }
     sheet.addRow(out);
   }
 
+  const firstKey = columns[0]?.key || "A";
   sheet.addRow({});
-  sheet.addRow({ [columns[0]?.key || "A"]: `来源：${meta.sourceLabel || "ERP"}` });
-  sheet.addRow({ [columns[0]?.key || "A"]: `生成：${meta.generatedAtZh || meta.generatedAt || ""}` });
+  sheet.addRow({
+    [firstKey]: sanitizeSpreadsheetCell(`来源：${meta.sourceLabel || "ERP"}`),
+  });
+  sheet.addRow({
+    [firstKey]: sanitizeSpreadsheetCell(`生成：${meta.generatedAtZh || meta.generatedAt || ""}`),
+  });
+  if (meta.datasetRefId) {
+    sheet.addRow({
+      [firstKey]: sanitizeSpreadsheetCell(`datasetRef：${meta.datasetRefId}`),
+    });
+  }
+  if (meta.provenance) {
+    sheet.addRow({
+      [firstKey]: sanitizeSpreadsheetCell(`provenance：${meta.provenance}`),
+    });
+  }
 
   const buf = await book.xlsx.writeBuffer();
   return Buffer.from(buf);
