@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="230" viewBox="0 0 800 230" role="img" aria-label="今日经营摘要 · KPI · 来源ERP 授权查询（smoke） · 采购金额:16800，入库单数:6，成品库存:420">
+  <title>今日经营摘要</title>
+  <defs>
+    <style><![CDATA[
+      text { font-family: "Microsoft YaHei", "Microsoft YaHei", "SimHei", "Noto Sans SC", sans-serif; }
+    ]]></style>
+  </defs>
+  <rect width="100%" height="100%" fill="#F7F5F1"/>
+  <text x="24" y="36" fill="#1C2430" font-size="20" font-weight="700">今日经营摘要</text><rect x="24" y="64" width="240" height="110" fill="#FFFFFF" stroke="#D5D0C8" rx="8"/><text x="42" y="96" fill="#5B6573" font-size="13">采购金额</text><text x="42" y="132" fill="#1C2430" font-size="28" font-weight="700">¥16,800</text><text x="246" y="132" fill="#5B6573" font-size="13" text-anchor="end">CNY</text><text x="42" y="156" fill="#0F6E56" font-size="12">+12%</text><rect x="280" y="64" width="240" height="110" fill="#FFFFFF" stroke="#D5D0C8" rx="8"/><text x="298" y="96" fill="#5B6573" font-size="13">入库单数</text><text x="298" y="132" fill="#1C2430" font-size="28" font-weight="700">6</text><text x="502" y="132" fill="#5B6573" font-size="13" text-anchor="end">单</text><rect x="536" y="64" width="240" height="110" fill="#FFFFFF" stroke="#D5D0C8" rx="8"/><text x="554" y="96" fill="#5B6573" font-size="13">成品库存</text><text x="554" y="132" fill="#1C2430" font-size="28" font-weight="700">420</text><text x="758" y="132" fill="#5B6573" font-size="13" text-anchor="end">L</text><text x="24" y="214" fill="#5B6573" font-size="11">来源：ERP 授权查询（smoke） · 生成 2026-10-24 10:17</text>
+  <text x="776" y="214" fill="#5B6573" font-size="10" text-anchor="end">非发票 · ERP 授权数据</text>
+</svg>

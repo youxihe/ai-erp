@@ -1,0 +1,190 @@
+{
+  "ticket": "AIERP-020C",
+  "status": "CODE_READY",
+  "startedAt": "2026-10-24T02:17:08.042Z",
+  "baseCommitHint": "origin/master",
+  "checks": [
+    {
+      "name": "resvg_available",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "name": "chinese_fonts",
+      "pass": true,
+      "detail": {
+        "family": "Microsoft YaHei",
+        "count": 6,
+        "files": [
+          "msyh.ttc",
+          "msyhbd.ttc",
+          "msyhl.ttc",
+          "NotoSansSC-VF.ttf",
+          "simhei.ttf",
+          "simsun.ttc"
+        ]
+      }
+    },
+    {
+      "name": "catalog_whitelist",
+      "pass": true,
+      "detail": [
+        "table.basic",
+        "bar.compare",
+        "line.trend",
+        "pie.share",
+        "delta.before_after",
+        "kpi.tiles"
+      ]
+    },
+    {
+      "name": "table.basic",
+      "pass": true,
+      "detail": {
+        "pngBytes": 110554,
+        "xlsx": true,
+        "previewRows": 12
+      }
+    },
+    {
+      "name": "bar.compare",
+      "pass": true,
+      "detail": {
+        "pngBytes": 46883,
+        "sha": "9ce3d27193bf"
+      }
+    },
+    {
+      "name": "line.trend",
+      "pass": true,
+      "detail": {
+        "pngBytes": 69532
+      }
+    },
+    {
+      "name": "pie.share",
+      "pass": true,
+      "detail": {
+        "pngBytes": 76278
+      }
+    },
+    {
+      "name": "delta.before_after",
+      "pass": true,
+      "detail": {
+        "pngBytes": 59003
+      }
+    },
+    {
+      "name": "kpi.tiles",
+      "pass": true,
+      "detail": {
+        "pngBytes": 40261
+      }
+    },
+    {
+      "name": "pie_negative_degrade",
+      "pass": true,
+      "detail": {
+        "renderId": "table.basic",
+        "reason": "pie_rejects_negative"
+      }
+    },
+    {
+      "name": "mixed_units_degrade",
+      "pass": true,
+      "detail": {
+        "reason": "mixed_units_cannot_chart"
+      }
+    },
+    {
+      "name": "reject_invented_numbers",
+      "pass": true,
+      "detail": {
+        "degraded": true,
+        "reason": "ai_invented_numbers_rejected",
+        "renderId": "explanation"
+      }
+    },
+    {
+      "name": "reject_sql_or_path_probe",
+      "pass": true,
+      "detail": {
+        "degraded": true,
+        "renderId": "explanation",
+        "reason": "forbidden_html_sql_or_path"
+      }
+    },
+    {
+      "name": "reject_unauthorized",
+      "pass": true,
+      "detail": {
+        "renderId": "explanation",
+        "reason": "dataset_must_be_authorized_erp_or_datasetRef"
+      }
+    },
+    {
+      "name": "wecom_hook_prepare",
+      "pass": true,
+      "detail": {
+        "alt": "企微钩子预渲染 · 柱状对比 · 单位kg · 来源ERP 授权查询（smoke） · A仓:11，B仓:22",
+        "png": "企微钩子预渲染.png"
+      }
+    },
+    {
+      "name": "line_too_few_degrade",
+      "pass": true,
+      "detail": {
+        "reason": "line_needs_three_plus_time_points",
+        "renderId": "table.basic"
+      }
+    }
+  ],
+  "ok": true,
+  "fonts": {
+    "family": "Microsoft YaHei",
+    "count": 6,
+    "files": [
+      "msyh.ttc",
+      "msyhbd.ttc",
+      "msyhl.ttc",
+      "NotoSansSC-VF.ttf",
+      "simhei.ttf",
+      "simsun.ttc"
+    ]
+  },
+  "artifacts": [
+    {
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\采购入库明细表.png",
+      "xlsx": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\采购入库明细表.xlsx",
+      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\采购入库明细表.svg"
+    },
+    {
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\各仓库存对比.png",
+      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\各仓库存对比.svg"
+    },
+    {
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\近7日采购金额.png",
+      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\近7日采购金额.svg"
+    },
+    {
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\供应商采购金额占比.png",
+      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\供应商采购金额占比.svg"
+    },
+    {
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\配制前后库存差异.png",
+      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\配制前后库存差异.svg"
+    },
+    {
+      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\今日经营摘要.png",
+      "svg": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\今日经营摘要.svg"
+    }
+  ],
+  "finishedAt": "2026-10-24T02:17:27.347Z",
+  "modulePaths": [
+    "deploy/openclaw/sop/render-lib/",
+    "deploy/openclaw/plugins/aierp-erp-tools/sop/render-lib/",
+    "deploy/scripts/aierp-020c-render-smoke.mjs"
+  ],
+  "note": "CODE_READY only — not LOCAL_DEPLOYED. Do not merge into F: runtime from this branch without deploy owner."
+}

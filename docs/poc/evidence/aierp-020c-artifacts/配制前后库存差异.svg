@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="356" viewBox="0 0 900 356" role="img" aria-label="配制前后库存差异 · 前后差异 · 来源ERP 授权查询（smoke） · 原料甲、原料乙、原料丙、成品药水">
+  <title>配制前后库存差异</title>
+  <defs>
+    <style><![CDATA[
+      text { font-family: "Microsoft YaHei", "Microsoft YaHei", "SimHei", "Noto Sans SC", sans-serif; }
+    ]]></style>
+  </defs>
+  <rect width="100%" height="100%" fill="#F7F5F1"/>
+  <text x="24" y="36" fill="#1C2430" font-size="20" font-weight="700">配制前后库存差异</text><text x="24" y="56" fill="#5B6573" font-size="12">前 → 后（原料减少 / 成品增加等库存差异）</text><text x="360" y="56" fill="#5B6573" font-size="11">前</text><text x="620" y="56" fill="#5B6573" font-size="11">后</text><text x="24" y="100" fill="#1C2430" font-size="14" font-weight="600">原料甲</text><rect x="360" y="84" width="220" height="18" fill="#2F5D8C" rx="2"/><text x="588" y="98" fill="#5B6573" font-size="12">100 kg</text><rect x="620" y="84" width="154" height="18" fill="#0F6E56" rx="2"/><text x="782" y="98" fill="#1C2430" font-size="12">70 kg</text><text x="24" y="120" fill="#A33B2B" font-size="11">Δ -30 kg</text><text x="24" y="156" fill="#1C2430" font-size="14" font-weight="600">原料乙</text><rect x="360" y="140" width="176" height="18" fill="#2F5D8C" rx="2"/><text x="544" y="154" fill="#5B6573" font-size="12">80 kg</text><rect x="620" y="140" width="110" height="18" fill="#0F6E56" rx="2"/><text x="738" y="154" fill="#1C2430" font-size="12">50 kg</text><text x="24" y="176" fill="#A33B2B" font-size="11">Δ -30 kg</text><text x="24" y="212" fill="#1C2430" font-size="14" font-weight="600">原料丙</text><rect x="360" y="196" width="132" height="18" fill="#2F5D8C" rx="2"/><text x="500" y="210" fill="#5B6573" font-size="12">60 kg</text><rect x="620" y="196" width="88" height="18" fill="#0F6E56" rx="2"/><text x="716" y="210" fill="#1C2430" font-size="12">40 kg</text><text x="24" y="232" fill="#A33B2B" font-size="11">Δ -20 kg</text><text x="24" y="268" fill="#1C2430" font-size="14" font-weight="600">成品药水</text><rect x="360" y="252" width="22" height="18" fill="#2F5D8C" rx="2"/><text x="390" y="266" fill="#5B6573" font-size="12">10 L</text><rect x="620" y="252" width="88" height="18" fill="#0F6E56" rx="2"/><text x="716" y="266" fill="#1C2430" font-size="12">40 L</text><text x="24" y="288" fill="#0F6E56" font-size="11">Δ +30 L</text><text x="24" y="340" fill="#5B6573" font-size="11">来源：ERP 授权查询（smoke） · 生成 2026-10-24 10:17</text>
+  <text x="876" y="340" fill="#5B6573" font-size="10" text-anchor="end">非发票 · ERP 授权数据</text>
+</svg>
