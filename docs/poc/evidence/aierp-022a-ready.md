@@ -20,4 +20,10 @@ Status: **CODE_READY** (not LOCAL_DEPLOYED). No Merge. No F: / app.jar touch. No
 5. Forced PDF font failure → receipt stays `PDF_FAILED` / text ready; native bill remains CONFIRMED; stock unchanged.
 
 ## Java BUILD
-See PR / CI log (local `mvn -pl jshERP-boot -am package -DskipTests`).
+Local: `mvn -DskipTests package` in `jshERP-boot` → **BUILD SUCCESS** (Temurin JDK8 + Maven 3.9.6).
+HEAD: `2cc96ff489574ed6672aa2cfe9807b71257f523e`
+
+## PR
+Branch pushed: `feat/aierp-022a-unified-mutation-audit-pdf`
+Open/compare: https://github.com/youxihe/ai-erp/compare/master...feat/aierp-022a-unified-mutation-audit-pdf
+(`gh` CLI not authenticated on this agent host — create PR from compare URL if not auto-opened.)
