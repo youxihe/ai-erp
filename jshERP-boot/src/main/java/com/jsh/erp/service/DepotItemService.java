@@ -384,6 +384,29 @@ public class DepotItemService {
         return result;
     }
 
+    /**
+     * AIERP-020C: 确定单据明细的租户。
+     * 优先取主表（已由 addDepotHeadAndDetailAs 显式赋值），回退到显式 actor，
+     * 最后尝试当前会话用户。三者皆空时返回 null，由调用方保持不设置。
+     */
+    private Long resolveItemTenantId(DepotHead depotHead, User actor) {
+        if (depotHead != null && depotHead.getTenantId() != null) {
+            return depotHead.getTenantId();
+        }
+        if (actor != null && actor.getTenantId() != null) {
+            return actor.getTenantId();
+        }
+        try {
+            User current = userService.getCurrentUser();
+            if (current != null) {
+                return current.getTenantId();
+            }
+        } catch (Exception ignored) {
+            // no HTTP session (WeCom / gateway path) — leave null
+        }
+        return null;
+    }
+
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public void saveDetials(String rows, Long headerId, String actionType, DepotHead preDepotHead, HttpServletRequest request) throws Exception{
         saveDetials(rows, headerId, actionType, preDepotHead, request, null);
@@ -694,6 +717,10 @@ public class DepotItemService {
                         }
                     }
                 }
+                // AIERP-020C: 明细必须显式落租户。企微/网关路径没有 X-Access-Token，
+                // MyBatis 租户插件不会自动填充 tenant_id，导致后台单据列表按租户 JOIN 明细时
+                // 过滤掉整张单据（表现为"单据在后台看不到"）。
+                depotItem.setTenantId(resolveItemTenantId(depotHead, actor));
                 depotItemList.add(depotItem);
             }
             //批量写入单据明细数据
