@@ -14,6 +14,10 @@ import {
   isReceiptFollowup,
 } from "./sop/receipt-send.mjs";
 import {
+  autoDeliverReceiptPdf,
+  appendDeliveryHint,
+} from "./sop/receipt-auto-delivery.mjs";
+import {
   renderPurchaseConfirmed,
   factsFromConfirm,
   sanitizeForChannel,
@@ -1228,34 +1232,20 @@ function registerConfirmAndExcelDispatchHook(api) {
         });
         let reply = formatConfirm(data);
         const bill = data?.billNumber;
-        const isServiceBill =
-          data?.bizType === "SERVICE" || String(bill || "").startsWith("GW-SERVICE-");
-        const isMixBill = String(bill || "").startsWith("GW-MIX-") || data?.bizType === "MIX";
-        // Auto-send receipt PDF after PURCHASE confirm only (never fake PDF for MIX/SERVICE).
-        if (bill && data?.status === "CONFIRMED" && !isServiceBill && !isMixBill) {
-          try {
-            const sent = await runReceiptSend({
-              wecomUserId: senderId,
-              text: `发 ${bill} 回执`,
-              botId: botId(),
-              messageId,
-              signedPost,
-              cfg: apiRef?.config || {},
-              mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
-              followup: false,
-              markdown: false,
-            });
-            if (sent?.sent) {
-              reply = sanitizeForChannel(reply, { markdown: false });
-            } else if (sent?.text) {
-              reply = sanitizeForChannel(`${reply}\n\n${sent.text}`, { markdown: false });
-            }
-          } catch (sendErr) {
-            reply = sanitizeForChannel(
-              `${reply}\n\nPDF 暂未发送成功，请回复「重发回执」。`,
-              { markdown: false },
-            );
-          }
+        // AIERP-022B: unified auto PDF for PURCHASE / SERVICE (MIX owned by registerMixConfirm).
+        // Resend never re-posts; CHANNEL_ACCEPTED ≠ CLIENT_OPEN_VERIFIED.
+        if (bill && (data?.status === "CONFIRMED" || data?.status === "POSTED")) {
+          const delivery = await autoDeliverReceiptPdf({
+            confirmData: data,
+            wecomUserId: senderId,
+            botId,
+            signedPost,
+            cfg: apiRef?.config || {},
+            mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
+            messageId,
+            markdown: false,
+          });
+          reply = appendDeliveryHint(sanitizeForChannel(reply, { markdown: false }), delivery);
         }
         return { handled: true, text: reply };
       } catch (err) {
@@ -1445,8 +1435,7 @@ const plugin = {
     registerErpTools(api);
     registerExcelObserveHook(api);
     // AIERP-016M: recipe-hash ack (确认配方) then draft confirm (确认配制).
-    // Does not alter PURCHASE confirm + receipt PDF auto-send paths.
-    // MIX has no dedicated PDF — text receipt only.
+    // AIERP-022B: MIX confirm auto-delivers matching receipt PDF when ready (never purchase retitle).
     registerMixRecipeAckDispatch(api, {
       botId,
       signedPost,

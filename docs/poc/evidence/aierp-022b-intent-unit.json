@@ -1,0 +1,133 @@
+{
+  "ticket": "AIERP-022B",
+  "kind": "intent-unit",
+  "pass": true,
+  "passCount": 30,
+  "total": 30,
+  "results": [
+    {
+      "name": "extract_purchase",
+      "ok": true
+    },
+    {
+      "name": "extract_mix",
+      "ok": true
+    },
+    {
+      "name": "extract_service",
+      "ok": true
+    },
+    {
+      "name": "extract_bare_mix",
+      "ok": true
+    },
+    {
+      "name": "bare_pick_mix",
+      "ok": true
+    },
+    {
+      "name": "bare_pick_reject_phrase",
+      "ok": true
+    },
+    {
+      "name": "intent_mix_receipt",
+      "ok": true
+    },
+    {
+      "name": "intent_service_receipt",
+      "ok": true
+    },
+    {
+      "name": "intent_purchase_still",
+      "ok": true
+    },
+    {
+      "name": "not_template",
+      "ok": true
+    },
+    {
+      "name": "followup",
+      "ok": true
+    },
+    {
+      "name": "pending_need_choice",
+      "ok": true
+    },
+    {
+      "name": "canHandle_bare_after_need_choice",
+      "ok": true,
+      "detail": "{\"sopId\":\"receipt-send\",\"followup\":false,\"billPick\":true}"
+    },
+    {
+      "name": "registry_bill_pick",
+      "ok": true,
+      "detail": "{\"sopId\":\"receipt_bill_pick\",\"followup\":false,\"billPick\":true}"
+    },
+    {
+      "name": "bare_without_pending_no_claim",
+      "ok": true
+    },
+    {
+      "name": "delivery_constants",
+      "ok": true
+    },
+    {
+      "name": "never_auto_client_open",
+      "ok": true
+    },
+    {
+      "name": "kind_mix_bill",
+      "ok": true
+    },
+    {
+      "name": "kind_service_dto",
+      "ok": true
+    },
+    {
+      "name": "kind_purchase",
+      "ok": true
+    },
+    {
+      "name": "kind_022a_partner_hook",
+      "ok": true
+    },
+    {
+      "name": "title_mix_not_purchase",
+      "ok": true
+    },
+    {
+      "name": "title_service_not_purchase",
+      "ok": true
+    },
+    {
+      "name": "auto_kinds",
+      "ok": true
+    },
+    {
+      "name": "future_hooks",
+      "ok": true
+    },
+    {
+      "name": "post_success",
+      "ok": true
+    },
+    {
+      "name": "hint_pdf_not_ready_no_repost",
+      "ok": true
+    },
+    {
+      "name": "realpath_inside_ok",
+      "ok": true,
+      "detail": "{\"ok\":true,\"realFile\":\"C:\\\\Users\\\\油锡贺\\\\AppData\\\\Local\\\\Temp\\\\aierp-022b-ZgIWj3\\\\aierp-receipt\\\\ok.pdf\"}"
+    },
+    {
+      "name": "realpath_outside_denied",
+      "ok": true,
+      "detail": "{\"ok\":false,\"error\":\"media path outside configured mediaLocalRoots\"}"
+    },
+    {
+      "name": "roots_fixed_no_parent_injection",
+      "ok": true
+    }
+  ]
+}

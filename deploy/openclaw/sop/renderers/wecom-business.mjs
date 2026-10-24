@@ -132,23 +132,35 @@ export function renderPurchaseConfirmed(facts, mode = "plain") {
 
 export function renderReceiptReady(facts, mode = "plain") {
   const bill = facts.billNumber || "-";
-  const material = facts.materialName || "采购物料";
+  const kind = String(facts.receiptKind || "").toUpperCase();
+  const material = facts.materialName || (kind === "SERVICE" || kind === "MIX" ? "物料" : "采购物料");
   const qty = fmtQty(facts.qty ?? facts.operNumber, facts.unit || "L");
   const amount = fmtMoney(facts.amount ?? facts.allPrice);
   void mode;
-  return [
-    `📄 采购入库业务回执`,
-    `${bill} · 已审核`,
-    `${material} · ${qty}`,
-    `采购金额 ${amount}`,
-    `回执 PDF 见上方文件消息（非发票）。`,
-  ].join("\n");
+  let title = "📄 采购入库业务回执";
+  if (kind === "MIX") title = "📄 配制业务回执";
+  if (kind === "SERVICE") title = "📄 服务耗料出库回执";
+  const lines = [`${title}`, `${bill} · 已审核`, `${material} · ${qty}`];
+  if (kind === "PURCHASE" || (!kind && amount && amount !== "-")) {
+    lines.push(`采购金额 ${amount}`);
+  }
+  lines.push(`回执 PDF 见上方文件消息（非发票）。`);
+  return lines.join("\n");
 }
 
 export function renderReceiptSendFailed(facts) {
-  const bill = facts.billNumber || "该采购单";
+  const bill = facts.billNumber || "该单据";
+  const kind = String(facts.receiptKind || "").toUpperCase();
+  const label =
+    kind === "MIX" ? "配制单" : kind === "SERVICE" ? "服务耗料单" : "采购单";
+  const effect =
+    kind === "MIX"
+      ? "库存变动不受影响"
+      : kind === "SERVICE"
+        ? "出库不受影响"
+        : "入库不受影响";
   return [
-    `采购单 ${bill} 已审核，入库不受影响。`,
+    `${label} ${bill} 已审核，${effect}。`,
     `PDF 暂未发送成功，请回复「重发回执」，或登录 ERP 下载。`,
   ].join("\n");
 }

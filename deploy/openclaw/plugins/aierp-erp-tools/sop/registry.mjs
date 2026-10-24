@@ -8,7 +8,12 @@
  * AIERP-017B2: purchase_batch_prepare (DRAFT only); preview auto-prepare + HMAC batch API cover the path.
  * Do not overwrite shared F: OpenClaw runtime from this branch.
  */
-import { canHandleReceipt, isReceiptRequest, isReceiptFollowup } from "./receipt-send.mjs";
+import {
+  canHandleReceipt,
+  isReceiptRequest,
+  isReceiptFollowup,
+  isBareBillPick,
+} from "./receipt-send.mjs";
 import { isServiceConfirmPhrase } from "./service-consume.mjs";
 import { isMixConfirmPhrase, isMixRecipeAckPhrase, MIX_SOP } from "./mix-prepare.mjs";
 import {
@@ -21,6 +26,7 @@ import {
 export const SOP_PRIORITY = [
   "receipt_request",
   "receipt_followup",
+  "receipt_bill_pick",
   "mix_recipe_ack",
   "mix_confirm",
   "service_confirm",
@@ -53,6 +59,9 @@ export function routeTrustedInbound({
 
   const receipt = canHandleReceipt(t, wecomUserId);
   if (receipt) {
+    if (receipt.billPick || (isBareBillPick(t) && receipt.sopId === "receipt-send")) {
+      return { sopId: "receipt_bill_pick", followup: false, billPick: true };
+    }
     return {
       sopId: receipt.followup || isReceiptFollowup(t) ? "receipt_followup" : "receipt_request",
       followup: !!receipt.followup || isReceiptFollowup(t),
@@ -86,6 +95,7 @@ export function routeTrustedInbound({
 export {
   isReceiptRequest,
   isReceiptFollowup,
+  isBareBillPick,
   isServiceConfirmPhrase,
   isMixConfirmPhrase,
   isMixRecipeAckPhrase,

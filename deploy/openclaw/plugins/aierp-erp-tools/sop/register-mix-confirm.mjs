@@ -1,9 +1,12 @@
 /**
  * Thin registration for AIERP-016M MIX confirm phrase.
  * Registers a dedicated before_dispatch handler — avoids rewriting plugin/index.js confirm block.
+ * AIERP-022B: after successful MIX post, auto-deliver matching receipt PDF (never purchase retitle;
+ * resend never re-posts).
  */
 import { isMixConfirmPhrase, runMixConfirm } from "./mix-prepare.mjs";
 import { sanitizeForChannel } from "./renderers/wecom-business.mjs";
+import { autoDeliverReceiptPdf, appendDeliveryHint } from "./receipt-auto-delivery.mjs";
 
 /**
  * @param {object} api OpenClaw plugin API
@@ -38,7 +41,7 @@ export function registerMixConfirmDispatch(api, deps) {
 
     const messageId = event?.messageId || ctx?.messageId || undefined;
     try {
-      const { replyText } = await runMixConfirm({
+      const { replyText, data } = await runMixConfirm({
         text,
         wecomUserId: senderId,
         botId: typeof botId === "function" ? botId() : botId,
@@ -46,11 +49,24 @@ export function registerMixConfirmDispatch(api, deps) {
         signedPost,
         channel: channelId,
       });
-      // MIX: do not auto-send purchase receipt PDF.
-      return {
-        handled: true,
-        text: sanitizeForChannel(replyText, { markdown: false }),
-      };
+      let reply = sanitizeForChannel(replyText, { markdown: false });
+
+      // Auto-deliver MIX receipt PDF when available; never re-post; never use purchase PDF title.
+      if (data?.billNumber && (data?.status === "CONFIRMED" || data?.status === "POSTED")) {
+        const delivery = await autoDeliverReceiptPdf({
+          confirmData: { ...data, receiptKind: data.receiptKind || "MIX", bizType: data.bizType || "MIX" },
+          wecomUserId: senderId,
+          botId,
+          signedPost,
+          cfg: api?.config || {},
+          mediaLocalRoots: api?.config?.channels?.wecom?.mediaLocalRoots || [],
+          messageId,
+          markdown: false,
+        });
+        reply = appendDeliveryHint(reply, delivery);
+      }
+
+      return { handled: true, text: reply };
     } catch (err) {
       return {
         handled: true,

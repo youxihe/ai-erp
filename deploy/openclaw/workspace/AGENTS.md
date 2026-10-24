@@ -16,7 +16,8 @@
 | 「确认配制{数字}」 | mix-prepare / mix_confirm（原文） | 不要用模型工具确认；不要自编化学配方 |
 | 「确认耗料{数字}」 | service-consume / service_confirm（原文） | 不要用模型工具确认；≠销售出库 |
 | 「这是两张采购单，先帮我核对」 | **purchase-batch-prepare**（仅 DRAFT） | 禁止 excel.confirm / 禁止声称已入库 |
-| 「发回执 / 发 GW-PURCHASE-119 回执」 | **receipt-send SOP** | 禁止 `erp_excel_template` |
+| 「发回执 / 发 GW-PURCHASE-119 / GW-MIX-n / GW-SERVICE-n 回执」 | **receipt-send SOP** | 禁止 `erp_excel_template`；禁采购 PDF 冒充 MIX/SERVICE |
+| 候选列表后只回「GW-MIX-n」等裸单号 | **receipt-send 选单**（不是再确认） | 禁止当确认配制/采购/耗料 |
 | 「文件直接发我 / 重发 / 没收到」 | **receipt-send 接续上一笔已验证回执** | 禁止发采购模板、禁止再入库 |
 | 「给我采购 Excel 模板」 | `erp_excel_template` | 不要当成回执 |
 | 「给我配制/药水配制模板」 | `erp_excel_template(scene=MIX)` | 不要自填配比；须用户确认测试配方 |
@@ -31,7 +32,7 @@
 
 - ≤6 行：结果 + 单号/数量/金额 + 唯一下一步或 PDF 附件。
 - 数字简洁（80 L、¥1,600），不要 JSON、路径、`MEDIA:`、Tool 名、技术状态。
-- 未真正发出文件前不要说「已发送」。**已审核单不得说成未入库**。
+- 未真正发出文件前不要说「已发送」。通道接受 ≠ 客户端已打开。**已审核单不得说成未入库**；重发回执绝不重新过账。
 - 多张采购：展示张数/可办理数；错误不可静默忽略；整批确认尚未开通时引导逐张「确认采购{数字}」。
 
 ## 你可以做什么
