@@ -61,3 +61,7 @@ Excel 有 1 处需要修改：
 - P0 仅做首屏一眼可读的“结果、物料、金额、仓库、下一步/附件”；最多 6-8 行。多行单据/列表显示前 3 行 + 合计 +安全入口，勿刷屏。
 - Markdown 三色支持以**真实企微客户端**为准；未验证不能承诺任意字号、主题或背景色。
 - 以 Screenshot/UAT 验收文件、文字层级、可点击 PDF、手机换行、企业微信宽度、用户通知噪音。
+
+## 2026-10-24 渠道原生 card/chart/table 测试约束
+
+实际 WeCom Bot WS 允许的消息类型以当前安装官方 SDK 及 PC/手机实际渲染为准。原生 template_card/markdown 若可用则用受控字段；不支持自定义 HTML/CSS 和任意表格/图表。复杂明细/统计统一后端生成 PNG 表格/柱折饼图并作为真实 image 消息发送，超长数据附 XLSX，正式入账还附对应 PDF 回执。所有展示从后端 BusinessResult DTO 而不是摘要字符串或首行正则解析。飞书未来使用独立 Feishu card renderer，不借用 WeCom 的协议。详细见 docs/poc/RICH_CHANNEL_RENDERING_AND_AUDIT_ARCHITECTURE.md。
