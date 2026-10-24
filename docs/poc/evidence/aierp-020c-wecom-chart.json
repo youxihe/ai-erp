@@ -1,6 +1,6 @@
 {
   "ticket": "AIERP-020C-WECOM-IMAGE",
-  "startedAt": "2026-10-24T07:28:22.571Z",
+  "startedAt": "2026-10-24T07:41:25.521Z",
   "checks": [
     {
       "name": "real_erp_bind",
@@ -26,8 +26,8 @@
         "renderId": "table.basic",
         "sent": true,
         "totalRows": 8,
-        "pngBytes": 95218,
-        "pngSha256": "815971d81b9f",
+        "pngBytes": 94767,
+        "pngSha256": "955db4dfe060",
         "cardSent": true,
         "card": {
           "card_type": "text_notice",
@@ -57,15 +57,15 @@
               "question": "把成品仓的库存用表格展示给我"
             }
           ],
+          "card_action": {
+            "type": 1,
+            "url": "https://aierp-card-info.app.workbuddy.host/?sharecode=KZQSV7PE6B"
+          },
           "emphasis_content": {
-            "title": "426.9 L",
+            "title": "446.9 L",
             "desc": "库存合计"
           },
-          "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。",
-          "card_action": {
-            "type": 3,
-            "question": "把原料仓的库存用表格展示给我"
-          }
+          "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
         },
         "text": "库存表格已发送（原料仓，共 8 行）。数据来自 ERP 实时查询，非模型估算。"
       }
@@ -78,7 +78,7 @@
         "sent": true,
         "degraded": true,
         "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
-        "pngBytes": 72037,
+        "pngBytes": 71434,
         "cardSent": true,
         "card": {
           "card_type": "text_notice",
@@ -112,15 +112,15 @@
               "question": "把本月采购明细用表格展示给我"
             }
           ],
+          "card_action": {
+            "type": 1,
+            "url": "https://aierp-card-info.app.workbuddy.host/?sharecode=KZQSV7PE6B"
+          },
           "emphasis_content": {
-            "title": "¥16,340",
+            "title": "¥16,840",
             "desc": "金额合计"
           },
-          "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。",
-          "card_action": {
-            "type": 3,
-            "question": "把本月采购情况用指标卡展示给我"
-          }
+          "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
         },
         "text": "采购入库柱状图已发送（2026年10月）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。"
       }
@@ -143,10 +143,8 @@
         "questions": [
           "把原料仓的库存用表格展示给我",
           "把成品仓的库存用表格展示给我",
-          "把原料仓的库存用表格展示给我",
           "把本月采购情况用指标卡展示给我",
-          "把本月采购明细用表格展示给我",
-          "把本月采购情况用指标卡展示给我"
+          "把本月采购明细用表格展示给我"
         ]
       }
     },
@@ -181,9 +179,9 @@
       "detail": {
         "count": 3,
         "files": [
-          "63_jsh_1792826904820_aed0a8540b5f_table.basic_815971d8.png",
-          "63_jsh_1792826906148_53050b9afaf7_bar.compare_271ec620.png",
-          "63_jsh_1792826907589_a7ec0a76404e_line.trend_08836226.png"
+          "63_jsh_1792827688115_dc14c8a23ace_table.basic_955db4df.png",
+          "63_jsh_1792827689554_c5362952c4a8_bar.compare_3dfddd54.png",
+          "63_jsh_1792827691043_3c977f5fe4dc_line.trend_c109f950.png"
         ]
       }
     }
@@ -193,8 +191,8 @@
       "renderId": "table.basic",
       "sent": true,
       "totalRows": 8,
-      "pngBytes": 95218,
-      "pngSha256": "815971d81b9f",
+      "pngBytes": 94767,
+      "pngSha256": "955db4dfe060",
       "cardSent": true,
       "card": {
         "card_type": "text_notice",
@@ -224,15 +222,15 @@
             "question": "把成品仓的库存用表格展示给我"
           }
         ],
+        "card_action": {
+          "type": 1,
+          "url": "https://aierp-card-info.app.workbuddy.host/?sharecode=KZQSV7PE6B"
+        },
         "emphasis_content": {
-          "title": "426.9 L",
+          "title": "446.9 L",
           "desc": "库存合计"
         },
-        "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。",
-        "card_action": {
-          "type": 3,
-          "question": "把原料仓的库存用表格展示给我"
-        }
+        "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
       },
       "text": "库存表格已发送（原料仓，共 8 行）。数据来自 ERP 实时查询，非模型估算。"
     },
@@ -241,7 +239,7 @@
       "sent": true,
       "degraded": true,
       "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
-      "pngBytes": 72037,
+      "pngBytes": 71434,
       "cardSent": true,
       "card": {
         "card_type": "text_notice",
@@ -275,15 +273,15 @@
             "question": "把本月采购明细用表格展示给我"
           }
         ],
+        "card_action": {
+          "type": 1,
+          "url": "https://aierp-card-info.app.workbuddy.host/?sharecode=KZQSV7PE6B"
+        },
         "emphasis_content": {
-          "title": "¥16,340",
+          "title": "¥16,840",
           "desc": "金额合计"
         },
-        "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。",
-        "card_action": {
-          "type": 3,
-          "question": "把本月采购情况用指标卡展示给我"
-        }
+        "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
       },
       "text": "采购入库柱状图已发送（2026年10月）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。"
     },
@@ -302,5 +300,5 @@
     }
   },
   "ok": true,
-  "finishedAt": "2026-10-24T07:28:27.891Z"
+  "finishedAt": "2026-10-24T07:41:31.264Z"
 }

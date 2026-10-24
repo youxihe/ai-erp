@@ -513,14 +513,10 @@ export function buildSmartReplies(plan) {
 export function buildSummaryCardVariants(built, rendered, plan, scope, webUrl) {
   const base = buildSummaryCard(built, rendered, plan, scope);
   const primaryQuestion = buildSmartReplies(plan)[0]?.question;
-  const variants = [];
-  if (primaryQuestion) {
-    variants.push({ ...base, card_action: { type: 3, question: primaryQuestion } });
-  }
-  if (webUrl) {
-    variants.push({ ...base, card_action: { type: 1, url: webUrl } });
-  }
-  return variants;
+  // 整卡智能回复（type=3）实测被 errcode=42045 拒绝；仅在无网页地址时才作为最后的尝试
+  const smartVariant = primaryQuestion ? { ...base, card_action: { type: 3, question: primaryQuestion } } : null;
+  const urlVariant = webUrl ? { ...base, card_action: { type: 1, url: webUrl } } : null;
+  return [urlVariant, smartVariant].filter(Boolean);
 }
 
 // ---- 主流程 ------------------------------------------------------------

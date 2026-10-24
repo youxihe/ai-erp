@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>AI ERP 数据助手</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f6f8;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #1f2329;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 28px 24px;
+    box-shadow: 0 6px 24px rgba(31, 35, 41, 0.08);
+  }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    color: #0a6cff;
+    background: #eaf2ff;
+    border-radius: 999px;
+    padding: 4px 10px;
+    margin-bottom: 14px;
+  }
+  h1 { font-size: 20px; margin: 0 0 12px; line-height: 1.4; }
+  p { font-size: 15px; line-height: 1.7; margin: 0 0 12px; color: #4e5969; }
+  ul { padding-left: 20px; margin: 12px 0 0; font-size: 14px; color: #4e5969; line-height: 1.8; }
+  .foot { margin-top: 18px; font-size: 12px; color: #8a9099; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">AI ERP 数据助手</span>
+    <h1>这张卡片的数据，来自 ERP 实时查询</h1>
+    <p>明细图表已随卡片一起发到聊天里，往上翻即可看到。</p>
+    <p>想换个口径再看一次，直接点卡片下方的入口，比如「查采购汇总」「查原料仓库存」，助手机器人会立刻回一份新的真实数据。</p>
+    <ul>
+      <li>金额为含税口径，按已审核单据统计</li>
+      <li>库存为当前时点快照</li>
+      <li>所有数字均为 ERP 原始查询结果，非估算</li>
+    </ul>
+    <div class="foot">本页仅用于说明卡片数据来源，不含任何业务数据。</div>
+  </div>
+</body>
+</html>
