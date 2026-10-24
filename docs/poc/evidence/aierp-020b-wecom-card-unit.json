@@ -1,0 +1,284 @@
+{
+  "ticket": "AIERP-020B",
+  "kind": "wecom-card-unit",
+  "pass": true,
+  "wecomPluginRoot": "F:\\aierp-openclaw\\state\\npm\\projects\\wecom-wecom-openclaw-plugin-18f843d908__openclaw-generation__g-7568b6c00499b705\\node_modules\\@wecom\\wecom-openclaw-plugin",
+  "capability": {
+    "ticket": "AIERP-020B",
+    "installed": {
+      "package": "@wecom/wecom-openclaw-plugin",
+      "version": "2026.7.2",
+      "stateRootHint": "F:/aierp-openclaw/state/npm/projects/wecom-wecom-openclaw-plugin-*/node_modules/@wecom/wecom-openclaw-plugin",
+      "aibotSdk": {
+        "package": "@wecom/aibot-node-sdk",
+        "version": "1.0.7"
+      }
+    },
+    "matrix": [
+      {
+        "capability": "markdown",
+        "msgtype": "markdown",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "wsClient.sendMessage / channel.outbound.sendText (always markdown body)",
+        "beforeDispatchText": "plain string only — do NOT embed markdown/HTML expecting color",
+        "pcClient": "SUPPORTED_NEEDS_UAT",
+        "mobileClient": "SUPPORTED_NEEDS_UAT",
+        "notes": "font color tags info/comment/warning only inside real markdown msgtype"
+      },
+      {
+        "capability": "template_card.text_notice",
+        "msgtype": "template_card",
+        "card_type": "text_notice",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "wsClient.sendMessage({msgtype:template_card}) via sendTemplateCards",
+        "beforeDispatchText": false,
+        "pcClient": "SUPPORTED_NEEDS_UAT",
+        "mobileClient": "SUPPORTED_NEEDS_UAT",
+        "notes": "horizontal_content_list max 6; card_action required"
+      },
+      {
+        "capability": "template_card.news_notice",
+        "msgtype": "template_card",
+        "card_type": "news_notice",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "sendTemplateCards",
+        "beforeDispatchText": false,
+        "pcClient": "SUPPORTED_NEEDS_UAT",
+        "mobileClient": "SUPPORTED_NEEDS_UAT",
+        "notes": "image + vertical_content; unused for purchase P0"
+      },
+      {
+        "capability": "template_card.button_interaction",
+        "msgtype": "template_card",
+        "card_type": "button_interaction",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "sendTemplateCards + event.template_card_event",
+        "beforeDispatchText": false,
+        "pcClient": "SUPPORTED_NEEDS_UAT",
+        "mobileClient": "SUPPORTED_NEEDS_UAT",
+        "notes": "AIERP-020B: buttons ONLY view/copy confirm phrase — NEVER post stock. Ban jump_list type=3 with confirm phrase."
+      },
+      {
+        "capability": "template_card.vote_interaction",
+        "msgtype": "template_card",
+        "card_type": "vote_interaction",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "sendTemplateCards",
+        "beforeDispatchText": false,
+        "pcClient": "NOT_USED",
+        "mobileClient": "NOT_USED",
+        "notes": "SDK listed; ERP adapter does not emit"
+      },
+      {
+        "capability": "template_card.multiple_interaction",
+        "msgtype": "template_card",
+        "card_type": "multiple_interaction",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "sendTemplateCards",
+        "beforeDispatchText": false,
+        "pcClient": "NOT_USED",
+        "mobileClient": "NOT_USED",
+        "notes": "SDK listed; ERP adapter does not emit"
+      },
+      {
+        "capability": "image",
+        "msgtype": "image",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "uploadAndSendMedia (MIME image/* → image)",
+        "beforeDispatchText": false,
+        "pcClient": "SUPPORTED_NEEDS_UAT",
+        "mobileClient": "SUPPORTED_NEEDS_UAT",
+        "notes": "for table/chart PNG (020C); never MEDIA: path text"
+      },
+      {
+        "capability": "file",
+        "msgtype": "file",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "uploadAndSendMedia → file (PDF receipts)",
+        "beforeDispatchText": false,
+        "pcClient": "SUPPORTED_NEEDS_UAT",
+        "mobileClient": "SUPPORTED_NEEDS_UAT",
+        "notes": "015C path; refuse 📎 F:\\ path fallback"
+      },
+      {
+        "capability": "mixed_inbound",
+        "msgtype": "mixed",
+        "sdkSupport": true,
+        "installedPluginSupport": true,
+        "outboundPath": "inbound parse only (text+image items)",
+        "beforeDispatchText": false,
+        "pcClient": "N/A",
+        "mobileClient": "N/A",
+        "notes": "inbound mixed supported; outbound SendMsgBody is markdown|template_card|media"
+      },
+      {
+        "capability": "html_font_in_plain_text",
+        "msgtype": "text/plain-via-before_dispatch",
+        "sdkSupport": false,
+        "installedPluginSupport": false,
+        "outboundPath": "none — tags show literally",
+        "beforeDispatchText": "FORBIDDEN",
+        "pcClient": "SHOWS_LITERAL_TAGS",
+        "mobileClient": "SHOWS_LITERAL_TAGS",
+        "notes": "Never emit <font> / MEDIA: in before_dispatch replies"
+      }
+    ],
+    "safeButtonKeys": [
+      "view_confirm_phrase",
+      "copy_confirm_phrase",
+      "view_receipt",
+      "download_receipt"
+    ],
+    "forbiddenPostButtonKeys": [
+      "confirm",
+      "confirm_purchase",
+      "confirm_mix",
+      "confirm_service",
+      "post",
+      "approve",
+      "入库",
+      "过账",
+      "审核"
+    ],
+    "probedAt": "2026-10-24",
+    "liveSendVerified": false,
+    "note": "SDK/plugin source probe only; PC+mobile delivery screenshots are separate UAT."
+  },
+  "sampleBatchText": "📝 采购单待确认（2 张）\n库存未变化。请逐张回复确认指令。\n\n#201 · CG-A\n表面活性剂（RM-A001）  10 L  单价 ¥20  行金额 ¥200\n表面活性剂（RM-A001）  5 L  单价 ¥20  行金额 ¥100\n本单合计：¥300\n回复「确认采购201」完成入库\n\n#202 · CG-B\n表面活性剂（RM-A001）  3 L  单价 ¥20  行金额 ¥60\n本单合计：¥60\n回复「确认采购202」完成入库",
+  "sampleConfirmed": "✅ 采购入库完成\nGW-PURCHASE-501 · 已审核\n\n表面活性剂（RM-A001）  10 L  单价 ¥20  行金额 ¥200\n表面活性剂（RM-A001）  5 L  单价 ¥20  行金额 ¥100\n原料仓 · 华东化工\n采购合计：¥300\n入库前 100 L → 当前 115 L\n回执 PDF 已随消息发送（非发票）",
+  "safeButtonKeys": [
+    "view_confirm_phrase",
+    "copy_confirm_phrase",
+    "view_receipt",
+    "download_receipt"
+  ],
+  "forbiddenPostButtonKeys": [
+    "confirm",
+    "confirm_purchase",
+    "confirm_mix",
+    "confirm_service",
+    "post",
+    "approve",
+    "入库",
+    "过账",
+    "审核"
+  ],
+  "results": [
+    {
+      "name": "sum_bill_a_not_first_line",
+      "ok": true,
+      "detail": 300
+    },
+    {
+      "name": "sum_bill_b",
+      "ok": true,
+      "detail": 60
+    },
+    {
+      "name": "sum_all_three",
+      "ok": true,
+      "detail": 360
+    },
+    {
+      "name": "facts_all_lines",
+      "ok": true,
+      "detail": 2
+    },
+    {
+      "name": "facts_total_300_not_200",
+      "ok": true,
+      "detail": 300
+    },
+    {
+      "name": "confirmed_shows_both_lines",
+      "ok": true
+    },
+    {
+      "name": "batch_2_bills_3_lines",
+      "ok": true,
+      "detail": {
+        "bills": 2,
+        "lines": 3
+      }
+    },
+    {
+      "name": "batch_reply_multi_line",
+      "ok": true,
+      "detail": "📝 采购单待确认（2 张）\n库存未变化。请逐张回复确认指令。\n\n#201 · CG-A\n表面活性剂（RM-A001）  10 L  单价 ¥20  行金额 ¥200\n表面活性剂（RM-A001）  5 L  单价 ¥20  行金额 ¥100\n本单合计：¥300\n回复「确认采购201」完成入库\n\n#202 · CG-B\n表面活性剂（RM-A001）  3 L  单价 ¥20  行金额 ¥60\n本单合计：¥60\n回复「确认采购202」完成入库"
+    },
+    {
+      "name": "not_first_line_only_total",
+      "ok": true
+    },
+    {
+      "name": "card_text_notice",
+      "ok": true,
+      "detail": {
+        "title": "¥300",
+        "desc": "待确认合计"
+      }
+    },
+    {
+      "name": "card_has_quote_phrase",
+      "ok": true
+    },
+    {
+      "name": "card_action_no_link",
+      "ok": true
+    },
+    {
+      "name": "phrase_card_buttons_safe",
+      "ok": true
+    },
+    {
+      "name": "forbidden_post_keys_rejected",
+      "ok": true
+    },
+    {
+      "name": "native_payloads",
+      "ok": true,
+      "detail": {
+        "md": "markdown",
+        "card": "template_card"
+      }
+    },
+    {
+      "name": "plain_no_html_media",
+      "ok": true
+    },
+    {
+      "name": "mix_not_in_purchase_facts",
+      "ok": true
+    },
+    {
+      "name": "capability_matrix",
+      "ok": true,
+      "detail": {
+        "n": 10,
+        "ver": "2026.7.2"
+      }
+    },
+    {
+      "name": "wecom_plugin_discovered",
+      "ok": true,
+      "detail": "F:\\aierp-openclaw\\state\\npm\\projects\\wecom-wecom-openclaw-plugin-18f843d908__openclaw-generation__g-7568b6c00499b705\\node_modules\\@wecom\\wecom-openclaw-plugin"
+    },
+    {
+      "name": "fmt_money",
+      "ok": true
+    },
+    {
+      "name": "parse_all_receipt_lines",
+      "ok": true,
+      "detail": 2
+    }
+  ]
+}

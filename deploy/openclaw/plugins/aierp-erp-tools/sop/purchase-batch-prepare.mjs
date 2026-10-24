@@ -2,7 +2,11 @@
  * AIERP-017B2 purchase-batch-prepare SOP.
  * Calls controlled Java /excel/purchase-batch-prepare (alias prepare-verified-batch).
  * Never excel.confirm / never LLM confirm tool. Batch confirm is 017C1.
+ * AIERP-020B: multi-line / multi-bill plain render when drafts carry structured lines.
  */
+
+import { sanitizeForChannel } from "./renderers/wecom-business.mjs";
+import { renderPurchaseBatchForWecom } from "./renderers/wecom-adapter.mjs";
 
 export const SOP_ID = "purchase_batch_prepare";
 export const PURCHASE_BATCH_PREPARE_PATH = "/aierp/v1/wecom/excel/purchase-batch-prepare";
@@ -62,20 +66,46 @@ export async function runPurchaseBatchPrepare({
 
 export function formatPurchaseBatchReply(data) {
   if (!data) return "暂时无法准备采购草稿，请重新发送 Excel。";
-  if (data.userSummaryZh) return String(data.userSummaryZh);
-  if (data.hintZh) return String(data.hintZh);
   const awaiting = data.awaitingDrafts ?? 0;
   const posted = data.alreadyPosted ?? 0;
   const total = data.totalBills ?? data.drafts?.length ?? 0;
   if (posted > 0 && awaiting === 0) {
     const bill = data.billNumber || data.drafts?.[0]?.nativeBillNumber;
     if (bill) {
-      return `批量采购已核对：${total} 张全部已审核完成（${bill}），无需再次入库。可回复「发 ${bill} 回执」领取 PDF。`;
+      return sanitizeForChannel(
+        `批量采购已核对：${total} 张全部已审核完成（${bill}），无需再次入库。可回复「发 ${bill} 回执」领取 PDF。`,
+        { markdown: false },
+      );
     }
-    return `批量采购已核对：${total} 张全部已审核完成，无需再次入库。可回复「发回执」领取 PDF。`;
+    return sanitizeForChannel(
+      `批量采购已核对：${total} 张全部已审核完成，无需再次入库。可回复「发回执」领取 PDF。`,
+      { markdown: false },
+    );
   }
+  // Prefer structured multi-line render when drafts include lines (2 bills / 3 lines etc.)
+  const drafts = Array.isArray(data.drafts) ? data.drafts : [];
+  const hasLines = drafts.some(
+    (d) => Array.isArray(d?.lines) && d.lines.length > 0,
+  );
+  if (hasLines || (awaiting > 0 && drafts.length > 0)) {
+    try {
+      const rendered = renderPurchaseBatchForWecom(data, { prefer: "plain" });
+      if (rendered?.text && /确认采购|本单合计|采购合计|行金额/.test(rendered.text)) {
+        return sanitizeForChannel(rendered.text, { markdown: false });
+      }
+    } catch {
+      // fall through to userSummaryZh / skeleton
+    }
+  }
+  if (data.userSummaryZh) {
+    return sanitizeForChannel(String(data.userSummaryZh), { markdown: false });
+  }
+  if (data.hintZh) return sanitizeForChannel(String(data.hintZh), { markdown: false });
   if (awaiting > 0) {
-    return `批量采购已核对：${total} 张；${awaiting} 张可办理。库存未变化。请逐张回复「确认采购{数字草稿号}」。`;
+    return sanitizeForChannel(
+      `批量采购已核对：${total} 张；${awaiting} 张可办理。库存未变化。请逐张回复「确认采购{数字草稿号}」。`,
+      { markdown: false },
+    );
   }
   return "文件已核对，库存未变化。";
 }

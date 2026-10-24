@@ -19,6 +19,12 @@ import {
   sanitizeForChannel,
 } from "./sop/renderers/wecom-business.mjs";
 import {
+  renderPurchaseConfirmForWecom,
+  renderBusinessResult,
+  toBusinessResult,
+} from "./sop/renderers/wecom-adapter.mjs";
+import { extractPurchaseLines, sumLineAmounts } from "./sop/renderers/wecom-business.mjs";
+import {
   CONFIRM_SERVICE,
   formatServiceDraft,
   formatServiceConfirmed,
@@ -255,6 +261,37 @@ function formatReport(data) {
 function formatPurchaseDraft(data) {
   const s = data?.summary || {};
   const ch = data?.challenge || {};
+  // AIERP-020B: multi-line awaiting-confirm draft (never first-line-only)
+  try {
+    const lineSrc = { lines: data?.lines || s?.lines || [], summary: s };
+    const lines = extractPurchaseLines(lineSrc);
+    if (lines.length) {
+      const total = s.amount ?? data?.totalAmount ?? sumLineAmounts(lines);
+      const rendered = renderBusinessResult(
+        toBusinessResult({
+          draftId: data?.draftId,
+          businessKey: data?.businessKey,
+          partnerName: s.partnerName || data?.partnerName,
+          depotName: s.depotName || data?.depotName,
+          lines,
+          totalAmount: total,
+          amount: total,
+          confirmPhrase:
+            data?.confirmPhrase ||
+            ch?.phrase ||
+            (data?.draftId != null ? `确认采购${data.draftId}` : null),
+          status: "AWAITING_CONFIRM",
+          bizType: "PURCHASE",
+        }),
+        { prefer: "plain" },
+      );
+      if (rendered?.text) {
+        return sanitizeForChannel(rendered.text, { markdown: false });
+      }
+    }
+  } catch {
+    // legacy single-line fallback
+  }
   const lines = [
     `采购草稿 #${data?.draftId ?? "?"} · ${data?.statusLabel || data?.status || "DRAFT"}`,
     `- 物料：${s.materialName || "?"}（${s.barCode || "?"}）`,
@@ -265,7 +302,7 @@ function formatPurchaseDraft(data) {
     `- 账号：${data?.boundErpLoginName || "?"}`,
     data?.hint || ch.hint || `待确认、未入库。请回复「确认采购${data?.draftId ?? "?"}」。`,
   ].filter(Boolean);
-  return lines.join("\n");
+  return sanitizeForChannel(lines.join("\n"), { markdown: false });
 }
 
 function formatConfirm(data) {
@@ -291,7 +328,11 @@ function formatConfirm(data) {
   try {
     const facts = factsFromConfirm(data || {});
     if (facts.billNumber) {
-      return sanitizeForChannel(renderPurchaseConfirmed(facts, "plain"), { markdown: false });
+      // AIERP-020B: multi-line card facts (never first-line-only totals)
+      const rendered = renderPurchaseConfirmForWecom(data || {}, { prefer: "plain" });
+      return sanitizeForChannel(rendered.text || renderPurchaseConfirmed(facts, "plain"), {
+        markdown: false,
+      });
     }
   } catch {
     // fall through
