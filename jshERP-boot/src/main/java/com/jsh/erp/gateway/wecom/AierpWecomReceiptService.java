@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,8 +39,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * AIERP-015B/015C: business receipt text + PDF from real CONFIRMED native bills.
- * 015C adds trusted WeCom HMAC find/file (never invent PDF; never re-post stock).
+ * AIERP-015B/015C/022A: business receipt text + immutable PDF from real CONFIRMED native bills.
+ * 015C: trusted WeCom HMAC find/file (never invent PDF; never re-post stock).
+ * 022A: dedicated PURCHASE/MIX/SERVICE PDFs; layoutVersion creates new files — never overwrite sha/bytes.
  */
 @Service
 public class AierpWecomReceiptService {
@@ -53,11 +53,15 @@ public class AierpWecomReceiptService {
     private static final Pattern SAFE_RECEIPT_ID = Pattern.compile("^[a-fA-F0-9]{16,64}$");
     private static final long MAX_PDF_BYTES = 5L * 1024 * 1024;
     private static final int RECENT_CANDIDATE_LIMIT = 8;
+    /** AIERP-022A layout: dedicated MIX/SERVICE templates + SHA footer. Never rewrite older versions. */
+    public static final int CURRENT_PDF_LAYOUT_VERSION = 2;
 
     @Resource
     private JdbcTemplate jdbcTemplate;
     @Resource
     private AierpWecomBindingService bindingService;
+    @Resource
+    private AierpMutationAuditService mutationAuditService;
 
     @Value("${aierp.receipt.storage-dir:/opt/jshERP/receipts}")
     private String storageDir;
@@ -68,7 +72,7 @@ public class AierpWecomReceiptService {
                 || !"CONFIRMED".equals(String.valueOf(confirmed.get("status")))) {
             return confirmed;
         }
-        String billNumber = String.valueOf(confirmed.get("billNumber"));
+        // PDF/audit runs AFTER native post; failure must not re-post inventory (confirm already committed).
         Map<String, Object> receipt = ensureReceipt(user, owner, confirmed);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.putAll(confirmed);
@@ -77,8 +81,25 @@ public class AierpWecomReceiptService {
         out.put("receiptStatus", "RECEIPT_TEXT_READY");
         out.put("pdfStatus", receipt.get("pdf_status"));
         out.put("deliveryStatus", receipt.get("delivery_status"));
+        out.put("pdfLayoutVersion", receipt.get("pdf_layout_version"));
+        out.put("pdfSha256", receipt.get("pdf_sha256"));
         out.put("hint", String.valueOf(receipt.get("text_body")));
         putDisplayFacts(out, receipt);
+        try {
+            String kind = extractReceiptKind(receipt);
+            String action = AierpMutationAuditService.actionForReceiptKind(kind);
+            boolean replay = Boolean.TRUE.equals(confirmed.get("replayed"))
+                    || Boolean.TRUE.equals(confirmed.get("stockUnchanged"));
+            String status = replay
+                    ? AierpMutationAuditService.STATUS_REPLAY_NOOP
+                    : AierpMutationAuditService.STATUS_POSTED;
+            Integer layout = toInt(receipt.get("pdf_layout_version"));
+            mutationAuditService.recordBillMutation(user, owner, action, status, confirmed,
+                    String.valueOf(receipt.get("receipt_id")), layout,
+                    receipt.get("pdf_sha256") == null ? null : String.valueOf(receipt.get("pdf_sha256")));
+        } catch (Exception ignored) {
+            // audit is best-effort
+        }
         return out;
     }
 
@@ -143,50 +164,92 @@ public class AierpWecomReceiptService {
         String pdfSha = null;
         String pdfRef = null;
         String delivery = "TEXT_ONLY";
-        boolean serviceReceipt = isServiceBiz(confirmed, facts);
-        boolean mixReceipt = isMixFacts(facts);
-        if (serviceReceipt) {
-            facts.put("pdfNote", "服务耗料专用 PDF 模板尚未独立交付；当前仅文字《服务耗料出库回执》。");
+        int layoutVersion = CURRENT_PDF_LAYOUT_VERSION;
+        String receiptKind = String.valueOf(facts.get("receiptKind"));
+        facts.put("layoutVersion", layoutVersion);
+        // AIERP-022A: dedicated PDF for PURCHASE / MIX / SERVICE — never retitle purchase for MIX/SERVICE.
+        // PDF failure is recorded only; native confirm already committed (no re-post).
+        try {
+            PdfArtifact artifact = writeImmutablePdf(receiptId, facts, layoutVersion);
+            pdfSha = artifact.sha256;
+            pdfRef = artifact.storageRef;
+            pdfStatus = "PDF_GENERATED";
+            delivery = "PDF_DELIVERY_NOT_VERIFIED";
+            facts.put("pdfSha256", pdfSha);
+            facts.put("pdfFileName", artifact.fileName);
             text = renderText(facts);
-        } else if (!mixReceipt) {
-            // AIERP-016M: never generate a purchase-titled PDF for MIX.
-            try {
-                byte[] pdf = renderPdf(facts);
-                File dir = new File(storageDir);
-                if (!dir.exists() && !dir.mkdirs()) {
-                    throw new BusinessRunTimeException(500, "无法创建回执存储目录");
-                }
-                String fileName = "采购入库业务回执_" + billNumber + ".pdf";
-                File out = new File(dir, receiptId + "_" + fileName);
-                try (FileOutputStream fos = new FileOutputStream(out)) {
-                    fos.write(pdf);
-                }
-                pdfSha = sha256Hex(pdf);
-                pdfRef = out.getAbsolutePath();
-                pdfStatus = "PDF_GENERATED";
-                delivery = "PDF_DELIVERY_NOT_VERIFIED";
-            } catch (Exception ex) {
-                pdfStatus = "PDF_FAILED";
-                delivery = "TEXT_ONLY";
-                facts.put("pdfError", String.valueOf(ex.getMessage()));
+            mutationAuditService.recordPdfVersion(receiptId, layoutVersion, pdfSha, pdfRef,
+                    artifact.fileName, artifact.byteLength);
+            AierpMutationAuditService.AuditEvent pdfEv = new AierpMutationAuditService.AuditEvent();
+            pdfEv.tenantId = user.getTenantId();
+            pdfEv.actorUserId = user.getId();
+            if (owner != null) {
+                pdfEv.botId = owner.botId;
+                pdfEv.wecomUserId = owner.wecomUserId;
+                pdfEv.bindingId = owner.bindingId;
+                pdfEv.bindingVersion = owner.bindingVersion;
             }
-        } else {
-            facts.put("pdfSkipped", serviceReceipt ? "SERVICE_TEXT_ONLY" : "MIX_NO_PURCHASE_PDF");
+            pdfEv.action = AierpMutationAuditService.ACTION_PDF_LAYOUT;
+            pdfEv.status = AierpMutationAuditService.STATUS_PDF_GENERATED;
+            pdfEv.nativeBill = billNumber;
+            pdfEv.receiptId = receiptId;
+            pdfEv.pdfLayoutVersion = layoutVersion;
+            pdfEv.pdfSha256 = pdfSha;
+            pdfEv.deliveryStatus = delivery;
+            mutationAuditService.recordEvent(pdfEv);
+        } catch (Exception ex) {
+            pdfStatus = "PDF_FAILED";
             delivery = "TEXT_ONLY";
+            facts.put("pdfError", String.valueOf(ex.getMessage()));
+            text = renderText(facts);
+            AierpMutationAuditService.AuditEvent pdfEv = new AierpMutationAuditService.AuditEvent();
+            pdfEv.tenantId = user.getTenantId();
+            pdfEv.actorUserId = user.getId();
+            pdfEv.action = AierpMutationAuditService.ACTION_PDF_LAYOUT;
+            pdfEv.status = AierpMutationAuditService.STATUS_PDF_FAILED;
+            pdfEv.nativeBill = billNumber;
+            pdfEv.receiptId = receiptId;
+            Map<String, Object> detail = new LinkedHashMap<String, Object>();
+            detail.put("error", String.valueOf(ex.getMessage()));
+            detail.put("receiptKind", receiptKind);
+            pdfEv.detail = detail;
+            mutationAuditService.recordEvent(pdfEv);
         }
 
-        jdbcTemplate.update(
-                "INSERT INTO aierp_gateway_receipt (receipt_id, tenant_id, actor_user_id, draft_id, bill_number, "
-                        + "depot_head_id, binding_version, wecom_user_id, receipt_json, text_body, pdf_sha256, "
-                        + "pdf_storage_ref, pdf_status, delivery_status, created_at, updated_at) "
-                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                receiptId, user.getTenantId(), user.getId(), draftId, billNumber, depotHeadId,
-                bindingVersion, wecomUserId, JSON.toJSONString(facts), text, pdfSha, pdfRef,
-                pdfStatus, delivery, now, now);
+        insertReceiptRow(receiptId, user, draftId, billNumber, depotHeadId, bindingVersion, wecomUserId,
+                facts, text, pdfSha, pdfRef, pdfStatus, delivery, layoutVersion, receiptKind, now);
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT * FROM aierp_gateway_receipt WHERE receipt_id=?", receiptId);
         return rows.get(0);
+    }
+
+    private void insertReceiptRow(String receiptId, User user, Long draftId, String billNumber,
+                                  Long depotHeadId, Long bindingVersion, String wecomUserId,
+                                  Map<String, Object> facts, String text, String pdfSha, String pdfRef,
+                                  String pdfStatus, String delivery, int layoutVersion, String receiptKind,
+                                  String now) {
+        try {
+            jdbcTemplate.update(
+                    "INSERT INTO aierp_gateway_receipt (receipt_id, tenant_id, actor_user_id, draft_id, bill_number, "
+                            + "receipt_kind, depot_head_id, binding_version, wecom_user_id, receipt_json, text_body, "
+                            + "pdf_sha256, pdf_storage_ref, pdf_status, pdf_layout_version, delivery_status, "
+                            + "created_at, updated_at) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    receiptId, user.getTenantId(), user.getId(), draftId, billNumber, receiptKind, depotHeadId,
+                    bindingVersion, wecomUserId, JSON.toJSONString(facts), text, pdfSha, pdfRef,
+                    pdfStatus, layoutVersion, delivery, now, now);
+        } catch (Exception ex) {
+            // Schema without 022A columns: fall back to original insert.
+            jdbcTemplate.update(
+                    "INSERT INTO aierp_gateway_receipt (receipt_id, tenant_id, actor_user_id, draft_id, bill_number, "
+                            + "depot_head_id, binding_version, wecom_user_id, receipt_json, text_body, pdf_sha256, "
+                            + "pdf_storage_ref, pdf_status, delivery_status, created_at, updated_at) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    receiptId, user.getTenantId(), user.getId(), draftId, billNumber, depotHeadId,
+                    bindingVersion, wecomUserId, JSON.toJSONString(facts), text, pdfSha, pdfRef,
+                    pdfStatus, delivery, now, now);
+        }
     }
 
     public byte[] loadPdfBytes(User user, String receiptId) {
@@ -231,7 +294,7 @@ public class AierpWecomReceiptService {
             out.put("deliveryStatus", rows.get(0).get("delivery_status"));
         }
         if (rows.isEmpty()) {
-            out.put("userSummaryZh", "暂未找到可访问的已审核采购入库回执。");
+            out.put("userSummaryZh", "暂未找到可访问的已审核业务回执。");
         } else if (rows.size() > 1 && billNumber == null && receiptId == null) {
             StringBuilder sb = new StringBuilder("找到多张可访问的已审核回执，请回复其中一张单号：\n");
             for (Map<String, Object> c : candidates) {
@@ -249,8 +312,9 @@ public class AierpWecomReceiptService {
     }
 
     /**
-     * AIERP-015C: load authorized receipt PDF as base64 for WeCom MEDIA send.
+     * AIERP-015C/022A: load authorized receipt PDF as base64 for WeCom MEDIA send.
      * Marks handoff only; PDF_SENT_VERIFIED stays for client-open UAT.
+     * Never re-posts inventory; never overwrites existing PDF bytes/sha.
      */
     public Map<String, Object> fileForWecom(JSONObject body) throws Exception {
         AierpWecomBindingService.BoundContext ctx = bindingService.resolveBoundContext(body);
@@ -260,7 +324,7 @@ public class AierpWecomReceiptService {
         if (rows.isEmpty()) {
             Map<String, Object> miss = new LinkedHashMap<String, Object>();
             miss.put("found", false);
-            miss.put("userSummaryZh", "暂未找到可访问的已审核采购入库回执。");
+            miss.put("userSummaryZh", "暂未找到可访问的已审核业务回执。");
             miss.put("deliveryStatus", "PDF_DELIVERY_NOT_VERIFIED");
             return miss;
         }
@@ -271,13 +335,15 @@ public class AierpWecomReceiptService {
             return amb;
         }
         Map<String, Object> receipt = rows.get(0);
+        // Historical MIX/SERVICE may be TEXT_ONLY (NONE) — generate dedicated PDF without re-posting.
+        receipt = materializePdfIfNeeded(ctx.user, receipt);
         if (!"PDF_GENERATED".equals(String.valueOf(receipt.get("pdf_status")))) {
             throw new BusinessRunTimeException(404, "该回执 PDF 尚未生成，请登录 ERP 查看文本回执");
         }
-        // Refresh layout from stored facts (no re-post); keeps Demo PDF format current.
+        // Immutable: preserve existing sha/bytes; layout bump writes a NEW file only.
         receipt = refreshPdfLayout(receipt);
         byte[] pdf = readPdfSecure(receipt);
-        String fileName = "采购入库业务回执_" + receipt.get("bill_number") + ".pdf";
+        String fileName = resolveDownloadFileName(receipt);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("found", true);
         out.put("receiptId", receipt.get("receipt_id"));
@@ -286,6 +352,7 @@ public class AierpWecomReceiptService {
         out.put("fileName", fileName);
         out.put("fileBase64", Base64.getEncoder().encodeToString(pdf));
         out.put("pdfSha256", receipt.get("pdf_sha256"));
+        out.put("pdfLayoutVersion", receipt.get("pdf_layout_version"));
         out.put("byteLength", pdf.length);
         out.put("pdfStatus", receipt.get("pdf_status"));
         // Adapter handoff ≠ client verified open
@@ -299,51 +366,279 @@ public class AierpWecomReceiptService {
     }
 
     /**
-     * Rebuild PDF bytes from receipt_json using current renderer (stock table, clean decimals).
-     * Never posts inventory; only rewrites the stored PDF file + hash.
+     * AIERP-022A immutable PDF layout:
+     * - Existing PDF bytes/sha are NEVER overwritten (preserves GW-PURCHASE-119 evidence).
+     * - If stored layoutVersion &lt; CURRENT, write a NEW file + version row; keep old path intact.
+     * - Never posts inventory.
      */
     private Map<String, Object> refreshPdfLayout(Map<String, Object> row) {
+        try {
+            backfillExistingPdfVersion(row);
+            int storedLayout = resolveStoredLayoutVersion(row);
+            // Already at current layout (or newer): serve as-is — do not rewrite.
+            if (storedLayout >= CURRENT_PDF_LAYOUT_VERSION
+                    && row.get("pdf_storage_ref") != null
+                    && row.get("pdf_sha256") != null
+                    && pdfFileIntact(row)) {
+                return row;
+            }
+            // Has intact historical PDF but older layout → create NEW version file only.
+            if (storedLayout < CURRENT_PDF_LAYOUT_VERSION
+                    && row.get("pdf_storage_ref") != null
+                    && row.get("pdf_sha256") != null
+                    && pdfFileIntact(row)) {
+                return createNewLayoutVersion(row, CURRENT_PDF_LAYOUT_VERSION);
+            }
+            // No intact file: leave row unchanged (retry path is tryRetryPdf / ensureReceipt).
+            return row;
+        } catch (Exception ex) {
+            return row;
+        }
+    }
+
+    /** Snapshot current pointer into version table once (append-only; IGNORE duplicates). */
+    private void backfillExistingPdfVersion(Map<String, Object> row) {
+        if (row.get("pdf_sha256") == null || row.get("pdf_storage_ref") == null
+                || row.get("receipt_id") == null) {
+            return;
+        }
+        int layout = resolveStoredLayoutVersion(row);
+        if (layout < 1) {
+            layout = 1;
+        }
+        long len = 0L;
+        try {
+            Path file = new File(String.valueOf(row.get("pdf_storage_ref"))).toPath();
+            if (Files.isRegularFile(file)) {
+                len = Files.size(file);
+            }
+        } catch (Exception ignored) {
+            // optional
+        }
+        mutationAuditService.recordPdfVersion(
+                String.valueOf(row.get("receipt_id")),
+                layout,
+                String.valueOf(row.get("pdf_sha256")),
+                String.valueOf(row.get("pdf_storage_ref")),
+                resolveDownloadFileName(row),
+                len);
+    }
+
+    private Map<String, Object> createNewLayoutVersion(Map<String, Object> row, int newLayout) {
         try {
             JSONObject factsJson = JSON.parseObject(String.valueOf(row.get("receipt_json")));
             if (factsJson == null) {
                 return row;
             }
             Map<String, Object> facts = normalizeFacts(factsJson);
-            byte[] pdf = renderPdf(facts);
+            facts.put("layoutVersion", newLayout);
+            // Preserve historical sha in facts for audit trail (never erase).
+            if (row.get("pdf_sha256") != null && facts.get("priorPdfSha256") == null) {
+                facts.put("priorPdfSha256", row.get("pdf_sha256"));
+            }
+            String receiptId = String.valueOf(row.get("receipt_id"));
+            String priorSha = row.get("pdf_sha256") == null ? null : String.valueOf(row.get("pdf_sha256"));
+            String priorRef = row.get("pdf_storage_ref") == null ? null : String.valueOf(row.get("pdf_storage_ref"));
+            PdfArtifact artifact = writeImmutablePdf(receiptId, facts, newLayout);
             String text = renderText(facts);
-            File dir = new File(storageDir);
-            if (!dir.exists() && !dir.mkdirs()) {
-                throw new BusinessRunTimeException(500, "无法创建回执存储目录");
-            }
-            Path root = dir.getCanonicalFile().toPath().normalize();
-            Path file;
-            Object ref = row.get("pdf_storage_ref");
-            if (ref != null && !String.valueOf(ref).trim().isEmpty()) {
-                Path candidate = new File(String.valueOf(ref)).getCanonicalFile().toPath().normalize();
-                if (candidate.startsWith(root)) {
-                    file = candidate;
-                } else {
-                    file = root.resolve(row.get("receipt_id") + "_采购入库业务回执_" + row.get("bill_number") + ".pdf");
-                }
-            } else {
-                file = root.resolve(row.get("receipt_id") + "_采购入库业务回执_" + row.get("bill_number") + ".pdf");
-            }
-            Files.createDirectories(file.getParent());
-            Files.write(file, pdf);
-            String sha = sha256Hex(pdf);
             String now = TS.format(LocalDateTime.now());
-            jdbcTemplate.update(
-                    "UPDATE aierp_gateway_receipt SET pdf_sha256=?, pdf_storage_ref=?, text_body=?, "
-                            + "pdf_status='PDF_GENERATED', updated_at=? WHERE id=?",
-                    sha, file.toAbsolutePath().toString(), text, now, row.get("id"));
-            row.put("pdf_sha256", sha);
-            row.put("pdf_storage_ref", file.toAbsolutePath().toString());
+            mutationAuditService.recordPdfVersion(receiptId, newLayout, artifact.sha256,
+                    artifact.storageRef, artifact.fileName, artifact.byteLength);
+            updateReceiptPdfPointer(row, artifact, text, newLayout, facts, now);
+            row.put("pdf_sha256", artifact.sha256);
+            row.put("pdf_storage_ref", artifact.storageRef);
             row.put("text_body", text);
             row.put("pdf_status", "PDF_GENERATED");
+            row.put("pdf_layout_version", newLayout);
+            row.put("receipt_json", JSON.toJSONString(facts));
+            AierpMutationAuditService.AuditEvent ev = new AierpMutationAuditService.AuditEvent();
+            ev.tenantId = toLong(row.get("tenant_id"));
+            ev.actorUserId = toLong(row.get("actor_user_id"));
+            ev.action = AierpMutationAuditService.ACTION_PDF_LAYOUT;
+            ev.status = AierpMutationAuditService.STATUS_PDF_GENERATED;
+            ev.nativeBill = str(row.get("bill_number"));
+            ev.receiptId = receiptId;
+            ev.pdfLayoutVersion = newLayout;
+            ev.pdfSha256 = artifact.sha256;
+            Map<String, Object> detail = new LinkedHashMap<String, Object>();
+            detail.put("priorSha256", priorSha);
+            detail.put("priorStorageRef", priorRef);
+            detail.put("immutable", true);
+            detail.put("priorFilePreserved", true);
+            detail.put("newFile", artifact.storageRef);
+            ev.detail = detail;
+            mutationAuditService.recordEvent(ev);
             return row;
         } catch (Exception ex) {
+            // Keep serving the previous immutable PDF.
             return row;
         }
+    }
+
+    private void updateReceiptPdfPointer(Map<String, Object> row, PdfArtifact artifact, String text,
+                                         int layoutVersion, Map<String, Object> facts, String now) {
+        try {
+            jdbcTemplate.update(
+                    "UPDATE aierp_gateway_receipt SET pdf_sha256=?, pdf_storage_ref=?, text_body=?, receipt_json=?, "
+                            + "pdf_status='PDF_GENERATED', pdf_layout_version=?, updated_at=? WHERE id=?",
+                    artifact.sha256, artifact.storageRef, text, JSON.toJSONString(facts),
+                    layoutVersion, now, row.get("id"));
+        } catch (Exception ex) {
+            jdbcTemplate.update(
+                    "UPDATE aierp_gateway_receipt SET pdf_sha256=?, pdf_storage_ref=?, text_body=?, receipt_json=?, "
+                            + "pdf_status='PDF_GENERATED', updated_at=? WHERE id=?",
+                    artifact.sha256, artifact.storageRef, text, JSON.toJSONString(facts),
+                    now, row.get("id"));
+        }
+    }
+
+    private boolean pdfFileIntact(Map<String, Object> row) {
+        try {
+            Object ref = row.get("pdf_storage_ref");
+            Object sha = row.get("pdf_sha256");
+            if (ref == null || sha == null) {
+                return false;
+            }
+            Path root = new File(storageDir).getCanonicalFile().toPath().normalize();
+            Path file = new File(String.valueOf(ref)).getCanonicalFile().toPath().normalize();
+            if (!file.startsWith(root) || !Files.isRegularFile(file)) {
+                return false;
+            }
+            byte[] bytes = Files.readAllBytes(file);
+            return String.valueOf(sha).equalsIgnoreCase(sha256Hex(bytes));
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private PdfArtifact writeImmutablePdf(String receiptId, Map<String, Object> facts, int layoutVersion)
+            throws Exception {
+        facts.put("layoutVersion", layoutVersion);
+        facts.put("receiptId", receiptId);
+        // Stable business fingerprint (not PDF byte hash) — printable inside PDF in one pass.
+        facts.put("contentFingerprint", sha256Hex(
+                JSON.toJSONString(factsForFingerprint(facts)).getBytes(StandardCharsets.UTF_8)));
+        byte[] pdf = renderPdf(facts);
+        String sha = sha256Hex(pdf);
+        facts.put("pdfSha256", sha);
+
+        File dir = new File(storageDir);
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new BusinessRunTimeException(500, "无法创建回执存储目录");
+        }
+        Path root = dir.getCanonicalFile().toPath().normalize();
+        String displayName = receiptTitleFileName(facts);
+        String storageName = receiptId + "_v" + layoutVersion + "_" + displayName;
+        Path file = root.resolve(storageName).normalize();
+        if (!file.startsWith(root)) {
+            throw new BusinessRunTimeException(500, "非法回执存储路径");
+        }
+        if (Files.exists(file)) {
+            // Collision: never overwrite — pick a unique sibling name.
+            file = root.resolve(receiptId + "_v" + layoutVersion + "_" + randomToken(4) + "_" + displayName);
+        }
+        Files.createDirectories(file.getParent());
+        Files.write(file, pdf);
+        PdfArtifact out = new PdfArtifact();
+        out.sha256 = sha;
+        out.storageRef = file.toAbsolutePath().toString();
+        out.fileName = displayName;
+        out.byteLength = pdf.length;
+        out.layoutVersion = layoutVersion;
+        return out;
+    }
+
+    /** Canonical subset for content fingerprint (excludes volatile pdfSha / errors). */
+    private static Map<String, Object> factsForFingerprint(Map<String, Object> facts) {
+        Map<String, Object> fp = new LinkedHashMap<String, Object>();
+        if (facts == null) {
+            return fp;
+        }
+        for (String k : new String[]{
+                "receiptKind", "title", "billNumber", "billStatus", "operTime", "creatorLogin",
+                "partnerName", "partnerRole", "serviceProject", "actorLogin", "lines",
+                "stockBefore", "stockAfter", "layoutVersion", "receiptId"
+        }) {
+            if (facts.get(k) != null) {
+                fp.put(k, facts.get(k));
+            }
+        }
+        return fp;
+    }
+
+    private static String receiptTitleFileName(Map<String, Object> facts) {
+        String kind = facts == null ? null : String.valueOf(facts.get("receiptKind"));
+        String bill = facts == null || facts.get("billNumber") == null
+                ? "UNKNOWN" : String.valueOf(facts.get("billNumber"));
+        return receiptTitlePrefix(kind) + "_" + bill + ".pdf";
+    }
+
+    private static String receiptTitlePrefix(String kind) {
+        if ("MIX".equals(kind)) {
+            return "组装配制业务回执";
+        }
+        if ("SERVICE".equals(kind)) {
+            return "服务耗料出库回执";
+        }
+        return "采购入库业务回执";
+    }
+
+    private String resolveDownloadFileName(Map<String, Object> row) {
+        String kind = extractReceiptKind(row);
+        return receiptTitlePrefix(kind) + "_" + row.get("bill_number") + ".pdf";
+    }
+
+    private String extractReceiptKind(Map<String, Object> row) {
+        if (row == null) {
+            return "PURCHASE";
+        }
+        if (row.get("receipt_kind") != null && !String.valueOf(row.get("receipt_kind")).trim().isEmpty()) {
+            return String.valueOf(row.get("receipt_kind")).trim().toUpperCase();
+        }
+        try {
+            JSONObject facts = JSON.parseObject(String.valueOf(row.get("receipt_json")));
+            if (facts != null && facts.get("receiptKind") != null) {
+                return String.valueOf(facts.get("receiptKind")).trim().toUpperCase();
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        String bill = row.get("bill_number") == null ? "" : String.valueOf(row.get("bill_number"));
+        if (bill.startsWith("GW-MIX-")) {
+            return "MIX";
+        }
+        if (bill.startsWith("GW-SERVICE-")) {
+            return "SERVICE";
+        }
+        return "PURCHASE";
+    }
+
+    private int resolveStoredLayoutVersion(Map<String, Object> row) {
+        Integer col = toInt(row.get("pdf_layout_version"));
+        if (col != null && col > 0) {
+            return col;
+        }
+        try {
+            JSONObject facts = JSON.parseObject(String.valueOf(row.get("receipt_json")));
+            if (facts != null && facts.get("layoutVersion") != null) {
+                Integer v = toInt(facts.get("layoutVersion"));
+                if (v != null && v > 0) {
+                    return v;
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        // Historical receipts (e.g. GW-PURCHASE-119) predate layoutVersion → treat as v1.
+        return 1;
+    }
+
+    private static final class PdfArtifact {
+        String sha256;
+        String storageRef;
+        String fileName;
+        long byteLength;
+        int layoutVersion;
     }
 
     private static Map<String, Object> normalizeFacts(JSONObject src) {
@@ -378,9 +673,11 @@ public class AierpWecomReceiptService {
         User user = ctx.user;
         long liveVersion = ctx.binding.get("binding_version") == null
                 ? 0L : ((Number) ctx.binding.get("binding_version")).longValue();
+        // AIERP-022A: include NONE/FAILED so historical MIX/SERVICE can materialize dedicated PDF (no re-post).
         StringBuilder sql = new StringBuilder(
                 "SELECT * FROM aierp_gateway_receipt WHERE tenant_id=? AND actor_user_id=? "
-                        + "AND wecom_user_id=? AND binding_version=? AND pdf_status='PDF_GENERATED'");
+                        + "AND wecom_user_id=? AND binding_version=? "
+                        + "AND pdf_status IN ('PDF_GENERATED','NONE','PDF_FAILED')");
         List<Object> args = new ArrayList<Object>();
         args.add(user.getTenantId());
         args.add(user.getId());
@@ -497,15 +794,25 @@ public class AierpWecomReceiptService {
 
     private String buildUserSummaryZh(Map<String, Object> row, boolean withFileHint) {
         String bill = String.valueOf(row.get("bill_number"));
+        String kind = extractReceiptKind(row);
         String line = extractSummaryLine(row);
         StringBuilder sb = new StringBuilder();
-        sb.append("已为你找到采购单 ").append(bill);
+        if ("MIX".equals(kind)) {
+            sb.append("已为你找到配制单 ").append(bill);
+        } else if ("SERVICE".equals(kind)) {
+            sb.append("已为你找到服务耗料单 ").append(bill);
+        } else {
+            sb.append("已为你找到采购单 ").append(bill);
+        }
         if (line != null) {
             sb.append("，").append(line);
         }
         sb.append("，已审核。");
         if (withFileHint) {
-            sb.append("\n《采购入库业务回执》见附件（非发票）。");
+            sb.append("\n《").append(receiptTitlePrefix(kind)).append("》见附件（非发票）。");
+            if (row.get("pdf_sha256") != null) {
+                sb.append("\nSHA256：").append(row.get("pdf_sha256"));
+            }
         }
         return sb.toString();
     }
@@ -786,11 +1093,11 @@ public class AierpWecomReceiptService {
         }
         if (service) {
             sb.append("《服务耗料出库回执》已生成（非发票、非销售收入）。");
-            if (facts.get("pdfNote") != null) {
-                sb.append("\n").append(facts.get("pdfNote"));
-            }
         } else {
             sb.append("《采购入库业务回执》已生成（非发票）。");
+        }
+        if (facts.get("pdfSha256") != null) {
+            sb.append("\nPDF SHA256：").append(facts.get("pdfSha256"));
         }
         return sb.toString();
     }
@@ -826,11 +1133,19 @@ public class AierpWecomReceiptService {
                         .append("（").append(r[4]).append("）\n");
             }
         }
-        sb.append("文字回执已生成；配制场景不附带《采购入库业务回执》PDF。");
+        if (facts.get("pdfSha256") != null) {
+            sb.append("《组装配制业务回执》PDF 已生成（非发票）。\n");
+            sb.append("PDF SHA256：").append(facts.get("pdfSha256"));
+        } else {
+            sb.append("《组装配制业务回执》文字已生成（非发票）。");
+        }
         return sb.toString();
     }
 
     private byte[] renderPdf(Map<String, Object> facts) throws Exception {
+        String kind = facts.get("receiptKind") == null ? "PURCHASE" : String.valueOf(facts.get("receiptKind"));
+        boolean mix = "MIX".equals(kind);
+        boolean service = "SERVICE".equals(kind);
         BaseFont bf = loadChineseFont();
         Font titleFont = new Font(bf, 16, Font.BOLD);
         Font sectionFont = new Font(bf, 11, Font.BOLD);
@@ -854,46 +1169,100 @@ public class AierpWecomReceiptService {
         addCell(meta, String.valueOf(facts.get("billNumber")), bodyFont);
         addCell(meta, "状态", bodyFont);
         addCell(meta, String.valueOf(facts.get("billStatus")), bodyFont);
-        addCell(meta, "供应商", bodyFont);
-        addCell(meta, nullToDash(facts.get("partnerName")), bodyFont);
+        if (service) {
+            addCell(meta, "客户", bodyFont);
+            addCell(meta, nullToDash(facts.get("partnerName")), bodyFont);
+            addCell(meta, "服务项目", bodyFont);
+            addCell(meta, nullToDash(facts.get("serviceProject")), bodyFont);
+            addCell(meta, "单据类型", bodyFont);
+            addCell(meta, "出库/其它（非销售）", bodyFont);
+        } else if (mix) {
+            addCell(meta, "业务类型", bodyFont);
+            addCell(meta, "组装配制", bodyFont);
+        } else {
+            addCell(meta, "供应商", bodyFont);
+            addCell(meta, nullToDash(facts.get("partnerName")), bodyFont);
+        }
         addCell(meta, "操作人", bodyFont);
         addCell(meta, nullToDash(facts.get("creatorLogin")), bodyFont);
         addCell(meta, "业务时间", bodyFont);
         addCell(meta, fmtTime(facts.get("operTime")), bodyFont);
+        if (facts.get("actorLogin") != null) {
+            addCell(meta, "企微委托人", bodyFont);
+            addCell(meta, nullToDash(facts.get("actorLogin")), bodyFont);
+        }
         doc.add(meta);
         doc.add(new Paragraph(" ", bodyFont));
 
-        Paragraph lineTitle = new Paragraph("物料明细", sectionFont);
+        Paragraph lineTitle = new Paragraph(mix ? "原料领用 / 成品产出明细" : (service ? "耗料明细" : "物料明细"),
+                sectionFont);
         lineTitle.setSpacingAfter(6);
         doc.add(lineTitle);
-        PdfPTable table = new PdfPTable(new float[]{3, 2, 2, 1.2f, 2, 2});
-        table.setWidthPercentage(100);
-        for (String h : new String[]{"物料", "编码", "数量", "单位", "仓库", "金额"}) {
-            addHeaderCell(table, h, bodyFont);
-        }
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
-        if (lines != null) {
-            for (Map<String, Object> line : lines) {
-                addCell(table, nullToDash(line.get("material_name")), smallFont);
-                addCell(table, nullToDash(line.get("bar_code")), smallFont);
-                addCell(table, fmtQty(line.get("oper_number")), smallFont);
-                addCell(table, nullToDash(line.get("material_unit")), smallFont);
-                addCell(table, nullToDash(line.get("depot_name")), smallFont);
-                addCell(table, fmtMoney(line.get("all_price")), smallFont);
+        if (mix) {
+            PdfPTable table = new PdfPTable(new float[]{1.6f, 2.6f, 2, 1.6f, 1.2f, 2});
+            table.setWidthPercentage(100);
+            for (String h : new String[]{"角色", "物料", "编码", "数量", "单位", "仓库"}) {
+                addHeaderCell(table, h, bodyFont);
             }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
+            if (lines != null) {
+                for (Map<String, Object> line : lines) {
+                    String mType = line.get("material_type") == null ? "" : String.valueOf(line.get("material_type"));
+                    String role = "组合件".equals(mType) ? "成品产出" : ("普通子件".equals(mType) ? "原料领用" : "明细");
+                    addCell(table, role, smallFont);
+                    addCell(table, nullToDash(line.get("material_name")), smallFont);
+                    addCell(table, nullToDash(line.get("bar_code")), smallFont);
+                    addCell(table, fmtQty(line.get("oper_number")), smallFont);
+                    addCell(table, nullToDash(line.get("material_unit")), smallFont);
+                    addCell(table, nullToDash(line.get("depot_name")), smallFont);
+                }
+            }
+            doc.add(table);
+        } else {
+            PdfPTable table = new PdfPTable(service
+                    ? new float[]{3, 2, 2, 1.2f, 2}
+                    : new float[]{3, 2, 2, 1.2f, 2, 2});
+            table.setWidthPercentage(100);
+            if (service) {
+                for (String h : new String[]{"物料", "编码", "数量", "单位", "出库仓库"}) {
+                    addHeaderCell(table, h, bodyFont);
+                }
+            } else {
+                for (String h : new String[]{"物料", "编码", "数量", "单位", "仓库", "金额"}) {
+                    addHeaderCell(table, h, bodyFont);
+                }
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> lines = (List<Map<String, Object>>) facts.get("lines");
+            if (lines != null) {
+                for (Map<String, Object> line : lines) {
+                    addCell(table, nullToDash(line.get("material_name")), smallFont);
+                    addCell(table, nullToDash(line.get("bar_code")), smallFont);
+                    addCell(table, fmtQty(line.get("oper_number")), smallFont);
+                    addCell(table, nullToDash(line.get("material_unit")), smallFont);
+                    addCell(table, nullToDash(line.get("depot_name")), smallFont);
+                    if (!service) {
+                        addCell(table, fmtMoney(line.get("all_price")), smallFont);
+                    }
+                }
+            }
+            doc.add(table);
         }
-        doc.add(table);
 
         List<String[]> stockRows = stockChangeRows(facts.get("stockBefore"), facts.get("stockAfter"));
         if (!stockRows.isEmpty()) {
             doc.add(new Paragraph(" ", bodyFont));
-            Paragraph stockTitle = new Paragraph("库存变化明细", sectionFont);
+            String stockLabel = mix ? "库存变化（成品↑ / 原料↓）"
+                    : (service ? "库存变化（出库前 → 出库后）" : "库存变化明细");
+            Paragraph stockTitle = new Paragraph(stockLabel, sectionFont);
             stockTitle.setSpacingAfter(6);
             doc.add(stockTitle);
             PdfPTable stock = new PdfPTable(new float[]{2.2f, 2, 2, 2, 2});
             stock.setWidthPercentage(100);
-            for (String h : new String[]{"编码", "仓库", "入库前", "入库后", "变动"}) {
+            String beforeH = service || mix ? "操作前" : "入库前";
+            String afterH = service || mix ? "操作后" : "入库后";
+            for (String h : new String[]{"编码", "仓库", beforeH, afterH, "变动"}) {
                 addHeaderCell(stock, h, bodyFont);
             }
             for (String[] r : stockRows) {
@@ -905,6 +1274,15 @@ public class AierpWecomReceiptService {
             }
             doc.add(stock);
         }
+
+        doc.add(new Paragraph(" ", bodyFont));
+        Paragraph audit = new Paragraph(
+                "审计：版式 v" + nullToDash(facts.get("layoutVersion"))
+                        + " · 回执 " + nullToDash(facts.get("receiptId"))
+                        + " · 业务指纹 " + nullToDash(facts.get("contentFingerprint"))
+                        + "（文件 SHA256 写入 ERP 回执记录，重发不覆写历史版本）",
+                smallFont);
+        doc.add(audit);
         doc.close();
         return baos.toByteArray();
     }
@@ -1052,27 +1430,134 @@ public class AierpWecomReceiptService {
         return s;
     }
 
+    /**
+     * Retry PDF only when prior status is NONE/FAILED.
+     * Never overwrites an existing intact PDF (immutable); never re-posts inventory.
+     */
     private void tryRetryPdf(User user, Map<String, Object> row, Map<String, Object> confirmed) {
         try {
+            if ("PDF_GENERATED".equals(String.valueOf(row.get("pdf_status")))
+                    && row.get("pdf_sha256") != null
+                    && pdfFileIntact(row)) {
+                return;
+            }
             Map<String, Object> facts = buildFacts(user, confirmed);
-            byte[] pdf = renderPdf(facts);
-            File dir = new File(storageDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-            String billNumber = String.valueOf(row.get("bill_number"));
-            String receiptId = String.valueOf(row.get("receipt_id"));
-            File out = new File(dir, receiptId + "_采购入库业务回执_" + billNumber + ".pdf");
-            try (FileOutputStream fos = new FileOutputStream(out)) {
-                fos.write(pdf);
-            }
-            jdbcTemplate.update(
-                    "UPDATE aierp_gateway_receipt SET pdf_sha256=?, pdf_storage_ref=?, pdf_status='PDF_GENERATED', "
-                            + "delivery_status='PDF_DELIVERY_NOT_VERIFIED', updated_at=? WHERE id=?",
-                    sha256Hex(pdf), out.getAbsolutePath(), TS.format(LocalDateTime.now()), row.get("id"));
+            mergeStockFromReceiptJson(facts, row);
+            persistGeneratedPdf(row, facts);
         } catch (Exception ignored) {
-            // keep TEXT_ONLY
+            // keep TEXT_ONLY / PDF_FAILED — never re-post
         }
+    }
+
+    /** Generate dedicated PDF for authorized historical receipt rows (MIX/SERVICE TEXT_ONLY). No stock post. */
+    private Map<String, Object> materializePdfIfNeeded(User user, Map<String, Object> row) {
+        if (row == null) {
+            return row;
+        }
+        if ("PDF_GENERATED".equals(String.valueOf(row.get("pdf_status")))
+                && row.get("pdf_sha256") != null
+                && pdfFileIntact(row)) {
+            return row;
+        }
+        try {
+            Map<String, Object> confirmed = new LinkedHashMap<String, Object>();
+            confirmed.put("billNumber", row.get("bill_number"));
+            confirmed.put("depotHeadId", row.get("depot_head_id"));
+            confirmed.put("draftId", row.get("draft_id"));
+            confirmed.put("status", "CONFIRMED");
+            confirmed.put("bizType", extractReceiptKind(row));
+            mergeStockFromReceiptJson(confirmed, row);
+            Map<String, Object> facts = buildFacts(user, confirmed);
+            mergeStockFromReceiptJson(facts, row);
+            persistGeneratedPdf(row, facts);
+            List<Map<String, Object>> refreshed = jdbcTemplate.queryForList(
+                    "SELECT * FROM aierp_gateway_receipt WHERE id=?", row.get("id"));
+            return refreshed.isEmpty() ? row : refreshed.get(0);
+        } catch (Exception ex) {
+            return row;
+        }
+    }
+
+    private void persistGeneratedPdf(Map<String, Object> row, Map<String, Object> facts) throws Exception {
+        int layout = CURRENT_PDF_LAYOUT_VERSION;
+        facts.put("layoutVersion", layout);
+        String receiptId = String.valueOf(row.get("receipt_id"));
+        PdfArtifact artifact = writeImmutablePdf(receiptId, facts, layout);
+        String text = renderText(facts);
+        String now = TS.format(LocalDateTime.now());
+        mutationAuditService.recordPdfVersion(receiptId, layout, artifact.sha256,
+                artifact.storageRef, artifact.fileName, artifact.byteLength);
+        updateReceiptPdfPointer(row, artifact, text, layout, facts, now);
+        try {
+            jdbcTemplate.update(
+                    "UPDATE aierp_gateway_receipt SET delivery_status='PDF_DELIVERY_NOT_VERIFIED', "
+                            + "receipt_kind=?, updated_at=? WHERE id=?",
+                    facts.get("receiptKind"), now, row.get("id"));
+        } catch (Exception ignored) {
+            jdbcTemplate.update(
+                    "UPDATE aierp_gateway_receipt SET delivery_status='PDF_DELIVERY_NOT_VERIFIED', updated_at=? WHERE id=?",
+                    now, row.get("id"));
+        }
+        row.put("pdf_sha256", artifact.sha256);
+        row.put("pdf_storage_ref", artifact.storageRef);
+        row.put("pdf_status", "PDF_GENERATED");
+        row.put("pdf_layout_version", layout);
+        row.put("text_body", text);
+    }
+
+    private static void mergeStockFromReceiptJson(Map<String, Object> target, Map<String, Object> row) {
+        if (target == null || row == null || row.get("receipt_json") == null) {
+            return;
+        }
+        try {
+            JSONObject facts = JSON.parseObject(String.valueOf(row.get("receipt_json")));
+            if (facts == null) {
+                return;
+            }
+            if (target.get("stockBefore") == null && facts.get("stockBefore") != null) {
+                target.put("stockBefore", facts.get("stockBefore"));
+            }
+            if (target.get("stockAfter") == null && facts.get("stockAfter") != null) {
+                target.put("stockAfter", facts.get("stockAfter"));
+            }
+            if (target.get("serviceProject") == null && facts.get("serviceProject") != null) {
+                target.put("serviceProject", facts.get("serviceProject"));
+            }
+        } catch (Exception ignored) {
+            // optional
+        }
+    }
+
+    private static Integer toInt(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number) {
+            return ((Number) v).intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(v).trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static Long toLong(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number) {
+            return ((Number) v).longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(v).trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : String.valueOf(v);
     }
 
     private static BaseFont loadChineseFont() throws Exception {
