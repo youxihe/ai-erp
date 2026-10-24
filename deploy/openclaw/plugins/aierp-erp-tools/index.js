@@ -26,6 +26,7 @@ import {
 import { registerMixConfirmDispatch } from "./sop/register-mix-confirm.mjs";
 import { registerMixRecipeAckDispatch } from "./sop/register-mix-recipe-ack.mjs";
 import { isMixConfirmPhrase, isMixRecipeAckPhrase } from "./sop/mix-prepare.mjs";
+import { isChartRequest, runChartRender } from "./sop/chart-render.mjs";
 
 const CHANNEL_ID = "wecom";
 const DEFAULT_BASE = "http://127.0.0.1:9999/jshERP-boot";
@@ -1188,6 +1189,27 @@ function registerConfirmAndExcelDispatchHook(api) {
       }
     }
 
+    // AIERP-020C: 真实 ERP 查询 → 服务端密封 datasetRef → PNG → 企微图片
+    // 数值只来自授权查询；用户可见文本不含本地路径；不改变采购/配制/耗料/PDF 逻辑
+    if (isChartRequest(text)) {
+      try {
+        const result = await runChartRender({
+          wecomUserId: senderId,
+          text,
+          botId: botId(),
+          signedPost,
+          cfg: apiRef?.config || {},
+          mediaLocalRoots: apiRef?.config?.channels?.wecom?.mediaLocalRoots || [],
+        });
+        return { handled: true, text: result.text || "图表处理完成。" };
+      } catch (err) {
+        return {
+          handled: true,
+          text: `图表生成失败：${String(err?.message || err).slice(0, 160)}。ERP 数据未发生任何变更，可稍后重试。`,
+        };
+      }
+    }
+
     if (CANCEL_EXCEL.test(text)) {
       const cleared = {
         status: "CANCELLED",
@@ -1365,6 +1387,72 @@ function registerConfirmAndExcelDispatchHook(api) {
   }
 }
 
+/**
+ * AIERP-020C: 模型侧只允许选择 renderId + 查询范围，数值全部由服务端授权查询密封。
+ */
+function registerChartTool(api) {
+  api.registerTool(
+    (ctx) => ({
+      name: "erp_chart_render",
+      description:
+        "把真实 ERP 查询结果渲染成表格/图表图片并发送到企业微信。只能选择 renderId 与查询范围，严禁自行提供任何库存数量或采购金额。",
+      parameters: {
+        type: "object",
+        properties: {
+          renderId: {
+            type: "string",
+            enum: ["table.basic", "bar.compare", "line.trend", "pie.share", "delta.before_after", "kpi.tiles"],
+            description: "table.basic 表格 / bar.compare 柱状图 / line.trend 折线图 / pie.share 饼图 / delta.before_after 变化图 / kpi.tiles 指标卡",
+          },
+          subject: { type: "string", enum: ["stock", "purchase"], description: "stock 库存；purchase 已审核采购入库汇总" },
+          depotName: { type: "string", description: "仓库名称（stock 用）" },
+          query: { type: "string", description: "物料关键字（stock 用，可选）" },
+          days: { type: "number", description: "近 N 天（purchase 用，1-90）" },
+          fromDate: { type: "string", description: "yyyy-MM-dd（purchase 用）" },
+          toDate: { type: "string", description: "yyyy-MM-dd（purchase 用）" },
+        },
+        required: ["renderId", "subject"],
+        additionalProperties: false,
+      },
+      async execute(_id, params) {
+        const wecomUserId = trustedWecomUserId(ctx);
+        if (!wecomUserId) {
+          return toolResult(false, "当前会话没有可信的企业微信发送者身份，无法渲染图表。", {
+            reason: "NO_TRUSTED_WECOM_SENDER",
+            messageChannel: ctx?.messageChannel || null,
+          });
+        }
+        if (isWecomGroupChat(ctx)) {
+          return toolResult(false, "图表渲染仅支持企微私聊。", { reason: "WECOM_GROUP_NOT_ALLOWED" });
+        }
+        try {
+          const result = await runChartRender({
+            wecomUserId,
+            text: "",
+            botId: botId(),
+            signedPost,
+            cfg: api?.config || {},
+            mediaLocalRoots: api?.config?.channels?.wecom?.mediaLocalRoots || [],
+            plan: params || {},
+          });
+          return toolResult(!!result.sent, result.text, {
+            tool: "erp_chart_render",
+            renderId: result.renderId || null,
+            sent: !!result.sent,
+            degraded: !!result.degraded,
+          });
+        } catch (err) {
+          return toolResult(false, String(err?.message || err), {
+            reason: "ERP_CHART_ERROR",
+            tool: "erp_chart_render",
+          });
+        }
+      },
+    }),
+    { name: "erp_chart_render" },
+  );
+}
+
 function registerPrepareGate(api) {
   const handler = async (event, ctx) => {
     const name = event?.toolName || event?.name || event?.tool || "";
@@ -1443,6 +1531,7 @@ const plugin = {
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     registerErpTools(api);
+    registerChartTool(api);
     registerExcelObserveHook(api);
     // AIERP-016M: recipe-hash ack (确认配方) then draft confirm (确认配制).
     // Does not alter PURCHASE confirm + receipt PDF auto-send paths.

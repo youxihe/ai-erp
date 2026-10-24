@@ -1,0 +1,117 @@
+{
+  "ticket": "AIERP-020C-WECOM-IMAGE",
+  "startedAt": "2026-10-24T04:01:37.975Z",
+  "checks": [
+    {
+      "name": "real_erp_bind",
+      "pass": true,
+      "detail": {
+        "erpLoginName": "jsh",
+        "tenantId": 63
+      }
+    },
+    {
+      "name": "intent_detect",
+      "pass": true,
+      "detail": {
+        "scenarioA": true,
+        "scenarioB": true,
+        "negativesClear": true
+      }
+    },
+    {
+      "name": "scenario_a_stock_table",
+      "pass": true,
+      "detail": {
+        "renderId": "table.basic",
+        "sent": true,
+        "totalRows": 8,
+        "pngBytes": 94976,
+        "pngSha256": "9e6738d8d1bb",
+        "text": "库存表格已发送（原料仓，共 8 行）。数据来自 ERP 实时查询，非模型估算。"
+      }
+    },
+    {
+      "name": "scenario_b_purchase_chart",
+      "pass": true,
+      "detail": {
+        "renderId": "bar.compare",
+        "sent": true,
+        "degraded": true,
+        "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
+        "pngBytes": 65202,
+        "text": "采购入库柱状图已发送（2026年10月）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。"
+      }
+    },
+    {
+      "name": "scenario_purchase_trend",
+      "pass": true,
+      "detail": {
+        "renderId": "line.trend",
+        "sent": true,
+        "text": "采购入库折线图已发送（2026-10-01~2026-10-24）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按日期维度出图。"
+      }
+    },
+    {
+      "name": "negative_empty_range",
+      "pass": true,
+      "detail": {
+        "sent": false,
+        "text": "ERP 在「2001-01-01~2001-01-02」没有查到采购入库汇总数据，因此没有生成图表。可以换个仓库或时间区间再试。"
+      }
+    },
+    {
+      "name": "negative_unknown_depot",
+      "pass": true,
+      "detail": {
+        "sent": false,
+        "text": "ERP 在「不存在的仓」没有查到库存数据，因此没有生成图表。可以换个仓库或时间区间再试。"
+      }
+    },
+    {
+      "name": "media_identity_scope",
+      "pass": true,
+      "detail": {
+        "count": 3,
+        "files": [
+          "63_jsh_1792814499993_140060224275_table.basic_9e6738d8.png",
+          "63_jsh_1792814501144_ac20ad57220b_bar.compare_ec1dd091.png",
+          "63_jsh_1792814502270_d4d024760689_line.trend_f195e87a.png"
+        ]
+      }
+    }
+  ],
+  "scenarios": {
+    "stockTable": {
+      "renderId": "table.basic",
+      "sent": true,
+      "totalRows": 8,
+      "pngBytes": 94976,
+      "pngSha256": "9e6738d8d1bb",
+      "text": "库存表格已发送（原料仓，共 8 行）。数据来自 ERP 实时查询，非模型估算。"
+    },
+    "purchaseChart": {
+      "renderId": "bar.compare",
+      "sent": true,
+      "degraded": true,
+      "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
+      "pngBytes": 65202,
+      "text": "采购入库柱状图已发送（2026年10月）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。"
+    },
+    "purchaseTrend": {
+      "renderId": "line.trend",
+      "sent": true,
+      "text": "采购入库折线图已发送（2026-10-01~2026-10-24）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按日期维度出图。"
+    },
+    "emptyRange": {
+      "sent": false,
+      "text": "ERP 在「2001-01-01~2001-01-02」没有查到采购入库汇总数据，因此没有生成图表。可以换个仓库或时间区间再试。"
+    },
+    "unknownDepot": {
+      "sent": false,
+      "text": "ERP 在「不存在的仓」没有查到库存数据，因此没有生成图表。可以换个仓库或时间区间再试。"
+    }
+  },
+  "ok": true,
+  "finishedAt": "2026-10-24T04:01:42.481Z"
+}

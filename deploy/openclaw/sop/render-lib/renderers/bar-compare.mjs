@@ -10,6 +10,30 @@ import {
   buildAltSummary,
 } from "../svg-util.mjs";
 
+const CJK_RE = /[\u2e80-\ua4cf\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef\u3000-\u303f]/;
+
+function vwUnits(s) {
+  let w = 0;
+  for (const ch of s) w += CJK_RE.test(ch) ? 1 : 0.55;
+  return w;
+}
+
+/** 按柱宽自适应标签长度（CJK≈12px，ASCII≈6.6px），避免日期/供应商名被截断 */
+function barLabelText(label, barW) {
+  const s = String(label ?? "");
+  const maxUnits = Math.max(4, Math.floor((barW + 12) / 6.6));
+  if (vwUnits(s) <= maxUnits) return esc(s);
+  let out = "";
+  let w = 0;
+  for (const ch of s) {
+    const cw = CJK_RE.test(ch) ? 1 : 0.55;
+    if (w + cw > maxUnits - 1) break;
+    out += ch;
+    w += cw;
+  }
+  return `${esc(out)}…`;
+}
+
 export function renderBarCompare(dataset, meta) {
   const cats = extractCategories(dataset).slice(0, 12);
   const width = 900;
@@ -43,7 +67,7 @@ export function renderBarCompare(dataset, meta) {
     const color = PALETTE[i % PALETTE.length];
     body += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="${color}" rx="3"/>`;
     body += `<text x="${x + barW / 2}" y="${y - 8}" fill="${THEME.ink}" font-size="12" text-anchor="middle">${fmtNum(c.value, { money: /金额|¥/.test(meta.title + (meta.unit || "")) })}</text>`;
-    body += `<text x="${x + barW / 2}" y="${chartTop + chartH + 18}" fill="${THEME.ink}" font-size="12" text-anchor="middle">${esc(String(c.label).slice(0, 8))}</text>`;
+    body += `<text x="${x + barW / 2}" y="${chartTop + chartH + 18}" fill="${THEME.ink}" font-size="12" text-anchor="middle">${barLabelText(c.label, barW)}</text>`;
   });
 
   body += footerBlock(meta, height - 16, width);

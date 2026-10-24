@@ -35,6 +35,30 @@ function cellText(row, col) {
   return esc(v == null ? "" : String(v));
 }
 
+const CJK_RE = /[\u2e80-\ua4cf\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef\u3000-\u303f]/;
+
+function visualWidth(s) {
+  let w = 0;
+  for (const ch of s) w += CJK_RE.test(ch) ? 1 : 0.55;
+  return w;
+}
+
+/** 按列宽截断并加省略号，避免长文本压到相邻列（完整数据仍在 XLSX/来源系统） */
+function fitCell(displayText, colW) {
+  const s = String(displayText || "");
+  const maxUnits = Math.max(4, Math.floor((colW - 16) / 13));
+  if (visualWidth(s) <= maxUnits) return s;
+  let out = "";
+  let w = 0;
+  for (const ch of s) {
+    const cw = CJK_RE.test(ch) ? 1 : 0.55;
+    if (w + cw > maxUnits - 1) break;
+    out += ch;
+    w += cw;
+  }
+  return `${out}…`;
+}
+
 /**
  * @returns {{ svg: string, alt: string, previewRows: number, totalRows: number, width: number, height: number }}
  */
@@ -70,7 +94,7 @@ export function renderTableBasic(dataset, meta, opts = {}) {
     }
     let cx = 32;
     for (const col of columns) {
-      body += `<text x="${cx}" y="${y + 22}" fill="${THEME.ink}" font-size="13">${cellText(row, col)}</text>`;
+      body += `<text x="${cx}" y="${y + 22}" fill="${THEME.ink}" font-size="13">${fitCell(cellText(row, col), colW)}</text>`;
       cx += colW;
     }
   });

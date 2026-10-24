@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path $NativeCli)) { throw "OpenClaw CLI missing. Run install-windows-native.ps1 first." }
 
 Import-NativeOpenclawEnv
+Remove-CaseDuplicateEnv
 Assert-GatewayPortSafeToBind
 Stop-OwnedNativeGateway
 Assert-GatewayPortSafeToBind

@@ -1,7 +1,7 @@
 {
   "ticket": "AIERP-020C",
   "status": "CODE_READY",
-  "startedAt": "2026-10-24T02:56:51.923Z",
+  "startedAt": "2026-10-24T04:01:22.778Z",
   "baseCommitHint": "origin/master",
   "checks": [
     {
@@ -70,7 +70,7 @@
       "name": "table.basic",
       "pass": true,
       "detail": {
-        "pngBytes": 109373,
+        "pngBytes": 109243,
         "xlsx": true,
         "previewRows": 12,
         "fixtureOnly": true
@@ -94,8 +94,8 @@
       "name": "bar.compare",
       "pass": true,
       "detail": {
-        "pngBytes": 50035,
-        "sha": "85e463c56d70",
+        "pngBytes": 50013,
+        "sha": "982d84e8a141",
         "fixtureOnly": true
       }
     },
@@ -103,7 +103,7 @@
       "name": "line.trend",
       "pass": true,
       "detail": {
-        "pngBytes": 71827,
+        "pngBytes": 71751,
         "fixtureOnly": true
       }
     },
@@ -111,7 +111,7 @@
       "name": "pie.share",
       "pass": true,
       "detail": {
-        "pngBytes": 78976,
+        "pngBytes": 78883,
         "fixtureOnly": true
       }
     },
@@ -119,7 +119,7 @@
       "name": "delta.before_after",
       "pass": true,
       "detail": {
-        "pngBytes": 62006,
+        "pngBytes": 61985,
         "fixtureOnly": true
       }
     },
@@ -127,7 +127,7 @@
       "name": "kpi.tiles",
       "pass": true,
       "detail": {
-        "pngBytes": 43086,
+        "pngBytes": 43063,
         "fixtureOnly": true
       }
     },
@@ -178,8 +178,8 @@
       "pass": true,
       "detail": {
         "alt": "企微钩子预渲染(fixture) · 柱状对比 · 单位kg · 来源SMOKE_FIXTURE_NOT_ERP_STATS · A仓:11，B仓:22",
-        "png": "63_63_1792810668643_c428bb80f83d_bar.compare_278d00cb.png",
-        "pngBytes": 45052
+        "png": "63_63_1792814494964_71515caf8262_bar.compare_21fbdab2.png",
+        "pngBytes": 45039
       }
     },
     {
@@ -219,9 +219,9 @@
       "name": "real_erp_stock_table_render",
       "pass": true,
       "detail": {
-        "pngBytes": 40154,
+        "pngBytes": 40070,
         "provenance": "SERVER_SEALED_ERP",
-        "datasetRefId": "ds_c4e6a78fa3dd5ebdba755933ee5ba9ec"
+        "datasetRefId": "ds_7d945c001d6ffe8c2649dd23f001745c"
       }
     },
     {
@@ -239,7 +239,7 @@
       "detail": {
         "renderId": "bar.compare",
         "degraded": false,
-        "pngBytes": 53022,
+        "pngBytes": 52996,
         "provenance": "SERVER_SEALED_ERP"
       }
     }
@@ -260,36 +260,36 @@
   "artifacts": [
     {
       "label": "table_basic",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792810629422_15b3ba230d75_table.basic_dfbc4928.png",
-      "xlsx": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792810629422_15b3ba230d75_table.basic_dfbc4928.xlsx"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792814485999_9de97484e6ae_table.basic_50e64396.png",
+      "xlsx": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792814485999_9de97484e6ae_table.basic_50e64396.xlsx"
     },
     {
       "label": "bar_compare",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\bar_compare_63_63_1792810641942_7297d9887823_bar.compare_85e463c5.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\bar_compare_63_63_1792814488169_390b27fd901a_bar.compare_982d84e8.png"
     },
     {
       "label": "line_trend",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\line_trend_63_63_1792810647161_591e2f74986c_line.trend_dcac0557.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\line_trend_63_63_1792814489237_ad5f665e6dec_line.trend_3b8a27c1.png"
     },
     {
       "label": "pie_share",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\pie_share_63_63_1792810650526_f0b136182753_pie.share_857f5573.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\pie_share_63_63_1792814490172_c407c0d59415_pie.share_7bb7b0dd.png"
     },
     {
       "label": "delta",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\delta_63_63_1792810654193_9703e7d6f2ad_delta.before_after_d6b66d6a.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\delta_63_63_1792814491165_903458ff4067_delta.before_after_bfc64463.png"
     },
     {
       "label": "kpi",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\kpi_63_63_1792810656616_3de437972617_kpi.tiles_3ac00183.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\kpi_63_63_1792814491844_cfc9afff7a0d_kpi.tiles_9bebd45e.png"
     },
     {
       "label": "real_erp_stock_table",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_stock_table_63_63_1792810677522_118734ceb9fc_table.basic_c8c73f20.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_stock_table_63_63_1792814496728_373080a17eab_table.basic_f98ef18a.png"
     },
     {
       "label": "real_erp_purchase_chart",
-      "png": "D:\\ERP\\ai-erp-020c\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_purchase_chart_63_63_1792810680340_b055090a1578_bar.compare_0dd4ead1.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_purchase_chart_63_63_1792814497588_7f56bb4ce93f_bar.compare_954f176c.png"
     }
   ],
   "realErp": {
@@ -311,7 +311,7 @@
   "deployState": "NOT_LOCAL_DEPLOYED",
   "weComUat": "LIVE_UAT_PENDING",
   "note": "Auth-hardened render-lib CODE_READY. Fixtures cover templates only. REAL_ERP stock+report sealed and rendered. NOT LOCAL_DEPLOYED / WE_COM_UAT_PENDING (no Bot WS image send; no F: sync).",
-  "finishedAt": "2026-10-24T02:58:00.344Z",
+  "finishedAt": "2026-10-24T04:01:37.593Z",
   "modulePaths": [
     "deploy/openclaw/sop/render-lib/",
     "deploy/openclaw/plugins/aierp-erp-tools/sop/render-lib/",

@@ -61,13 +61,30 @@ function Get-NativeNodeDir {
   return $exe.Directory.FullName
 }
 
+function Remove-CaseDuplicateEnv {
+  # Windows 环境块大小写不敏感；宿主 shell 若同时传入 HTTP_PROXY/http_proxy，
+  # Start-Process 构建环境块会抛「已添加项/字典关键字」异常。启动前清理。
+  $names = [System.Environment]::GetEnvironmentVariables('Process').Keys | Sort-Object
+  $groups = $names | Group-Object { $_.ToLower() } | Where-Object Count -gt 1
+  foreach ($g in $groups) {
+    $keep = $g.Group | Select-Object -First 1
+    foreach ($n in $g.Group) {
+      if ($n -cne $keep) { [System.Environment]::SetEnvironmentVariable($n, $null, 'Process') }
+    }
+  }
+}
+
 function Import-OpenclawEnvFile {
   param([string]$Path = $EnvFile)
   if (-not (Test-Path $Path)) { throw "Missing trusted env file: $Path" }
   Get-Content -LiteralPath $Path | ForEach-Object {
     if ($_ -match '^\s*#' -or $_ -notmatch '=') { return }
     $k, $v = $_.Split('=', 2)
-    Set-Item -Path "Env:$($k.Trim())" -Value $v.Trim()
+    $k = $k.Trim()
+    $v = $v.Trim()
+    # Windows env is case-insensitive: drop any existing variant (e.g. HTTPS_PROXY vs https_proxy)
+    try { Remove-Item -LiteralPath "Env:$k" -ErrorAction SilentlyContinue } catch { }
+    Set-Item -Path "Env:$k" -Value $v
   }
 }
 

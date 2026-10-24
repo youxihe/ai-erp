@@ -1,7 +1,7 @@
 {
   "task": "AIERP-013",
   "reviewFix": "mixed-depot-full-authorization",
-  "at": "2026-10-20T23:45:56.449Z",
+  "at": "2026-10-24T04:45:29.461Z",
   "base": "http://127.0.0.1:9999/jshERP-boot",
   "wecomUserIdMasked": "ai***",
   "passed": 23,
@@ -51,17 +51,17 @@
     {
       "name": "bill_search_purchase",
       "ok": true,
-      "detail": "{\"code\":200,\"billNumber\":\"SMOKE-PI-20261020040952\",\"billType\":\"purchase\",\"rowCount\":20,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+      "detail": "{\"code\":200,\"billNumber\":\"GW-PURCHASE-279\",\"billType\":\"purchase\",\"rowCount\":20,\"nature\":\"REAL_ERP\",\"depots\":[]}"
     },
     {
       "name": "bill_search_mix_full_depots",
       "ok": true,
-      "detail": "{\"code\":200,\"billNumber\":\"GW-MIX-95\",\"billType\":\"mix\",\"rowCount\":14,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+      "detail": "{\"code\":200,\"billNumber\":\"GW-MIX-313\",\"billType\":\"mix\",\"rowCount\":16,\"nature\":\"REAL_ERP\",\"depots\":[]}"
     },
     {
       "name": "bill_search_service",
       "ok": true,
-      "detail": "{\"code\":200,\"billNumber\":\"GW-SERVICE-96\",\"billType\":\"service\",\"rowCount\":10,\"nature\":\"REAL_ERP\",\"depots\":[]}"
+      "detail": "{\"code\":200,\"billNumber\":\"GW-SERVICE-136\",\"billType\":\"service\",\"rowCount\":10,\"nature\":\"REAL_ERP\",\"depots\":[]}"
     },
     {
       "name": "bill_detail_purchase",

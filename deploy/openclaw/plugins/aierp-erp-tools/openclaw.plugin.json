@@ -18,6 +18,7 @@
       "erp_bill_search",
       "erp_bill_detail",
       "erp_report_query",
+      "erp_chart_render",
       "erp_purchase_prepare",
       "erp_service_prepare",
       "erp_draft_status",

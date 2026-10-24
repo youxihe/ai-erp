@@ -26,4 +26,8 @@ Thumbs.db
 # Local Maven cache from docker maven builds (hot-reload-boot.ps1)
 deploy/.m2-repo/
 # Hot-reload boot jar / lock / backups (see deploy/scripts/hot-reload-boot.ps1)
-deploy/runtime/
+deploy/runtime/# 020C render evidence: generated PNG/XLSX artifacts + isolated state dirs (keep JSON reports only)
+docs/poc/evidence/aierp-020c-artifacts/
+docs/poc/evidence/aierp-020c-wecom-artifacts/
+docs/poc/evidence/aierp-020c-state/
+docs/poc/evidence/aierp-020c-wecom-state/
