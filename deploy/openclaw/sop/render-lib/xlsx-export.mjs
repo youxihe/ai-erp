@@ -2,30 +2,11 @@
  * Optional XLSX export for long tables (full data; PNG shows preview rows only).
  * All cell values are sanitized against formula injection.
  */
-import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { rowsOf, sanitizeSpreadsheetCell } from "./validate.mjs";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "../../../..");
+import { loadFromRenderHomes } from "./deps.mjs";
 
 function loadExcelJS() {
-  const candidates = [
-    join(ROOT, ".tools", "aierp-020c-render", "package.json"),
-    join(ROOT, ".tools", "excel-node", "package.json"),
-    join(ROOT, "node_modules", "exceljs", "package.json"),
-  ];
-  for (const pkg of candidates) {
-    if (!existsSync(pkg)) continue;
-    try {
-      return createRequire(pkg)("exceljs");
-    } catch {
-      // continue
-    }
-  }
-  throw new Error("exceljs not found. npm install exceljs --prefix .tools/aierp-020c-render");
+  return loadFromRenderHomes("exceljs", (mod) => !!mod?.Workbook);
 }
 
 /**

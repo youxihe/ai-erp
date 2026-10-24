@@ -1,7 +1,7 @@
 {
   "ticket": "AIERP-020C",
   "status": "CODE_READY",
-  "startedAt": "2026-10-24T04:01:22.778Z",
+  "startedAt": "2026-10-24T05:11:23.566Z",
   "baseCommitHint": "origin/master",
   "checks": [
     {
@@ -70,7 +70,7 @@
       "name": "table.basic",
       "pass": true,
       "detail": {
-        "pngBytes": 109243,
+        "pngBytes": 109206,
         "xlsx": true,
         "previewRows": 12,
         "fixtureOnly": true
@@ -94,8 +94,8 @@
       "name": "bar.compare",
       "pass": true,
       "detail": {
-        "pngBytes": 50013,
-        "sha": "982d84e8a141",
+        "pngBytes": 49972,
+        "sha": "3770334e4db1",
         "fixtureOnly": true
       }
     },
@@ -103,7 +103,7 @@
       "name": "line.trend",
       "pass": true,
       "detail": {
-        "pngBytes": 71751,
+        "pngBytes": 71729,
         "fixtureOnly": true
       }
     },
@@ -111,7 +111,7 @@
       "name": "pie.share",
       "pass": true,
       "detail": {
-        "pngBytes": 78883,
+        "pngBytes": 78859,
         "fixtureOnly": true
       }
     },
@@ -119,7 +119,7 @@
       "name": "delta.before_after",
       "pass": true,
       "detail": {
-        "pngBytes": 61985,
+        "pngBytes": 61946,
         "fixtureOnly": true
       }
     },
@@ -127,7 +127,7 @@
       "name": "kpi.tiles",
       "pass": true,
       "detail": {
-        "pngBytes": 43063,
+        "pngBytes": 43026,
         "fixtureOnly": true
       }
     },
@@ -178,8 +178,8 @@
       "pass": true,
       "detail": {
         "alt": "企微钩子预渲染(fixture) · 柱状对比 · 单位kg · 来源SMOKE_FIXTURE_NOT_ERP_STATS · A仓:11，B仓:22",
-        "png": "63_63_1792814494964_71515caf8262_bar.compare_21fbdab2.png",
-        "pngBytes": 45039
+        "png": "63_63_1792818700509_7ac2b01529d5_bar.compare_e5ebe3dd.png",
+        "pngBytes": 44996
       }
     },
     {
@@ -219,9 +219,9 @@
       "name": "real_erp_stock_table_render",
       "pass": true,
       "detail": {
-        "pngBytes": 40070,
+        "pngBytes": 39827,
         "provenance": "SERVER_SEALED_ERP",
-        "datasetRefId": "ds_7d945c001d6ffe8c2649dd23f001745c"
+        "datasetRefId": "ds_c0b6a623baf1cf2a24a9f6d402309a38"
       }
     },
     {
@@ -239,7 +239,7 @@
       "detail": {
         "renderId": "bar.compare",
         "degraded": false,
-        "pngBytes": 52996,
+        "pngBytes": 52984,
         "provenance": "SERVER_SEALED_ERP"
       }
     }
@@ -260,36 +260,36 @@
   "artifacts": [
     {
       "label": "table_basic",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792814485999_9de97484e6ae_table.basic_50e64396.png",
-      "xlsx": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792814485999_9de97484e6ae_table.basic_50e64396.xlsx"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792818688881_88d6c547a771_table.basic_959b1652.png",
+      "xlsx": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\table_basic_63_63_1792818688881_88d6c547a771_table.basic_959b1652.xlsx"
     },
     {
       "label": "bar_compare",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\bar_compare_63_63_1792814488169_390b27fd901a_bar.compare_982d84e8.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\bar_compare_63_63_1792818691800_0657764f6ab3_bar.compare_3770334e.png"
     },
     {
       "label": "line_trend",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\line_trend_63_63_1792814489237_ad5f665e6dec_line.trend_3b8a27c1.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\line_trend_63_63_1792818693205_c9b913193b3c_line.trend_2fe8be2e.png"
     },
     {
       "label": "pie_share",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\pie_share_63_63_1792814490172_c407c0d59415_pie.share_7bb7b0dd.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\pie_share_63_63_1792818694370_148d3d02a265_pie.share_0283d0bd.png"
     },
     {
       "label": "delta",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\delta_63_63_1792814491165_903458ff4067_delta.before_after_bfc64463.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\delta_63_63_1792818695664_474bc54ba12c_delta.before_after_1b5ee548.png"
     },
     {
       "label": "kpi",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\kpi_63_63_1792814491844_cfc9afff7a0d_kpi.tiles_9bebd45e.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\kpi_63_63_1792818696528_65704cd537b8_kpi.tiles_e6e04b75.png"
     },
     {
       "label": "real_erp_stock_table",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_stock_table_63_63_1792814496728_373080a17eab_table.basic_f98ef18a.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_stock_table_63_63_1792818702681_b728ddcf2f2c_table.basic_128f8efe.png"
     },
     {
       "label": "real_erp_purchase_chart",
-      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_purchase_chart_63_63_1792814497588_7f56bb4ce93f_bar.compare_954f176c.png"
+      "png": "D:\\ERP\\ai-erp-handoff\\docs\\poc\\evidence\\aierp-020c-artifacts\\real_erp_purchase_chart_63_63_1792818703756_67c16a52ee13_bar.compare_f6dc4b50.png"
     }
   ],
   "realErp": {
@@ -311,7 +311,7 @@
   "deployState": "NOT_LOCAL_DEPLOYED",
   "weComUat": "LIVE_UAT_PENDING",
   "note": "Auth-hardened render-lib CODE_READY. Fixtures cover templates only. REAL_ERP stock+report sealed and rendered. NOT LOCAL_DEPLOYED / WE_COM_UAT_PENDING (no Bot WS image send; no F: sync).",
-  "finishedAt": "2026-10-24T04:01:37.593Z",
+  "finishedAt": "2026-10-24T05:11:43.760Z",
   "modulePaths": [
     "deploy/openclaw/sop/render-lib/",
     "deploy/openclaw/plugins/aierp-erp-tools/sop/render-lib/",

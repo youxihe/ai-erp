@@ -2,36 +2,18 @@
  * SVG → high-DPI PNG using @resvg/resvg-js + system Chinese fonts.
  * Font binaries are never committed; resolved from the OS at runtime.
  */
-import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { listSystemChineseFonts } from "./fonts.mjs";
 import { PNG_LIMITS } from "./catalog.mjs";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "../../../..");
+import { loadFromRenderHomes } from "./deps.mjs";
 
 function loadResvg() {
-  const candidates = [
-    join(ROOT, ".tools", "aierp-020c-render", "package.json"),
-    join(ROOT, "node_modules", "@resvg", "resvg-js", "package.json"),
-    join(process.cwd(), ".tools", "aierp-020c-render", "package.json"),
-    join(process.cwd(), "node_modules", "@resvg", "resvg-js", "package.json"),
-  ];
-  for (const pkg of candidates) {
-    if (!existsSync(pkg)) continue;
-    try {
-      const req = createRequire(pkg);
-      const mod = req("@resvg/resvg-js");
-      if (mod?.Resvg) return mod;
-    } catch {
-      // try next
-    }
+  try {
+    return loadFromRenderHomes("@resvg/resvg-js", (mod) => !!mod?.Resvg);
+  } catch (err) {
+    throw new Error(
+      `缺少 @resvg/resvg-js（渲染依赖未就位）。请执行: npm install @resvg/resvg-js --prefix .tools/aierp-020c-render，或设置环境变量 AIERP_020C_RENDER_HOME 指向已安装目录。${err && err.message ? ` [${err.message}]` : ""}`,
+    );
   }
-  throw new Error(
-    "缺少 @resvg/resvg-js。请执行: npm install @resvg/resvg-js --prefix .tools/aierp-020c-render",
-  );
 }
 
 /**

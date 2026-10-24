@@ -41,6 +41,32 @@
 | `aierp-013-query-flow.mjs`（只读回归） | 23/23 PASS（含跨仓权限 403 负例） |
 | 真人企微打开图片 | **待确认**（LIVE_UAT_PENDING） |
 
+## 热修 1：企微实发报「缺少 @resvg/resvg-js」
+
+**现象**：企微里发「把原料仓的库存用表格展示给我」，1 秒内返回
+`图表渲染失败：缺少 @resvg/resvg-js`。
+
+**根因**：OpenClaw 启动时把插件整体复制到临时目录后再加载：
+
+```
+state/tmp/plugin-captures/<uuid>/captures/openclaw-plugin-build-XXX/
+  package-1/node_modules/aierp-openclaw/state/sop/render-lib
+```
+
+`svg-to-png.mjs` / `xlsx-export.mjs` 原来用 `join(__dirname, "../../../..")` 推算仓库根，
+在副本里指向的是副本内部，因此永远找不到 `F:\.tools\aierp-020c-render`。
+脚本自测（直接 import 仓库路径）能过，实发必失败 —— 属于解析路径假设错误，不是依赖没装。
+
+**修复**：
+
+- 新增 `render-lib/deps.mjs`：按「环境变量 → OPENCLAW_HOME/STATE_DIR → 模块自身逐级上溯 → 进程 cwd 逐级上溯 → 同级 node_modules」解析，不再依赖目录层级
+- `svg-to-png.mjs` / `xlsx-export.mjs` 改用统一解析；失败文案带上实际尝试过的路径
+- `F:\aierp-openclaw\state\.env` 增加 `AIERP_020C_RENDER_HOME=F:\.tools\aierp-020c-render`
+- 依赖同时落到 `F:\.tools\aierp-020c-render` 与 `F:\aierp-openclaw\.tools\aierp-020c-render`（cwd 兜底）
+
+**验证**：用网关实际加载的副本路径（`plugin-captures/.../package-1/...`）导入并渲染，
+`resvgAvailable=true`、`pngBytes=17928`；去掉环境变量仅靠 cwd 兜底同样可用；smoke 仍 28/28。
+
 ## 待办
 
 - 真人企微客户端点击打开库存表格 PNG / 采购柱图，金额与 ERP 对账
