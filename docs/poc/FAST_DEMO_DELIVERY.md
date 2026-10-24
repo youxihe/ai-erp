@@ -1,3 +1,14 @@
+# 执行覆盖说明 · 2026-10-24（用户新偏好最高优先）
+
+此前本文件允许多 Agent 并行编码、F: 本机 Demo 快速发布与 ChatGPT Review 同时进行。**用户现明确要求以后停止并行开发**，因此本文件旧的“多个任务并发编码/提前释放下一棒”等文本仅作为历史设计参考。当前生效规则：
+
+1. 任何时刻只有一个 **ACTIVE 开发任务和一名 Cursor 开发 Agent**，优先完成代码/测试→Push→ChatGPT Review Fix/Merge→本机单一 Deploy owner 验证→再转 NEXT。其它分支保留已 Push WIP 不继续改，避免多人改同一插件/Gateway。
+2. 当前唯一 ACTIVE：`AIERP-020C PR #50`。NEXT 020B，THEN 020D 经营总览（不新建 H5），详见 `docs/poc/QUEUE.md` 顶部最新区块。
+3. **Git 网络**：SSH remote `git@github.com:youxihe/ai-erp.git` 只负责 push/pull，Cursor 不再使用 `gh pr create`/OAuth 浏览器登录；ChatGPT 通过已连接 Github App 做 PR 管理。登录框若仍出现，记录具体进程和触发命令。
+4. 不跳过任何涉及主数据/库存写入的权限/幂等/可信用户确认保护；本轮视觉渲染只读、不得伪造数据或通过模板链接越权。
+5. 单部署 owner 确认每次 Java jar + F: 插件 hash/实际通道测试，不能只汇报 Gateway HTTP 200。发布的变更必须可回滚。
+
+---
 # AI-ERP · 本地 POC 快速并行开发、发布、验收协议（2026-10-23）
 
 ## 变更原因
