@@ -24,6 +24,10 @@
 | AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
 | AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
 
+| **AIERP-020B** | **RELEASED / Visual #1** | **企业微信模板卡片与多明细商品数量单价金额：实测 SDK 原生 card/Markdown/image/file，PC/手机截图，拒 text HTML/MEDIA** |
+| **AIERP-020C** | **RELEASED / Visual #2** | **通用表格图片与图表 PNG：柱/折/饼/变化图模板，OpenClaw 选择模板+可信 ERP 数据集，不编造统计值** |
+| **AIERP-022A** | **RELEASED / Audit P0** | **所有 AI ERP 实际写操作持久审计+PDF 操作回执，先 MIX/SERVICE 及不可变版本化 PDF，再接主数据/批次** |
+| **AIERP-022B** | **RELEASED / Audit Delivery** | **成功业务自动发送 PDF、历史重发和投递审计；修复动态 mediaLocalRoots 扩大目录风险** |
 | **AIERP-020A** | **RELEASED / next_order #6 (SOP/UX)** | **标准业务确定性 SOP 脚本 + 企微 Markdown/卡片渲染规范；015C P0 的 receipt-send 优先，其他按小 PR 渐进** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | **DONE / PR #37** | **真实企微已收到 PDF 文件消息（GW-PURCHASE-119）；SOP receipt-send + 自动发送已合并，最新自动发送 / PDF 新排版仍待客户端验收** |
@@ -45,6 +49,21 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-24 · 渠道富消息/表格图表/全写入审计 PDF 三大新要求（最高优先）
+
+**部署真实进展**：GitHub master 在本轮检查为 `633e3de5`，上次可核验本机发布仅是 10/23 较早报告（#43 前的 JAR），当前无法从 GitHub 直接读取 Windows F:/Docker 运行状态，**不能宣称最新已上线**。发布负责人必须拉 master，运行新只读验证脚本 `powershell -File deploy/scripts/verify-demo-release.ps1`，检查 origin/master SHA、宿主/容器 JAR SHA、F: 插件与代码 hash、HTTP 健康；加上 Maven clean build / Bot channel 实际 SOP 探针与真人企微只读回包。提供当前 SHA/插件版本/回滚点，检查通过方可 `LOCAL_DEPLOYED`。
+
+**官方企微 SDK 调研结果**：WecomTeam/wecom-openclaw-plugin、aibot-node-sdk 支持 Markdown、模板卡片（text_notice/news_notice/button_interaction 等）、图文混排、image、file；**当前 Bot WS 是否将特定消息真正渲染成卡片仍需本机版本/真实客户端确认**。图表、复杂表格不是任意 HTML/Card 的 CSS，应由通用渲染器画 PNG 并真实发送图片/Excel；WeCom 与未来 Feishu 使用不同 channel adapter。当前 `wecom-business.mjs` 大多 plain，并只取 firstLine，需改全量明细 DTO。
+
+**新任务即刻 RELEASED**（开发与真人测试/ChatGPT Review 并行、仅单一 Deploy Owner 可更新运行态）：
+1. **022A 审计 P0**：真实 ERP 写入全流程审计/不可变 PDF，当前 PURCHASE PDF 可用但 MIX/SERVICE 仅文本、主数据无 PDF；当前 `refreshPdfLayout` 覆写旧文件违反凭证一致性。先以真实原生 MIX/SERVICE 历史业务生成 PDF，无需重新扣增库存；后接 #44/#45/017C1 的写入。
+2. **020B Visual #1**：企微原生 Markdown/TemplateCard/图文及多行采购卡片，突出商品/数量/单价/金额、已审核状态和入库增量；按 F: SDK 实测回执，不许在 before_dispatch plain 中输出 HTML/Markdown 源码。
+3. **020C Visual #2**：图表/表格组件库（table、bar、line、pie、delta、KPI），OpenClaw 仅引用授权数据集选择固定 renderId，禁止模型编数据；图片消息真实企微验收，长表另发 XLSX。
+4. **022B Audit Delivery**：任何由 AI ERP 发起并成功的采购/MIX/SERVICE/主数据修改/批次确认等操作，都自动生成对应 PDF 并真实发企微附件，失败只重发 PDF；文件不可变版本+sha、权限重验，不能误用采购 PDF。修复 `sop/wecom-outbound.mjs` 的 dirname(abs) 媒体白名单动态放宽。
+5. 原队列 **017C1 批次一次确认、#44/#45 主数据建档**继续独立并行，但写入/回执需对接 022A 的通用审计接口，不能等全部合并才让用户测试只读/预览。
+
+深度设计见 `docs/poc/RICH_CHANNEL_RENDERING_AND_AUDIT_ARCHITECTURE.md`；可直接执行的验收指南 `docs/poc/DEMO_UAT_RICH_MESSAGES_AND_RECEIPTS.md`；任务卡 `020B/020C/022A/022B`。**审计范围限于 AI ERP/OpenClaw 写入口**；未来如需覆盖 jshERP 后台全站所有操作，应扩展统一业务事件源，不能假称当前已覆盖。生成 PDF ≠ 发送成功 ≠ 用户已打开。
 
 ## 2026-10-23 · 快速并行 Demo 流程（覆盖旧串行规则）
 
