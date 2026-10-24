@@ -392,21 +392,24 @@ function fmtQtyStr(v) {
 /**
  * 根据已渲染的图表 dataset 生成 text_notice 摘要卡片。
  * 只展示真实查询出的 KPI，不编造任何数值。
+ *
+ * 点击行为设计（无 ERP 网页版场景）：
+ * - 整卡点击默认不配 card_action（企微文档：type=0/不填代表不是链接），避免乱开网页；
+ *   若配置了 AIERP_ERP_WEB_URL 则启用整卡跳转
+ * - 底部 jump_list 用 type=3 智能回复：点击后机器人自动代发查询指令并回真实数据
  */
 export function buildSummaryCard(built, rendered, plan, scope) {
   const ds = built?.dataset || {};
   const subjectZh = plan.subject === "purchase" ? "采购入库" : "库存";
   const card = {
     card_type: "text_notice",
+    source: { desc: "AI ERP 助手", desc_color: 0 },
     main_title: { title: `${scope}${subjectZh}摘要`, desc: plan.range?.label || ds.timeRange || "" },
     horizontal_content_list: [],
-    card_action: {
-      type: 1,
-      url:
-        process.env.AIERP_ERP_WEB_URL ||
-        "https://work.weixin.qq.com",
-    },
+    jump_list: buildSmartReplies(plan),
   };
+  const webUrl = process.env.AIERP_ERP_WEB_URL;
+  if (webUrl) card.card_action = { type: 1, url: webUrl };
 
   const push = (keyname, value) => {
     if (card.horizontal_content_list.length < 6 && value != null && value !== "") {
@@ -482,6 +485,20 @@ export function buildSummaryCard(built, rendered, plan, scope) {
   if (card.horizontal_content_list.length === 0) delete card.horizontal_content_list;
   card.sub_title_text = "数据来自 ERP 实时查询（非模型估算），明细见随发图表。";
   return card;
+}
+
+/** 智能回复指引：question 必须能命中 isChartRequest 的图表意图，形成闭环 */
+export function buildSmartReplies(plan) {
+  if (plan.subject === "purchase") {
+    return [
+      { type: 3, title: "查采购汇总", question: "把本月采购情况用指标卡展示给我" },
+      { type: 3, title: "查采购明细", question: "把本月采购明细用表格展示给我" },
+    ];
+  }
+  return [
+    { type: 3, title: "查原料仓库存", question: "把原料仓的库存用表格展示给我" },
+    { type: 3, title: "查成品仓库存", question: "把成品仓的库存用表格展示给我" },
+  ];
 }
 
 // ---- 主流程 ------------------------------------------------------------
@@ -652,6 +669,9 @@ export async function runChartRender(deps) {
     if (!cardSent) cardError = String(cardRes?.error || "card send failed").slice(0, 120);
   } catch (err) {
     cardError = String(err?.message || err).slice(0, 120);
+  }
+  if (cardError) {
+    console.error(`[aierp-020b] summary card send failed: ${cardError} card=${JSON.stringify(built?.dataset ? "with-dataset" : "no-dataset")}`);
   }
 
   const parts = [`${subjectZh}${kindZh}已发送（${scope}`];

@@ -146,6 +146,9 @@ async function main() {
     return okType && noPath ? { ok: true, messageId: `card-${cards.length}` } : { ok: false, error: "invalid card" };
   };
 
+  // 智能回复 question 必须能命中图表意图（闭环校验）
+  const smartReplyQuestions = [];
+
   let bound;
   try {
     bound = await bind();
@@ -235,15 +238,25 @@ async function main() {
     }
   }
 
-  // ---- 020B 卡片语义：数值不编造、无路径泄漏、task_id 可省略 ----
+  // ---- 020B 卡片语义：无整卡乱跳、智能回复 question 可闭环、无路径泄漏 ----
   {
     const okCards = cards.length > 0 && cards.every((c) => {
       const blob = JSON.stringify(c);
       const noPath = !/[A-Za-z]:\\/.test(blob) && !/MEDIA:/i.test(blob);
-      return c.card_type === "text_notice" && noPath;
+      // 未配置 AIERP_ERP_WEB_URL 时不应有整卡跳转
+      const noCardAction = !process.env.AIERP_ERP_WEB_URL ? !c.card_action : true;
+      const jumps = Array.isArray(c.jump_list) ? c.jump_list : [];
+      for (const j of jumps) {
+        if (j.type === 3 && j.question) smartReplyQuestions.push(j.question);
+      }
+      return c.card_type === "text_notice" && noPath && noCardAction && jumps.length > 0;
     });
     if (!okCards) softFail("card_semantics", { count: cards.length });
     else pass("card_semantics", { count: cards.length, types: cards.map((c) => c.card_type) });
+    // 智能回复闭环：每个 question 都应命中图表意图
+    const loopOk = smartReplyQuestions.length > 0 && smartReplyQuestions.every((q) => isChartRequest(q));
+    if (!loopOk) softFail("card_smart_reply_loop", { questions: smartReplyQuestions, hits: smartReplyQuestions.map((q) => isChartRequest(q)) });
+    else pass("card_smart_reply_loop", { questions: smartReplyQuestions });
   }
 
   // ---- 采购表格 + 折线趋势（同一真实数据，不同 renderId）----

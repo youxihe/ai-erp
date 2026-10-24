@@ -1,6 +1,6 @@
 {
   "ticket": "AIERP-020C-WECOM-IMAGE",
-  "startedAt": "2026-10-24T06:53:39.198Z",
+  "startedAt": "2026-10-24T07:12:16.414Z",
   "checks": [
     {
       "name": "real_erp_bind",
@@ -26,11 +26,15 @@
         "renderId": "table.basic",
         "sent": true,
         "totalRows": 8,
-        "pngBytes": 95207,
-        "pngSha256": "2bb680377b06",
+        "pngBytes": 94956,
+        "pngSha256": "0e4fab468848",
         "cardSent": true,
         "card": {
           "card_type": "text_notice",
+          "source": {
+            "desc": "AI ERP 助手",
+            "desc_color": 0
+          },
           "main_title": {
             "title": "原料仓库存摘要",
             "desc": "2026年10月"
@@ -41,10 +45,18 @@
               "value": "8"
             }
           ],
-          "card_action": {
-            "type": 1,
-            "url": "https://work.weixin.qq.com"
-          },
+          "jump_list": [
+            {
+              "type": 3,
+              "title": "查原料仓库存",
+              "question": "把原料仓的库存用表格展示给我"
+            },
+            {
+              "type": 3,
+              "title": "查成品仓库存",
+              "question": "把成品仓的库存用表格展示给我"
+            }
+          ],
           "emphasis_content": {
             "title": "426.9 L",
             "desc": "库存合计"
@@ -62,10 +74,14 @@
         "sent": true,
         "degraded": true,
         "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
-        "pngBytes": 72025,
+        "pngBytes": 71930,
         "cardSent": true,
         "card": {
           "card_type": "text_notice",
+          "source": {
+            "desc": "AI ERP 助手",
+            "desc_color": 0
+          },
           "main_title": {
             "title": "2026年10月采购入库摘要",
             "desc": "2026年10月"
@@ -80,10 +96,18 @@
               "value": "5"
             }
           ],
-          "card_action": {
-            "type": 1,
-            "url": "https://work.weixin.qq.com"
-          },
+          "jump_list": [
+            {
+              "type": 3,
+              "title": "查采购汇总",
+              "question": "把本月采购情况用指标卡展示给我"
+            },
+            {
+              "type": 3,
+              "title": "查采购明细",
+              "question": "把本月采购明细用表格展示给我"
+            }
+          ],
           "emphasis_content": {
             "title": "¥16,340",
             "desc": "金额合计"
@@ -101,6 +125,18 @@
         "types": [
           "text_notice",
           "text_notice"
+        ]
+      }
+    },
+    {
+      "name": "card_smart_reply_loop",
+      "pass": true,
+      "detail": {
+        "questions": [
+          "把原料仓的库存用表格展示给我",
+          "把成品仓的库存用表格展示给我",
+          "把本月采购情况用指标卡展示给我",
+          "把本月采购明细用表格展示给我"
         ]
       }
     },
@@ -135,9 +171,9 @@
       "detail": {
         "count": 3,
         "files": [
-          "63_jsh_1792824821315_2cc692169a91_table.basic_2bb68037.png",
-          "63_jsh_1792824822705_55876a0f497e_bar.compare_0a41210b.png",
-          "63_jsh_1792824824105_a91df7c7bcfc_line.trend_8e49932f.png"
+          "63_jsh_1792825939198_f3dff8a57aa1_table.basic_0e4fab46.png",
+          "63_jsh_1792825940603_6e7d19121e32_bar.compare_978e4514.png",
+          "63_jsh_1792825942001_8a214aba1495_line.trend_8cacc01c.png"
         ]
       }
     }
@@ -147,11 +183,15 @@
       "renderId": "table.basic",
       "sent": true,
       "totalRows": 8,
-      "pngBytes": 95207,
-      "pngSha256": "2bb680377b06",
+      "pngBytes": 94956,
+      "pngSha256": "0e4fab468848",
       "cardSent": true,
       "card": {
         "card_type": "text_notice",
+        "source": {
+          "desc": "AI ERP 助手",
+          "desc_color": 0
+        },
         "main_title": {
           "title": "原料仓库存摘要",
           "desc": "2026年10月"
@@ -162,10 +202,18 @@
             "value": "8"
           }
         ],
-        "card_action": {
-          "type": 1,
-          "url": "https://work.weixin.qq.com"
-        },
+        "jump_list": [
+          {
+            "type": 3,
+            "title": "查原料仓库存",
+            "question": "把原料仓的库存用表格展示给我"
+          },
+          {
+            "type": 3,
+            "title": "查成品仓库存",
+            "question": "把成品仓的库存用表格展示给我"
+          }
+        ],
         "emphasis_content": {
           "title": "426.9 L",
           "desc": "库存合计"
@@ -179,10 +227,14 @@
       "sent": true,
       "degraded": true,
       "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
-      "pngBytes": 72025,
+      "pngBytes": 71930,
       "cardSent": true,
       "card": {
         "card_type": "text_notice",
+        "source": {
+          "desc": "AI ERP 助手",
+          "desc_color": 0
+        },
         "main_title": {
           "title": "2026年10月采购入库摘要",
           "desc": "2026年10月"
@@ -197,10 +249,18 @@
             "value": "5"
           }
         ],
-        "card_action": {
-          "type": 1,
-          "url": "https://work.weixin.qq.com"
-        },
+        "jump_list": [
+          {
+            "type": 3,
+            "title": "查采购汇总",
+            "question": "把本月采购情况用指标卡展示给我"
+          },
+          {
+            "type": 3,
+            "title": "查采购明细",
+            "question": "把本月采购明细用表格展示给我"
+          }
+        ],
         "emphasis_content": {
           "title": "¥16,340",
           "desc": "金额合计"
@@ -224,5 +284,5 @@
     }
   },
   "ok": true,
-  "finishedAt": "2026-10-24T06:53:44.423Z"
+  "finishedAt": "2026-10-24T07:12:22.261Z"
 }
