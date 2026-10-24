@@ -24,20 +24,21 @@
 | AIERP-015B | **DONE / PR #27** | **企微本人确认 → 原生审核 GW-PURCHASE-111 / +10 L；Session 旧绑定及 PDF 下载权限修复，18/18 PASS；PDF 企微送达尚未验收** |
 | AIERP-019A | **DONE / PR #31** | **ERP 受控 API 能力目录 + SOP Skills + 通用网关设计已 Review / Merge** |
 
-| **AIERP-020B** | **RELEASED / Visual #1** | **企业微信模板卡片与多明细商品数量单价金额：实测 SDK 原生 card/Markdown/image/file，PC/手机截图，拒 text HTML/MEDIA** |
-| **AIERP-020C** | **RELEASED / Visual #2** | **通用表格图片与图表 PNG：柱/折/饼/变化图模板，OpenClaw 选择模板+可信 ERP 数据集，不编造统计值** |
-| **AIERP-022A** | **RELEASED / Audit P0** | **所有 AI ERP 实际写操作持久审计+PDF 操作回执，先 MIX/SERVICE 及不可变版本化 PDF，再接主数据/批次** |
-| **AIERP-022B** | **RELEASED / Audit Delivery** | **成功业务自动发送 PDF、历史重发和投递审计；修复动态 mediaLocalRoots 扩大目录风险** |
+| **AIERP-020D** | **PLANNED / AFTER 020B** | **企微经营总览：本月采购/销售、库存、供应商/客户统计；复用真实 ERP 指标+020C 图表，无 H5** |
+| **AIERP-020B** | **PAUSED / NEXT AFTER 020C** | **企业微信模板卡片与多明细商品数量单价金额：实测 SDK 原生 card/Markdown/image/file，PC/手机截图，拒 text HTML/MEDIA** |
+| **AIERP-020C** | **ACTIVE / PR #50 REVIEW_FIX_REQUIRED** | **通用表格图片与图表 PNG：柱/折/饼/变化图模板，OpenClaw 选择模板+可信 ERP 数据集，不编造统计值** |
+| **AIERP-022A** | **PAUSED / SEQUENTIAL BACKLOG** | **所有 AI ERP 实际写操作持久审计+PDF 操作回执，先 MIX/SERVICE 及不可变版本化 PDF，再接主数据/批次** |
+| **AIERP-022B** | **PAUSED / SEQUENTIAL BACKLOG** | **成功业务自动发送 PDF、历史重发和投递审计；修复动态 mediaLocalRoots 扩大目录风险** |
 | **AIERP-020A** | **RELEASED / next_order #6 (SOP/UX)** | **标准业务确定性 SOP 脚本 + 企微 Markdown/卡片渲染规范；015C P0 的 receipt-send 优先，其他按小 PR 渐进** |
 | AIERP-019B | PLANNED / after 019A reviewed + 015B merged | 受控能力发现/查询/草稿的动态 Tool Adapter MVP；不新增模型 confirm 工具 |
 | AIERP-015C | **DONE / PR #37** | **真实企微已收到 PDF 文件消息（GW-PURCHASE-119）；SOP receipt-send + 自动发送已合并，最新自动发送 / PDF 新排版仍待客户端验收** |
 
 | AIERP-017B2 | **DONE / PR #41 `db13699f`** | 多张采购 Excel → 已审核事实重查、真实多草稿及版本幂等；已入 master，真人多单 UAT 待完成 |
-| **AIERP-017C1** | **RELEASED / next_order #3 (parallel CODE)** | 单个可信批次清单一次确认、逐单幂等原生入库、部分成功与企微真实 XLSX 批次回执；必须先过批次写入安全闸门 |
+| **AIERP-017C1** | **PAUSED / LATER SEQUENTIAL** | 单个可信批次清单一次确认、逐单幂等原生入库、部分成功与企微真实 XLSX 批次回执；必须先过批次写入安全闸门 |
 | AIERP-016M | **DONE / PR #42 `bccd9f52`** | MIX 配方预览/确认/草稿及本人原始确认；已入 master，真人 MIX UAT 待完成 |
 | AIERP-016S | **DONE / PR #43 `baefd2a4`** | SERVICE 客户耗料草稿/本人可信确认与真实其它出库；已入 master，真人 SERVICE UAT 待完成 |
-| **AIERP-021A** | **INTEGRATION / PR #44 · next_order #1** | 供应商/客户真实主数据增加/修改；尽快整合 master + DB 并发/可信确认负例，可先 Demo 预览 |
-| **AIERP-021B** | **INTEGRATION / PR #45 · next_order #2** | 原料/物料真实主数据增加/修改；尽快整合 master + 物料写权限/条码并发负例，可先 Demo 预览 |
+| **AIERP-021A** | **PAUSED / PR #44 (preserve WIP)** | 供应商/客户真实主数据增加/修改；尽快整合 master + DB 并发/可信确认负例，可先 Demo 预览 |
+| **AIERP-021B** | **PAUSED / PR #45 (preserve WIP)** | 原料/物料真实主数据增加/修改；尽快整合 master + 物料写权限/条码并发负例，可先 Demo 预览 |
 | AIERP-021C | PLANNED / after 021A+021B | **缺档挂起采购/配制/耗料→建档后恢复原业务，不要求用户重复讲需求** |
 | AIERP-016 | SUPERSEDED by 016M/016S | 配制与客户耗料拆分独立业务交付和 UAT |
 | AIERP-017A | **DONE / PR #30** | **真实企微 XLSX 文件收发/解析/预览、必填选填模板、Redis 有效预览保持、禁止猜数建草稿；10/10 + 14/14 PASS** |
@@ -49,6 +50,17 @@
 | AIERP-012B | SUPERSEDED by 013–017 | 分拆为查询、确认协议、业务写入、文件及报表能力 |
 | AIERP-006 | BACKLOG | 企微 H5/报表消息增强，等 011/012 基线通过 |
 | AIERP-007 | SUPERSEDED by 011 | OpenClaw 安装与企微基础接入由 AIERP-011 承接 |
+
+## 2026-10-24 · 最新执行决策：只允许一个 Cursor 开发任务（取代并行规则）
+
+用户明确撤回前一轮“多 Agent 并行开发”的执行偏好：**不再同时启动 020B/020C/022A/022B/#44/#45/017C1**。所有旧文档的“多条独立 Agent 可以同时开发”“四条立即开工”等均为历史，**以本节串行锁为准**；仅允许 ChatGPT 对同一个活跃 PR Review、一个 Cursor Agent 编码、一个共享发布责任人在 CODE_READY 之后验收发布（不得重叠操作同一个 F:/JAR）。
+
+- **ACTIVE = AIERP-020C / GitHub [PR #50](https://github.com/youxihe/ai-erp/pull/50) / tip `7530ea93` / REVIEW_FIX_REQUIRED**。Agent 遵照 PR 最新 ChatGPT Round1 评论继续修数据来源授权和媒体数据隔离。图表功能当前只是 **CODE_READY 的模拟数据 Smoke**，并非已接上 ERP、发送成功或 F: 最新版本。
+- **NEXT = AIERP-020B**：仅在 020C 有可靠数据来源保护、Review/Merge、真实图片渲染验收之后，进入企微原生卡片/Markdown/图片文件发送与多明细排版。先别把 020B 原分支直接覆盖运行时。
+- **THEN = AIERP-020D（新建）**：基于 020C 可信图表和 020B 真实原生卡片，做无 H5 的本月采购/销售、库存、供应商/客户经营总览。业务事实以 ERP 审核/仓库/数据权限为准；销售数据未接入不能伪造。
+- **LATER 依次逐棒**：022A 审计/不可变 PDF → 022B 自动回执 → #44 供应商客户建档 → #45 物料建档 → 017C1 批次一次确认 → 021C。P0 安全缺陷可提前插队，但也只有一棒。
+- **Git 操作**：Cursor 只使用已有的 `git@github.com:youxihe/ai-erp.git` 远端进行 `fetch/pull/push`。不再试 `gh pr create`、HTTPS REST PR、浏览器 GitHub OAuth；**ChatGPT 使用已连接 GitHub 工具创建/Review/Merge PR**。SSH push 鉴权与 GitHub API PR 鉴权是两条不同通道。若仍弹登录框，捕获弹窗来源进程、Cursor 日志和发生时的具体命令，不能盲认是 SSH push。
+- **发布**：当前可证实 GitHub master，不可从远端证实 F: Windows 是否为最新。单一发布人报告 git SHA + 宿主/容器 JAR SHA + F: plugin hashes + 真实企微消息类型 + 回滚点；查验后才标 LOCAL_DEPLOYED。020C 未完成可信查询数据边界之前，不将模拟数据图表当 ERP 报表演示。
 
 ## 2026-10-24 · 渠道富消息/表格图表/全写入审计 PDF 三大新要求（最高优先）
 
