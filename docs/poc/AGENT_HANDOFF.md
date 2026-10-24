@@ -1,3 +1,19 @@
+# AI-ERP Cursor Agent · 2026-10-24 最新约束：**立即停止并行，仅 020C 单任务**（本段覆盖下方旧指令）
+
+**用户要求**：多 Agent 并行让集成质量失控，改为**一条任务一条任务做完**。本机已启的 020B/022A/022B/021A/021B/017C1 等 Agent 需安全保存 WIP、停止继续改码，不删除远端分支。只保留**一个** Cursor Agent 处理 **AIERP-020C PR #50**，不另起新代码任务。不因为某个 Agent error 就重启 5 条流水线。
+
+## 立即办 020C
+- 当前 origin `git@github.com:youxihe/ai-erp.git`，分支 `feat/aierp-020c-render-table-chart-library`，远端 HEAD `7530ea93`，**PR #50 已由 ChatGPT 建立**： https://github.com/youxihe/ai-erp/pull/50 。
+- `stopped with error` 根据 Cursor 日志发生在 **PR 创建需要 gh/API auth** 的末步，不是 SSH push 或图表渲染 Smoke 失败。今后 Cursor 只运行 `git fetch/pull/push`（SSH），不尝试 `gh pr create`、浏览器登录、HTTPS OAuth。**由 ChatGPT 的 GitHub 连接创建 PR / Review / Merge**。如果再有弹窗，请记录引发弹窗的具体命令及调用进程，不胡乱更改全局 Git 凭据。
+- 仔细读 PR #50 最新 Review 评论，重点是 P0：`authorized:true`/`nature:"REAL_ERP"`/`datasetRef.id` 都可由 LLM 自报，不能构成真实 ERP 数据来源；必须由服务端验证真实授权查询或绑定过期的 datasetRef，禁止伪造统计金额并以 ERP 名义出图。补跨用户/仓库/租户/代际负例。不得把模拟 smoke fixture 视为真实 ERP。
+- P1：图片/Excel 输出地址按用户/租户隔离 + 随机不可覆盖命名，固定媒体根目录，TTL 限制，公式注入与数据规模边界；不允许模型指定 outDir/toUserId/filePath。真实 WeCom Bot WS 发送归下一棒 020B，但 020C 应让稳定受控媒体接口可接入。
+- 本轮交付 `REVIEW_FIX_PUSHED` + git HEAD + nonposting smoke/负例 + CODE_READY/LOCAL_DEPLOYED/WE_COM_UAT 准确三态。不要自行 Merge，不动 F: 真入账功能，不开新 Agent。
+
+## 唯一后续序列
+020C（现在） → 020B（企微真实 card/image） → 020D（本月经营总览，无 H5） → 022A（不可变 PDF+审计） → 022B（自动送达） → #44 → #45 → 017C1。仅前棒 Review/Merge/必要本机只读验收后才释放下一棒。安全缺陷可优先，不可并发改多个工作区。
+
+**发布核验**：Windows owner 单独在代码稳定后执行 `deploy/scripts/verify-demo-release.ps1`，提交 master/head、JAR sha、F: plugin sha、真实企业微信客户端消息证据与回滚点。health=200 不代表业务路由已加载。
+---
 # AI-ERP Cursor Agent · 2026-10-24 最新交付指令（优先于旧 handoff）
 
 用户新目标：**企微真消息卡片深度美化、通用图表/表格展示脚本、所有 OpenClaw 发起的真实 ERP 写操作必须留档并自动 PDF 回执**。仍执行本地 Demo/UAT/ChatGPT Review 并行模式，唯一仓库 youxihe/ai-erp，单一 Deploy Owner 操作 F:/app.jar。完整方案见 docs/poc/RICH_CHANNEL_RENDERING_AND_AUDIT_ARCHITECTURE.md 与验收 docs/poc/DEMO_UAT_RICH_MESSAGES_AND_RECEIPTS.md。
