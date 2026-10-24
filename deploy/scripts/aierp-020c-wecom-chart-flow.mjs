@@ -243,13 +243,16 @@ async function main() {
     const okCards = cards.length > 0 && cards.every((c) => {
       const blob = JSON.stringify(c);
       const noPath = !/[A-Za-z]:\\/.test(blob) && !/MEDIA:/i.test(blob);
-      // 未配置 AIERP_ERP_WEB_URL 时不应有整卡跳转
-      const noCardAction = !process.env.AIERP_ERP_WEB_URL ? !c.card_action : true;
+      // 未配置 AIERP_ERP_WEB_URL 时：只允许「无跳转」或 type=3 智能回复，禁止裸 URL 跳转
+      const ca = c.card_action;
+      const noWebJump = ca == null || ca.type !== 1 || !!process.env.AIERP_ERP_WEB_URL;
+      const okAction = ca == null || ca.type === 3 || ca.type === 1;
       const jumps = Array.isArray(c.jump_list) ? c.jump_list : [];
       for (const j of jumps) {
         if (j.type === 3 && j.question) smartReplyQuestions.push(j.question);
       }
-      return c.card_type === "text_notice" && noPath && noCardAction && jumps.length > 0;
+      if (ca?.type === 3 && ca.question) smartReplyQuestions.push(ca.question);
+      return c.card_type === "text_notice" && noPath && noWebJump && okAction && jumps.length > 0;
     });
     if (!okCards) softFail("card_semantics", { count: cards.length });
     else pass("card_semantics", { count: cards.length, types: cards.map((c) => c.card_type) });

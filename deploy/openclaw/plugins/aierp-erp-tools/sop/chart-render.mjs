@@ -501,6 +501,28 @@ export function buildSmartReplies(plan) {
   ];
 }
 
+/**
+ * 卡片发送变体（按优先级依次尝试，第一个被企微接受的即送出）。
+ *
+ * 背景：errcode=42045 证明 text_notice 的 card_action 是服务端强校验项，
+ * 不能省略；故 V0 尝试把整卡点击也做成智能回复（type=3），彻底避免跳浏览器。
+ * V1 在配置了 ERP 网页地址时走正式跳转。全部失败则只保留图片，不影响主流程。
+ *
+ * @param {string} primaryQuestion 整卡点击触发的智能回复问题（必须命中图表意图）
+ */
+export function buildSummaryCardVariants(built, rendered, plan, scope, webUrl) {
+  const base = buildSummaryCard(built, rendered, plan, scope);
+  const primaryQuestion = buildSmartReplies(plan)[0]?.question;
+  const variants = [];
+  if (primaryQuestion) {
+    variants.push({ ...base, card_action: { type: 3, question: primaryQuestion } });
+  }
+  if (webUrl) {
+    variants.push({ ...base, card_action: { type: 1, url: webUrl } });
+  }
+  return variants;
+}
+
 // ---- 主流程 ------------------------------------------------------------
 /**
  * @param {object} deps
@@ -659,19 +681,33 @@ export async function runChartRender(deps) {
   const scope = plan.subject === "purchase" ? plan.range?.label || "所选区间" : plan.depotName || "当前权限范围";
   const subjectZh = plan.subject === "purchase" ? "采购入库" : "库存";
 
-  // 020B：图片发完后补发一张企微原生摘要卡片（失败不影响主流程，不追加报错文案）
+  // 020B：图片发完后补发一张企微原生摘要卡片（变体降级；失败不影响主流程、不追加报错文案）
   let cardSent = false;
   let cardError = null;
-  try {
-    const card = buildSummaryCard(built, rendered, plan, scope);
-    const cardRes = await sendCardFn({ toUserId: wecomUserId, card, cfg });
-    cardSent = !!cardRes?.ok;
-    if (!cardSent) cardError = String(cardRes?.error || "card send failed").slice(0, 120);
-  } catch (err) {
-    cardError = String(err?.message || err).slice(0, 120);
+  const variants = buildSummaryCardVariants(
+    built,
+    rendered,
+    plan,
+    scope,
+    process.env.AIERP_ERP_WEB_URL,
+  );
+  for (let i = 0; i < variants.length; i += 1) {
+    try {
+      const cardRes = await sendCardFn({ toUserId: wecomUserId, card: variants[i], cfg });
+      if (cardRes?.ok) {
+        cardSent = true;
+        console.error(`[aierp-020b] summary card sent via variant ${i}`);
+        break;
+      }
+      console.error(`[aierp-020b] card variant ${i} rejected: ${String(cardRes?.error || "no result").slice(0, 200)}`);
+      cardError = String(cardRes?.error || "card send failed").slice(0, 120);
+    } catch (err) {
+      cardError = String(err?.message || err).slice(0, 120);
+      console.error(`[aierp-020b] card variant ${i} threw: ${cardError}`);
+    }
   }
-  if (cardError) {
-    console.error(`[aierp-020b] summary card send failed: ${cardError} card=${JSON.stringify(built?.dataset ? "with-dataset" : "no-dataset")}`);
+  if (!cardSent) {
+    console.error(`[aierp-020b] summary card send failed: ${cardError || "no variant accepted"}`);
   }
 
   const parts = [`${subjectZh}${kindZh}已发送（${scope}`];

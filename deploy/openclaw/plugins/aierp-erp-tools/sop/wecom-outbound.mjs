@@ -200,8 +200,18 @@ export async function sendWecomTemplateCard({ toUserId, card, accountId = DEFAUL
     });
     return { ok: true, messageId: result?.messageId || "sent" };
   } catch (err) {
-    return { ok: false, error: String(err?.message || err).slice(0, 200) };
+    return { ok: false, error: cardErrText(err) };
   }
+}
+
+/** 企微 WS 的错误对象是 {errcode, errmsg}，直接 String() 只会得到 [object Object] */
+export function cardErrText(err) {
+  if (!err) return "unknown error";
+  const parts = [];
+  if (err.errcode != null) parts.push(`errcode=${err.errcode}`);
+  if (err.errmsg) parts.push(String(err.errmsg));
+  if (err.message && !parts.includes(err.message)) parts.push(String(err.message));
+  return parts.length ? parts.join(" ") : JSON.stringify(err);
 }
 
 export { CHANNEL_ID, findWecomPluginRoot, loadWecomMods };
