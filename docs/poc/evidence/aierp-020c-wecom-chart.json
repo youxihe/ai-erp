@@ -1,6 +1,6 @@
 {
   "ticket": "AIERP-020C-WECOM-IMAGE",
-  "startedAt": "2026-10-24T04:01:37.975Z",
+  "startedAt": "2026-10-24T06:53:39.198Z",
   "checks": [
     {
       "name": "real_erp_bind",
@@ -26,8 +26,31 @@
         "renderId": "table.basic",
         "sent": true,
         "totalRows": 8,
-        "pngBytes": 94976,
-        "pngSha256": "9e6738d8d1bb",
+        "pngBytes": 95207,
+        "pngSha256": "2bb680377b06",
+        "cardSent": true,
+        "card": {
+          "card_type": "text_notice",
+          "main_title": {
+            "title": "原料仓库存摘要",
+            "desc": "2026年10月"
+          },
+          "horizontal_content_list": [
+            {
+              "keyname": "物料品种",
+              "value": "8"
+            }
+          ],
+          "card_action": {
+            "type": 1,
+            "url": "https://work.weixin.qq.com"
+          },
+          "emphasis_content": {
+            "title": "426.9 L",
+            "desc": "库存合计"
+          },
+          "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
+        },
         "text": "库存表格已发送（原料仓，共 8 行）。数据来自 ERP 实时查询，非模型估算。"
       }
     },
@@ -39,8 +62,46 @@
         "sent": true,
         "degraded": true,
         "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
-        "pngBytes": 65202,
+        "pngBytes": 72025,
+        "cardSent": true,
+        "card": {
+          "card_type": "text_notice",
+          "main_title": {
+            "title": "2026年10月采购入库摘要",
+            "desc": "2026年10月"
+          },
+          "horizontal_content_list": [
+            {
+              "keyname": "最高",
+              "value": "2026-10-20 ¥11,700"
+            },
+            {
+              "keyname": "分类数",
+              "value": "5"
+            }
+          ],
+          "card_action": {
+            "type": 1,
+            "url": "https://work.weixin.qq.com"
+          },
+          "emphasis_content": {
+            "title": "¥16,340",
+            "desc": "金额合计"
+          },
+          "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
+        },
         "text": "采购入库柱状图已发送（2026年10月）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。"
+      }
+    },
+    {
+      "name": "card_semantics",
+      "pass": true,
+      "detail": {
+        "count": 2,
+        "types": [
+          "text_notice",
+          "text_notice"
+        ]
       }
     },
     {
@@ -74,9 +135,9 @@
       "detail": {
         "count": 3,
         "files": [
-          "63_jsh_1792814499993_140060224275_table.basic_9e6738d8.png",
-          "63_jsh_1792814501144_ac20ad57220b_bar.compare_ec1dd091.png",
-          "63_jsh_1792814502270_d4d024760689_line.trend_f195e87a.png"
+          "63_jsh_1792824821315_2cc692169a91_table.basic_2bb68037.png",
+          "63_jsh_1792824822705_55876a0f497e_bar.compare_0a41210b.png",
+          "63_jsh_1792824824105_a91df7c7bcfc_line.trend_8e49932f.png"
         ]
       }
     }
@@ -86,8 +147,31 @@
       "renderId": "table.basic",
       "sent": true,
       "totalRows": 8,
-      "pngBytes": 94976,
-      "pngSha256": "9e6738d8d1bb",
+      "pngBytes": 95207,
+      "pngSha256": "2bb680377b06",
+      "cardSent": true,
+      "card": {
+        "card_type": "text_notice",
+        "main_title": {
+          "title": "原料仓库存摘要",
+          "desc": "2026年10月"
+        },
+        "horizontal_content_list": [
+          {
+            "keyname": "物料品种",
+            "value": "8"
+          }
+        ],
+        "card_action": {
+          "type": 1,
+          "url": "https://work.weixin.qq.com"
+        },
+        "emphasis_content": {
+          "title": "426.9 L",
+          "desc": "库存合计"
+        },
+        "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
+      },
       "text": "库存表格已发送（原料仓，共 8 行）。数据来自 ERP 实时查询，非模型估算。"
     },
     "purchaseChart": {
@@ -95,7 +179,34 @@
       "sent": true,
       "degraded": true,
       "degradeNote": "说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。",
-      "pngBytes": 65202,
+      "pngBytes": 72025,
+      "cardSent": true,
+      "card": {
+        "card_type": "text_notice",
+        "main_title": {
+          "title": "2026年10月采购入库摘要",
+          "desc": "2026年10月"
+        },
+        "horizontal_content_list": [
+          {
+            "keyname": "最高",
+            "value": "2026-10-20 ¥11,700"
+          },
+          {
+            "keyname": "分类数",
+            "value": "5"
+          }
+        ],
+        "card_action": {
+          "type": 1,
+          "url": "https://work.weixin.qq.com"
+        },
+        "emphasis_content": {
+          "title": "¥16,340",
+          "desc": "金额合计"
+        },
+        "sub_title_text": "数据来自 ERP 实时查询（非模型估算），明细见随发图表。"
+      },
       "text": "采购入库柱状图已发送（2026年10月）。数据来自 ERP 实时查询，非模型估算。\n说明：本月只有 1 个供应商（华东化工），无法按供应商比较，已按 ERP 真实可查的日期维度出图。"
     },
     "purchaseTrend": {
@@ -113,5 +224,5 @@
     }
   },
   "ok": true,
-  "finishedAt": "2026-10-24T04:01:42.481Z"
+  "finishedAt": "2026-10-24T06:53:44.423Z"
 }

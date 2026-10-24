@@ -10,7 +10,7 @@
  */
 import { join } from "node:path";
 import { sealAndRender, stripPaths } from "./render-lib/index.mjs";
-import { sendWecomLocalFile, receiptMediaRoots } from "./wecom-outbound.mjs";
+import { sendWecomLocalFile, sendWecomTemplateCard, receiptMediaRoots } from "./wecom-outbound.mjs";
 
 const CHANNEL_ID = "wecom";
 
@@ -376,6 +376,114 @@ function buildPurchasePlan(rep, bills, plan) {
   };
 }
 
+// ---- 020B：图表摘要卡片（text_notice） ---------------------------------
+function fmtMoney(v) {
+  const n = Number(v);
+  return `¥${(Number.isFinite(n) ? n : 0).toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+function fmtQtyStr(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "-";
+  const s = Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : n.toFixed(2).replace(/\.?0+$/, "");
+  return s;
+}
+
+/**
+ * 根据已渲染的图表 dataset 生成 text_notice 摘要卡片。
+ * 只展示真实查询出的 KPI，不编造任何数值。
+ */
+export function buildSummaryCard(built, rendered, plan, scope) {
+  const ds = built?.dataset || {};
+  const subjectZh = plan.subject === "purchase" ? "采购入库" : "库存";
+  const card = {
+    card_type: "text_notice",
+    main_title: { title: `${scope}${subjectZh}摘要`, desc: plan.range?.label || ds.timeRange || "" },
+    horizontal_content_list: [],
+    card_action: {
+      type: 1,
+      url:
+        process.env.AIERP_ERP_WEB_URL ||
+        "https://work.weixin.qq.com",
+    },
+  };
+
+  const push = (keyname, value) => {
+    if (card.horizontal_content_list.length < 6 && value != null && value !== "") {
+      card.horizontal_content_list.push({ keyname: String(keyname).slice(0, 5), value: String(value).slice(0, 26) });
+    }
+  };
+
+  if (plan.subject === "purchase") {
+    const kpis = Array.isArray(ds.kpis) ? ds.kpis : [];
+    if (kpis.length) {
+      const amount = kpis.find((k) => k.money || /金额/.test(k.label || ""));
+      card.emphasis_content = {
+        title: amount ? fmtMoney(amount.value) : "-",
+        desc: amount ? String(amount.label || "采购金额").slice(0, 15) : "采购金额",
+      };
+      for (const k of kpis) {
+        if (k === amount) continue;
+        const unit = k.unit && k.unit !== "CNY" ? ` ${k.unit}` : "";
+        push(String(k.label || "").slice(0, 5), `${fmtQtyStr(k.value)}${unit}`);
+      }
+    } else if (Array.isArray(ds.rows)) {
+      // 明细表格场景：从真实行数据汇总
+      const sum = ds.rows.reduce((a, r) => a + Number(r.totalAmount || 0), 0);
+      card.emphasis_content = { title: fmtMoney(sum), desc: "金额合计" };
+      push("单据数", String(ds.rows.length));
+      const partners = new Set(ds.rows.map((r) => r.partnerName).filter(Boolean));
+      if (partners.size) push("供应商", `${partners.size} 家`);
+    } else if (Array.isArray(ds.categories) && ds.categories.length) {
+      // 柱状/饼图/趋势场景：从真实分类汇总（采购单位恒为 CNY）
+      const cats = ds.categories;
+      const sum = cats.reduce((a, c) => a + Number(c.value || 0), 0);
+      card.emphasis_content = { title: fmtMoney(sum).slice(0, 10), desc: "金额合计" };
+      const top = [...cats].sort((a, b) => b.value - a.value)[0];
+      if (top && cats.length > 1) push("最高", `${top.label} ${fmtMoney(top.value)}`);
+      push("分类数", String(cats.length));
+    }
+  } else if (rendered?.renderId === "kpi.tiles") {
+    const kpis = Array.isArray(ds.kpis) ? ds.kpis : [];
+    const total = kpis.find((k) => /合计|总量|库存/.test(k.label || "")) || kpis[kpis.length - 1];
+    if (total) {
+      card.emphasis_content = {
+        title: `${fmtQtyStr(total.value)}${total.unit ? ` ${total.unit}` : ""}`.slice(0, 10),
+        desc: String(total.label || "库存合计").slice(0, 15),
+      };
+    }
+    for (const k of kpis) {
+      if (k === total) continue;
+      push(String(k.label || "").slice(0, 5), `${fmtQtyStr(k.value)}${k.unit ? ` ${k.unit}` : ""}`);
+    }
+  } else {
+    // table / bar / pie / line：取合计或最大分类
+    const cats = Array.isArray(ds.categories) ? ds.categories : [];
+    if (cats.length) {
+      const sum = cats.reduce((a, c) => a + Number(c.value || 0), 0);
+      const unit = ds.unit === "CNY" ? "" : ds.unit ? ` ${ds.unit}` : "";
+      card.emphasis_content = {
+        title: `${ds.unit === "CNY" ? fmtMoney(sum) : fmtQtyStr(sum) + unit}`.slice(0, 10),
+        desc: ds.unit === "CNY" ? "金额合计" : "合计",
+      };
+      const top = [...cats].sort((a, b) => b.value - a.value)[0];
+      if (top && cats.length > 1) push("最高", `${top.label} ${ds.unit === "CNY" ? fmtMoney(top.value) : fmtQtyStr(top.value)}`);
+      push("分类数", String(cats.length));
+    } else if (Array.isArray(ds.rows)) {
+      const totalQty = ds.rows.reduce((a, r) => a + Number(r.currentStock || 0), 0);
+      card.emphasis_content = {
+        title: `${fmtQtyStr(totalQty)}${ds.rows[0]?.unit ? ` ${ds.rows[0].unit}` : ""}`.slice(0, 10),
+        desc: "库存合计",
+      };
+      push("物料品种", String(ds.rows.length));
+    }
+  }
+
+  if (card.horizontal_content_list.length === 0) delete card.horizontal_content_list;
+  card.sub_title_text = "数据来自 ERP 实时查询（非模型估算），明细见随发图表。";
+  return card;
+}
+
 // ---- 主流程 ------------------------------------------------------------
 /**
  * @param {object} deps
@@ -387,6 +495,7 @@ function buildPurchasePlan(rep, bills, plan) {
  * @param {string[]} [deps.mediaLocalRoots]
  * @param {object} [deps.plan]       工具直调时的显式参数
  * @param {Function} [deps.sendFn]   测试替身；生产走 sendWecomLocalFile
+ * @param {Function} [deps.sendCardFn] 测试替身；生产走 sendWecomTemplateCard
  */
 export async function runChartRender(deps) {
   const {
@@ -398,6 +507,7 @@ export async function runChartRender(deps) {
     mediaLocalRoots,
     plan: explicitPlan,
     sendFn = sendWecomLocalFile,
+    sendCardFn = sendWecomTemplateCard,
   } = deps;
   const idBody = (extra = {}) => ({ wecomUserId, botId, channel: CHANNEL_ID, ...extra });
 
@@ -531,6 +641,19 @@ export async function runChartRender(deps) {
   const kindZh = RENDER_ZH[rendered.renderId] || "图表";
   const scope = plan.subject === "purchase" ? plan.range?.label || "所选区间" : plan.depotName || "当前权限范围";
   const subjectZh = plan.subject === "purchase" ? "采购入库" : "库存";
+
+  // 020B：图片发完后补发一张企微原生摘要卡片（失败不影响主流程，不追加报错文案）
+  let cardSent = false;
+  let cardError = null;
+  try {
+    const card = buildSummaryCard(built, rendered, plan, scope);
+    const cardRes = await sendCardFn({ toUserId: wecomUserId, card, cfg });
+    cardSent = !!cardRes?.ok;
+    if (!cardSent) cardError = String(cardRes?.error || "card send failed").slice(0, 120);
+  } catch (err) {
+    cardError = String(err?.message || err).slice(0, 120);
+  }
+
   const parts = [`${subjectZh}${kindZh}已发送（${scope}`];
   if (rendered.renderId === "table.basic" && rendered.totalRows) {
     parts.push(`，共 ${rendered.totalRows} 行`);
@@ -555,6 +678,8 @@ export async function runChartRender(deps) {
     pngSha256: rendered.pngSha256,
     totalRows: rendered.totalRows || built.totalRows || 0,
     xlsxSent,
+    cardSent,
+    ...(cardError ? { cardError } : {}),
     messageId: send.messageId,
     text: stripPaths(parts.join("")),
   };

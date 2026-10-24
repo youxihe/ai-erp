@@ -135,6 +135,17 @@ async function main() {
     return { ok: false, error: "media file missing" };
   };
 
+  // 020B 卡片发送替身：校验 card_type 合法性并记录卡片内容
+  const cards = [];
+  const sendCardFn = async ({ card }) => {
+    if (!card || typeof card !== "object") return { ok: false, error: "card required" };
+    const okType = ["text_notice", "news_notice", "button_interaction", "vote_interaction", "multiple_interaction"]
+      .includes(card.card_type);
+    const noPath = !/[A-Za-z]:\\/.test(JSON.stringify(card));
+    cards.push(card);
+    return okType && noPath ? { ok: true, messageId: `card-${cards.length}` } : { ok: false, error: "invalid card" };
+  };
+
   let bound;
   try {
     bound = await bind();
@@ -153,6 +164,7 @@ async function main() {
       cfg: {},
       mediaLocalRoots: [],
       sendFn,
+      sendCardFn,
       plan,
     });
 
@@ -174,18 +186,23 @@ async function main() {
   // ---- 场景 A：原料仓库存表格 ----
   {
     const before = sent.length;
+    const beforeCards = cards.length;
     const r = await run("把原料仓的库存用表格展示给我");
     const png = sent[before];
     const okPng = png && existsSync(png) && fs.readFileSync(png)[0] === 0x89;
+    const card = cards[beforeCards];
+    const cardOk = !!r.sent && r.cardSent === true && card?.card_type === "text_notice" && !!card?.emphasis_content;
     report.scenarios.stockTable = {
       renderId: r.renderId,
       sent: !!r.sent,
       totalRows: r.totalRows,
       pngBytes: r.pngBytes,
       pngSha256: (r.pngSha256 || "").slice(0, 12),
+      cardSent: r.cardSent,
+      card: card || null,
       text: r.text,
     };
-    if (r.renderId !== "table.basic" || !r.sent || !okPng || hasPath(r.text)) {
+    if (r.renderId !== "table.basic" || !r.sent || !okPng || hasPath(r.text) || !cardOk) {
       softFail("scenario_a_stock_table", report.scenarios.stockTable);
     } else {
       pass("scenario_a_stock_table", report.scenarios.stockTable);
@@ -195,22 +212,38 @@ async function main() {
   // ---- 场景 B：本月采购柱状图 ----
   {
     const before = sent.length;
+    const beforeCards = cards.length;
     const r = await run("把本月采购情况画成柱状图发我");
     const png = sent[before];
     const okPng = png && existsSync(png) && fs.readFileSync(png)[0] === 0x89;
+    const card = cards[beforeCards];
+    const cardOk = !!r.sent && r.cardSent === true && card?.card_type === "text_notice" && !!card?.emphasis_content;
     report.scenarios.purchaseChart = {
       renderId: r.renderId,
       sent: !!r.sent,
       degraded: !!r.degraded,
       degradeNote: (r.text || "").split("\n").find((l) => l.startsWith("说明：")) || null,
       pngBytes: r.pngBytes,
+      cardSent: r.cardSent,
+      card: card || null,
       text: r.text,
     };
-    if (!r.sent || !okPng || hasPath(r.text)) {
+    if (!r.sent || !okPng || hasPath(r.text) || !cardOk) {
       softFail("scenario_b_purchase_chart", report.scenarios.purchaseChart);
     } else {
       pass("scenario_b_purchase_chart", report.scenarios.purchaseChart);
     }
+  }
+
+  // ---- 020B 卡片语义：数值不编造、无路径泄漏、task_id 可省略 ----
+  {
+    const okCards = cards.length > 0 && cards.every((c) => {
+      const blob = JSON.stringify(c);
+      const noPath = !/[A-Za-z]:\\/.test(blob) && !/MEDIA:/i.test(blob);
+      return c.card_type === "text_notice" && noPath;
+    });
+    if (!okCards) softFail("card_semantics", { count: cards.length });
+    else pass("card_semantics", { count: cards.length, types: cards.map((c) => c.card_type) });
   }
 
   // ---- 采购表格 + 折线趋势（同一真实数据，不同 renderId）----
